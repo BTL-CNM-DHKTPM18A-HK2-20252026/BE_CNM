@@ -44,6 +44,9 @@ public class SecurityConfig {
                         // === Swagger/OpenAPI endpoints ===
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
                         
+                        // === File endpoints (Temporarily public for testing) ===
+                        .requestMatchers("/files/**").permitAll() // Upload & view files (TODO: Add auth for POST/DELETE)
+                        
                         // === WebSocket endpoints ===
                         .requestMatchers("/ws/**").permitAll()
                         

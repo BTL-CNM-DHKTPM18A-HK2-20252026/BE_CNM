@@ -40,3 +40,6 @@ build/
 
 ### Uploads ###
 uploads/
+
+### Test API ###
+test_api/

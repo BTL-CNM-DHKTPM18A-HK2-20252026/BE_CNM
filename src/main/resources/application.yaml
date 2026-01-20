@@ -2,13 +2,26 @@ spring:
   application:
     name: fruvia_backend
 
-server:
-  port: 8080
+  # Multipart File Upload Configuration
   servlet:
-    context-path: /api/v1
+    multipart:
+      enabled: true
+      max-file-size: ${FILE_MAX_SIZE:10MB}
+      max-request-size: ${FILE_MAX_SIZE:10MB}
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: ${SERVER_CONTEXT_PATH:/api/v1}
 
 jwt:
-  signer-key: "wDhbSSpxZfV5HKciZOEUlvBExqAuzHmHhLDAuO6PALLAqTP163lNPxLYsUxs3UUI"
+  signer-key: "${JWT_SIGNER_KEY:wDhbSSpxZfV5HKciZOEUlvBExqAuzHmHhLDAuO6PALLAqTP163lNPxLYsUxs3UUI}"
+
+# Cloudinary Configuration
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}
 
 # Swagger/OpenAPI Configuration
 springdoc:
