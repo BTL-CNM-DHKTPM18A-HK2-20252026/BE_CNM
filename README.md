@@ -1,79 +1,79 @@
 # Fruvia Backend
 
-A modern social media backend application built with Spring Boot 3.5.9, MongoDB, and JWT authentication.
+Ứng dụng backend mạng xã hội hiện đại được xây dựng với Spring Boot 3.5.9, MongoDB và JWT authentication.
 
-## 🚀 Features
+## 🚀 Tính Năng
 
-- ✅ JWT-based authentication & authorization
-- ✅ User registration and management
-- ✅ MongoDB database integration
-- ✅ RESTful API design
-- ✅ Security with Spring Security
-- ✅ Complete social media entities (Posts, Messages, Stories, Calls, etc.)
-- ✅ Friend management system
-- ✅ Real-time messaging support
-- ✅ Story features (24-hour content)
-- ✅ Video/Audio call logging
+- ✅ Xác thực & phân quyền dựa trên JWT
+- ✅ Đăng ký và quản lý người dùng
+- ✅ Tích hợp cơ sở dữ liệu MongoDB
+- ✅ Thiết kế RESTful API
+- ✅ Bảo mật với Spring Security
+- ✅ Các thực thể mạng xã hội đầy đủ (Bài viết, Tin nhắn, Story, Cuộc gọi, v.v.)
+- ✅ Hệ thống quản lý bạn bè
+- ✅ Hỗ trợ nhắn tin thời gian thực
+- ✅ Tính năng Story (nội dung 24 giờ)
+- ✅ Ghi nhận cuộc gọi Video/Audio
 
-## 📋 Prerequisites
+## 📋 Yêu Cầu Hệ Thống
 
-- Java 21 or higher
+- Java 21 trở lên
 - Maven 3.6+
 - MongoDB 4.4+
 - Git
 
-## 🛠️ Tech Stack
+## 🛠️ Công Nghệ Sử Dụng
 
 - **Framework:** Spring Boot 3.5.9
-- **Language:** Java 21
-- **Database:** MongoDB
-- **Security:** Spring Security with JWT (HS512)
+- **Ngôn ngữ:** Java 21
+- **Cơ sở dữ liệu:** MongoDB
+- **Bảo mật:** Spring Security với JWT (HS512)
 - **Build Tool:** Maven
-- **Cache:** Redis (configured)
+- **Cache:** Redis (đã cấu hình)
 
-## 📁 Project Structure
+## 📁 Cấu Trúc Dự Án
 
 ```
 fruvia/
 ├── src/main/java/iuh/fit/
-│   ├── configuration/      # Security & App configurations
-│   ├── controller/         # REST API Controllers
+│   ├── configuration/      # Cấu hình Security & App
+│   ├── controller/         # Các REST API Controller
 │   ├── dto/               # Data Transfer Objects
-│   ├── entity/            # MongoDB Entities (23 entities)
-│   ├── enums/             # Enumerations
+│   ├── entity/            # MongoDB Entities (23 thực thể)
+│   ├── enums/             # Các Enumeration
 │   ├── repository/        # MongoDB Repositories
 │   └── service/           # Business Logic Services
 ├── src/main/resources/
-│   └── application.yaml   # Application configurations
-├── ENTITY_STRUCTURE.md    # Complete entity documentation
-├── api-test.http          # API test requests
+│   └── application.yaml   # Cấu hình ứng dụng
+├── ENTITY_STRUCTURE.md    # Tài liệu chi tiết các thực thể
+├── api-test.http          # Các request test API
 └── pom.xml               # Maven dependencies
 ```
 
-## 🗂️ Database Entities
+## 🗂️ Thực Thể Cơ Sở Dữ Liệu
 
-### Core Modules (23 Entities)
-- **User Module:** UserAuth, UserDetail, UserSetting, UserVerification, UserDevice
-- **Friend Module:** FriendRequest, FriendShip, BlockUser
-- **Message Module:** Message, MessageAttachment, MessageReaction, PinnedMessage
-- **Conversation Module:** Conversations, ConversationMember
-- **Post Module:** Post, PostMedia, PostReaction, PostComment
-- **Story Module:** Story, StoryView
-- **Call Module:** CallLog, CallParticipant
-- **Notification Module:** Notification
+### Các Module Chính (23 Thực Thể)
+- **Module Người Dùng:** UserAuth, UserDetail, UserSetting, UserVerification, UserDevice
+- **Module Bạn Bè:** FriendRequest, FriendShip, BlockUser
+- **Module Tin Nhắn:** Message, MessageAttachment, MessageReaction, PinnedMessage
+- **Module Hội Thoại:** Conversations, ConversationMember
+- **Module Bài Viết:** Post, PostMedia, PostReaction, PostComment
+- **Module Story:** Story, StoryView
+- **Module Cuộc Gọi:** CallLog, CallParticipant
+- **Module Thông Báo:** Notification
 
-See [ENTITY_STRUCTURE.md](ENTITY_STRUCTURE.md) for detailed entity relationships.
+Xem [ENTITY_STRUCTURE.md](ENTITY_STRUCTURE.md) để biết chi tiết về mối quan hệ các thực thể.
 
-## ⚙️ Installation & Setup
+## ⚙️ Cài Đặt & Khởi Chạy
 
-### 1. Clone the repository
+### 1. Clone repository
 ```bash
 git clone <repository-url>
 cd fruvia
 ```
 
-### 2. Configure MongoDB
-Ensure MongoDB is running on `localhost:27017` or update connection in `application.yaml`:
+### 2. Cấu hình MongoDB
+Đảm bảo MongoDB đang chạy trên `localhost:27017` hoặc cập nhật kết nối trong `application.yaml`:
 ```yaml
 spring:
   data:
@@ -83,41 +83,41 @@ spring:
       database: fruvia_db
 ```
 
-### 3. Build the project
+### 3. Build dự án
 ```bash
 mvn clean install
 ```
 
-### 4. Run the application
+### 4. Chạy ứng dụng
 ```bash
 mvn spring-boot:run
 ```
 
-The server will start on `http://localhost:8080/api/v1`
+Server sẽ khởi động tại `http://localhost:8080/api/v1`
 
-## 🔐 Authentication
+## 🔐 Xác Thực
 
-### JWT Configuration
-- **Algorithm:** HS512
-- **Token Type:** Bearer
-- **Expiration:** 30 days
-- **Claim:** scope (for roles)
+### Cấu Hình JWT
+- **Thuật toán:** HS512
+- **Loại Token:** Bearer
+- **Thời gian hết hạn:** 30 ngày
+- **Claim:** scope (cho roles)
 
 ### Endpoints
 
-#### Public Endpoints
-- `POST /api/v1/users` - Register new user
-- `POST /api/v1/auth/login` - User login
-- `POST /api/v1/auth/introspect` - Validate token
-- `POST /api/v1/auth/logout` - User logout
+#### Endpoints Công Khai
+- `POST /api/v1/users` - Đăng ký người dùng mới
+- `POST /api/v1/auth/login` - Đăng nhập
+- `POST /api/v1/auth/introspect` - Xác thực token
+- `POST /api/v1/auth/logout` - Đăng xuất
 
-#### Protected Endpoints
-- `GET /api/v1/users/me` - Get current user profile
-- `GET /api/v1/users/{userId}` - Get user by ID (temporary public for testing)
+#### Endpoints Được Bảo Vệ
+- `GET /api/v1/users/me` - Lấy thông tin người dùng hiện tại
+- `GET /api/v1/users/{userId}` - Lấy thông tin người dùng theo ID (tạm thời public để test)
 
-## 📝 API Examples
+## 📝 Ví Dụ API
 
-### Register User
+### Đăng Ký Người Dùng
 ```bash
 POST /api/v1/users
 Content-Type: application/json
@@ -126,13 +126,13 @@ Content-Type: application/json
   "phoneNumber": "0123456789",
   "email": "user@example.com",
   "password": "password123",
-  "displayName": "John Doe",
-  "firstName": "John",
-  "lastName": "Doe"
+  "displayName": "Nguyễn Văn A",
+  "firstName": "A",
+  "lastName": "Nguyễn Văn"
 }
 ```
 
-### Login
+### Đăng Nhập
 ```bash
 POST /api/v1/auth/login
 Content-Type: application/json
@@ -143,7 +143,7 @@ Content-Type: application/json
 }
 ```
 
-### Response
+### Phản Hồi
 ```json
 {
   "access_token": "eyJhbGciOiJIUzUxMiJ9...",
@@ -152,28 +152,28 @@ Content-Type: application/json
 }
 ```
 
-## 🧪 Testing
+## 🧪 Kiểm Thử
 
-### Using REST Client (VS Code)
-Open `api-test.http` and run the requests directly.
+### Sử Dụng REST Client (VS Code)
+Mở file `api-test.http` và chạy các request trực tiếp.
 
-### Using PowerShell
+### Sử Dụng PowerShell
 ```powershell
 .\test-registration.ps1
 ```
 
-### Using Bash
+### Sử Dụng Bash
 ```bash
 chmod +x test-registration.sh
 ./test-registration.sh
 ```
 
-### Using Batch (Windows)
+### Sử Dụng Batch (Windows)
 ```cmd
 test-registration.bat
 ```
 
-## 🔧 Configuration
+## 🔧 Cấu Hình
 
 ### application.yaml
 ```yaml
@@ -193,35 +193,35 @@ spring:
       database: fruvia_db
 ```
 
-## 📊 Default Privacy Settings
+## 📊 Cài Đặt Quyền Riêng Tư Mặc Định
 
-When a user registers, default privacy settings are applied:
-- **Allow Friend Requests:** `true`
-- **Profile Visibility:** `PUBLIC`
-- **Post Visibility:** `FRIEND_ONLY`
-- **Tag Permissions:** `FRIEND_ONLY`
-- **Message Permissions:** `PUBLIC`
-- **Show Online Status:** `true`
-- **Show Read Receipts:** `true`
+Khi người dùng đăng ký, các cài đặt quyền riêng tư mặc định được áp dụng:
+- **Cho phép Lời mời kết bạn:** `true`
+- **Hiển thị Hồ sơ:** `PUBLIC` (Công khai)
+- **Hiển thị Bài viết:** `FRIEND_ONLY` (Chỉ bạn bè)
+- **Quyền Gắn thẻ:** `FRIEND_ONLY` (Chỉ bạn bè)
+- **Quyền Nhắn tin:** `PUBLIC` (Công khai)
+- **Hiện Trạng thái online:** `true`
+- **Hiện Thông báo đã xem:** `true`
 
-## 🔒 Security Features
+## 🔒 Tính Năng Bảo Mật
 
-- ✅ Password hashing with BCrypt
-- ✅ JWT token-based authentication
-- ✅ Token blacklisting support (Redis)
-- ✅ CORS configuration
-- ✅ Role-based access control
-- ✅ 2FA support (prepared)
+- ✅ Mã hóa mật khẩu với BCrypt
+- ✅ Xác thực dựa trên JWT token
+- ✅ Hỗ trợ blacklist token (Redis)
+- ✅ Cấu hình CORS
+- ✅ Phân quyền dựa trên vai trò
+- ✅ Hỗ trợ 2FA (đã chuẩn bị)
 
-## 🌐 CORS Configuration
+## 🌐 Cấu Hình CORS
 
-Allowed origins:
+Nguồn được phép:
 - `http://localhost:5173`
 - `http://localhost:3000`
 
-## 📦 Dependencies
+## 📦 Thư Viện Phụ Thuộc
 
-Key dependencies:
+Các thư viện chính:
 - Spring Boot Starter Web
 - Spring Boot Starter Data MongoDB
 - Spring Boot Starter Security
@@ -235,30 +235,30 @@ Key dependencies:
 
 ## 🚧 TODO
 
-- [ ] Implement Redis token blacklisting
-- [ ] Add email verification
-- [ ] Implement phone number verification
-- [ ] Add password reset functionality
-- [ ] Implement refresh token logic
-- [ ] Add API documentation with Swagger
-- [ ] Add integration tests
-- [ ] Implement rate limiting
-- [ ] Add file upload service
-- [ ] WebSocket implementation for real-time chat
+- [ ] Triển khai Redis token blacklisting
+- [ ] Thêm xác thực email
+- [ ] Triển khai xác thực số điện thoại
+- [ ] Thêm tính năng đặt lại mật khẩu
+- [ ] Triển khai logic refresh token
+- [ ] Thêm tài liệu API với Swagger
+- [ ] Thêm integration tests
+- [ ] Triển khai giới hạn tốc độ request (rate limiting)
+- [ ] Thêm dịch vụ upload file
+- [ ] Triển khai WebSocket cho chat thời gian thực
 
-## 📄 License
+## 📄 Giấy Phép
 
-This project is licensed under the MIT License.
+Dự án này được cấp phép theo giấy phép MIT.
 
-## 👥 Team
+## 👥 Nhóm Phát Triển
 
 Fruvia Development Team
 
-## 📧 Contact
+## 📧 Liên Hệ
 
-For questions or support, please contact: fruvia@example.com
+Để biết thêm thông tin hoặc hỗ trợ, vui lòng liên hệ: fruvia@example.com
 
 ---
 
-**Version:** 1.0.0  
-**Last Updated:** January 20, 2026
+**Phiên bản:** 1.0.0  
+**Cập nhật lần cuối:** 20 tháng 1, 2026
