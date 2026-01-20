@@ -103,6 +103,19 @@ Server sẽ khởi động tại `http://localhost:8080/api/v1`
 - **Thời gian hết hạn:** 30 ngày
 - **Claim:** scope (cho roles)
 
+### Swagger API Documentation
+
+Swagger UI đã được tích hợp để test và xem tài liệu API:
+- **Swagger UI:** http://localhost:8080/api/v1/swagger-ui.html
+- **API Docs:** http://localhost:8080/api/v1/v3/api-docs
+
+Để sử dụng các endpoint cần xác thực trong Swagger:
+1. Đăng nhập qua endpoint `/auth/login`
+2. Copy `access_token` từ response
+3. Click nút **"Authorize"** ở góc trên bên phải
+4. Nhập token với format: `Bearer <your-token>`
+5. Click **"Authorize"**
+
 ### Endpoints
 
 #### Endpoints Công Khai
@@ -240,7 +253,7 @@ Các thư viện chính:
 - [ ] Triển khai xác thực số điện thoại
 - [ ] Thêm tính năng đặt lại mật khẩu
 - [ ] Triển khai logic refresh token
-- [ ] Thêm tài liệu API với Swagger
+- [x] ~~Thêm tài liệu API với Swagger~~ ✅ Hoàn thành
 - [ ] Thêm integration tests
 - [ ] Triển khai giới hạn tốc độ request (rate limiting)
 - [ ] Thêm dịch vụ upload file

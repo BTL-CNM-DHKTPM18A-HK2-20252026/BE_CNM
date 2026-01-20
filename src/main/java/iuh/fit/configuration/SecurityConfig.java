@@ -41,6 +41,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/users/**").permitAll() // Xem thông tin user (temporary for testing)
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // CORS preflight
                         
+                        // === Swagger/OpenAPI endpoints ===
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
+                        
                         // === WebSocket endpoints ===
                         .requestMatchers("/ws/**").permitAll()
                         

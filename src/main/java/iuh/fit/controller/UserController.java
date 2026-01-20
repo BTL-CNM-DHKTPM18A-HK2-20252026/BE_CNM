@@ -9,6 +9,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.user.RegisterRequest;
 import iuh.fit.dto.response.user.UserResponse;
 import iuh.fit.service.user.UserService;
@@ -27,6 +34,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Slf4j
+@Tag(name = "User Management", description = "API quản lý người dùng")
 public class UserController {
 
     UserService userService;
@@ -37,6 +45,13 @@ public class UserController {
      * @param request Registration request with user details
      * @return Created user response
      */
+    @Operation(summary = "Đăng ký người dùng mới", description = "Tạo tài khoản người dùng mới với thông tin đầy đủ")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Đăng ký thành công",
+                    content = @Content(schema = @Schema(implementation = UserResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Thông tin không hợp lệ hoặc email/số điện thoại đã tồn tại",
+                    content = @Content)
+    })
     @PostMapping
     public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         log.info("User registration request received for email: {}", request.getEmail());
@@ -50,6 +65,13 @@ public class UserController {
      * @param userId User ID
      * @return User response
      */
+    @Operation(summary = "Lấy thông tin người dùng theo ID", description = "Trả về thông tin chi tiết của người dùng")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Tìm thấy người dùng",
+                    content = @Content(schema = @Schema(implementation = UserResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Không tìm thấy người dùng",
+                    content = @Content)
+    })
     @GetMapping("/{userId}")
     public ResponseEntity<UserResponse> getUserById(@PathVariable String userId) {
         log.info("Get user request for userId: {}", userId);
@@ -63,6 +85,15 @@ public class UserController {
      * 
      * @return Current user response
      */
+    @Operation(summary = "Lấy thông tin người dùng hiện tại", 
+               description = "Trả về thông tin của người dùng đang đăng nhập (yêu cầu xác thực)")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Lấy thông tin thành công",
+                    content = @Content(schema = @Schema(implementation = UserResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Chưa xác thực",
+                    content = @Content)
+    })
+    @SecurityRequirement(name = "bearerAuth")
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getCurrentUser() {
         // TODO: Get userId from JWT token in SecurityContext
