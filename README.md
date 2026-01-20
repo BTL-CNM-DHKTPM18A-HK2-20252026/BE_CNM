@@ -72,23 +72,45 @@ git clone <repository-url>
 cd fruvia
 ```
 
-### 2. Cấu hình MongoDB
-Đảm bảo MongoDB đang chạy trên `localhost:27017` hoặc cập nhật kết nối trong `application.yaml`:
-```yaml
-spring:
-  data:
-    mongodb:
-      host: localhost
-      port: 27017
-      database: fruvia_db
+### 2. Cấu hình Environment Variables
+Copy file `.env.example` thành `.env` và cập nhật các giá trị:
+```bash
+cp .env.example .env
 ```
 
-### 3. Build dự án
+Chỉnh sửa file `.env` với thông tin của bạn:
+```env
+# Database
+MONGODB_HOST=localhost
+MONGODB_PORT=27017
+MONGODB_DATABASE=fruvia_db
+
+# Email (Gmail App Password)
+EMAIL_USERNAME=your-email@gmail.com
+EMAIL_PASSWORD=your-app-password
+
+# Cloudinary (for file storage)
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
+
+# Xem .env.example để biết tất cả các biến cần thiết
+```
+
+### 3. Cấu hình MongoDB
+Đảm bảo MongoDB đang chạy trên `localhost:27017` hoặc cập nhật kết nối trong `.env`:
+```env
+MONGODB_HOST=localhost
+MONGODB_PORT=27017
+MONGODB_DATABASE=fruvia_db
+```
+
+### 4. Build dự án
 ```bash
 mvn clean install
 ```
 
-### 4. Chạy ứng dụng
+### 5. Chạy ứng dụng
 ```bash
 mvn spring-boot:run
 ```
@@ -187,6 +209,39 @@ test-registration.bat
 ```
 
 ## 🔧 Cấu Hình
+
+### Environment Variables (.env)
+Dự án sử dụng file `.env` để quản lý các biến môi trường. Tất cả các biến cần thiết được liệt kê trong file `.env.example`.
+
+**Các biến quan trọng:**
+
+```env
+# JWT Secret Key (Bắt buộc)
+JWT_SIGNER_KEY=your-secret-key-here
+
+# MongoDB
+MONGODB_DATABASE=fruvia_db
+
+# Email (Gmail App Password)
+EMAIL_USERNAME=your-email@gmail.com
+EMAIL_PASSWORD=your-app-password
+
+# Cloudinary (File storage)
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
+
+# Google OAuth2
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
+
+# VNPay Payment
+VNPAY_TMN_CODE=your-tmn-code
+VNPAY_HASH_SECRET=your-hash-secret
+
+# Gemini AI
+GEMINI_API_KEY=your-gemini-api-key
+```
 
 ### application.yaml
 ```yaml
