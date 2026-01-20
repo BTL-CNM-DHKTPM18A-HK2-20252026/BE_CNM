@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: fruvia_backend
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api/v1
+
+jwt:
+  signer-key: "wDhbSSpxZfV5HKciZOEUlvBExqAuzHmHhLDAuO6PALLAqTP163lNPxLYsUxs3UUI"
