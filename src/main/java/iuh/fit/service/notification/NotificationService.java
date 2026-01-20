@@ -2,6 +2,7 @@ package iuh.fit.service.notification;
 
 import iuh.fit.dto.response.notification.NotificationResponse;
 import iuh.fit.entity.Notification;
+import iuh.fit.mapper.NotificationMapper;
 import iuh.fit.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,16 +20,17 @@ import java.util.stream.Collectors;
 public class NotificationService {
     
     private final NotificationRepository notificationRepository;
+    private final NotificationMapper notificationMapper;
     
     public Page<NotificationResponse> getUserNotifications(String userId, Pageable pageable) {
         return notificationRepository.findByReceiverIdAndIsDeletedFalseOrderByCreatedAtDesc(userId, pageable)
-                .map(this::mapToResponse);
+                .map(notificationMapper::toResponse);
     }
     
     public List<NotificationResponse> getUnreadNotifications(String userId) {
         return notificationRepository.findByReceiverIdAndIsReadFalseAndIsDeletedFalse(userId)
                 .stream()
-                .map(this::mapToResponse)
+                .map(notificationMapper::toResponse)
                 .collect(Collectors.toList());
     }
     
@@ -72,18 +74,5 @@ public class NotificationService {
         notification.setIsDeleted(true);
         notificationRepository.save(notification);
         log.info("Notification deleted: {}", notificationId);
-    }
-    
-    private NotificationResponse mapToResponse(Notification notification) {
-        return NotificationResponse.builder()
-                .notificationId(notification.getNotificationId())
-                .receiverId(notification.getReceiverId())
-                .actorId(notification.getActorId())
-                .notificationType(notification.getNotificationType().toString())
-                .content(notification.getContent())
-                .relatedObjectId(notification.getRelatedObjectId())
-                .isRead(notification.getIsRead())
-                .createdAt(notification.getCreatedAt())
-                .build();
     }
 }

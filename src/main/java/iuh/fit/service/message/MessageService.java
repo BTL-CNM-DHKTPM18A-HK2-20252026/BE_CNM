@@ -4,6 +4,7 @@ import iuh.fit.dto.request.message.SendMessageRequest;
 import iuh.fit.dto.response.message.MessageResponse;
 import iuh.fit.entity.Message;
 import iuh.fit.enums.MessageType;
+import iuh.fit.mapper.MessageMapper;
 import iuh.fit.repository.MessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ import java.util.UUID;
 public class MessageService {
     
     private final MessageRepository messageRepository;
+    private final MessageMapper messageMapper;
     
     @Transactional
     public MessageResponse sendMessage(String senderId, SendMessageRequest request) {
@@ -39,12 +41,12 @@ public class MessageService {
         message = messageRepository.save(message);
         log.info("Message sent: {}", message.getMessageId());
         
-        return mapToResponse(message);
+        return messageMapper.toResponse(message);
     }
     
     public Page<MessageResponse> getConversationMessages(String conversationId, Pageable pageable) {
         return messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
-                .map(this::mapToResponse);
+                .map(messageMapper::toResponse);
     }
     
     @Transactional
@@ -63,7 +65,7 @@ public class MessageService {
         message = messageRepository.save(message);
         log.info("Message updated: {}", messageId);
         
-        return mapToResponse(message);
+        return messageMapper.toResponse(message);
     }
     
     @Transactional
@@ -78,20 +80,5 @@ public class MessageService {
         message.setIsDeleted(true);
         messageRepository.save(message);
         log.info("Message deleted: {}", messageId);
-    }
-    
-    private MessageResponse mapToResponse(Message message) {
-        return MessageResponse.builder()
-                .messageId(message.getMessageId())
-                .conversationId(message.getConversationId())
-                .senderId(message.getSenderId())
-                .content(message.getContent())
-                .messageType(message.getMessageType().toString())
-                .replyToMessageId(message.getReplyToMessageId())
-                .isEdited(message.getIsEdited())
-                .isDeleted(message.getIsDeleted())
-                .createdAt(message.getCreatedAt())
-                .updatedAt(message.getUpdatedAt())
-                .build();
     }
 }

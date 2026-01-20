@@ -4,6 +4,7 @@ import iuh.fit.dto.response.friend.FriendRequestResponse;
 import iuh.fit.entity.FriendRequest;
 import iuh.fit.entity.FriendShip;
 import iuh.fit.enums.FriendRequestStatus;
+import iuh.fit.mapper.FriendMapper;
 import iuh.fit.repository.FriendRequestRepository;
 import iuh.fit.repository.FriendShipRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class FriendService {
     
     private final FriendRequestRepository friendRequestRepository;
     private final FriendShipRepository friendShipRepository;
+    private final FriendMapper friendMapper;
     
     @Transactional
     public FriendRequestResponse sendFriendRequest(String senderId, String receiverId) {
@@ -47,7 +49,7 @@ public class FriendService {
         request = friendRequestRepository.save(request);
         log.info("Friend request sent from {} to {}", senderId, receiverId);
         
-        return mapToResponse(request);
+        return friendMapper.toResponse(request);
     }
     
     @Transactional
@@ -98,7 +100,7 @@ public class FriendService {
     public List<FriendRequestResponse> getPendingRequests(String userId) {
         return friendRequestRepository.findByReceiverIdAndStatus(userId, FriendRequestStatus.PENDING)
                 .stream()
-                .map(this::mapToResponse)
+                .map(friendMapper::toResponse)
                 .collect(Collectors.toList());
     }
     
@@ -107,15 +109,5 @@ public class FriendService {
         friendShipRepository.deleteByUserId1AndUserId2(userId1, userId2);
         friendShipRepository.deleteByUserId1AndUserId2(userId2, userId1);
         log.info("Unfriended: {} and {}", userId1, userId2);
-    }
-    
-    private FriendRequestResponse mapToResponse(FriendRequest request) {
-        return FriendRequestResponse.builder()
-                .requestId(request.getRequestId())
-                .senderId(request.getSenderId())
-                .receiverId(request.getReceiverId())
-                .status(request.getStatus().toString())
-                .createdAt(request.getCreatedAt())
-                .build();
     }
 }

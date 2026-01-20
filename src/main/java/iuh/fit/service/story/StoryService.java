@@ -4,6 +4,7 @@ import iuh.fit.dto.request.story.CreateStoryRequest;
 import iuh.fit.dto.response.story.StoryResponse;
 import iuh.fit.entity.Story;
 import iuh.fit.entity.StoryView;
+import iuh.fit.mapper.StoryMapper;
 import iuh.fit.repository.StoryRepository;
 import iuh.fit.repository.StoryViewRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class StoryService {
     
     private final StoryRepository storyRepository;
     private final StoryViewRepository storyViewRepository;
+    private final StoryMapper storyMapper;
     
     @Transactional
     public StoryResponse createStory(String authorId, CreateStoryRequest request) {
@@ -40,14 +42,14 @@ public class StoryService {
         story = storyRepository.save(story);
         log.info("Story created: {}", story.getStoryId());
         
-        return mapToResponse(story, authorId);
+        return storyMapper.toResponse(story, authorId);
     }
     
     public List<StoryResponse> getActiveStories(String userId, List<String> friendIds) {
         LocalDateTime now = LocalDateTime.now();
         return storyRepository.findByAuthorIdInAndExpiresAtAfterAndIsDeletedFalse(friendIds, now)
                 .stream()
-                .map(story -> mapToResponse(story, userId))
+                .map(story -> storyMapper.toResponse(story, userId))
                 .collect(Collectors.toList());
     }
     
@@ -55,7 +57,7 @@ public class StoryService {
         LocalDateTime now = LocalDateTime.now();
         return storyRepository.findByAuthorIdAndExpiresAtAfterAndIsDeletedFalse(authorId, now)
                 .stream()
-                .map(story -> mapToResponse(story, currentUserId))
+                .map(story -> storyMapper.toResponse(story, currentUserId))
                 .collect(Collectors.toList());
     }
     
@@ -94,23 +96,5 @@ public class StoryService {
         story.setIsDeleted(true);
         storyRepository.save(story);
         log.info("Story deleted: {}", storyId);
-    }
-    
-    private StoryResponse mapToResponse(Story story, String currentUserId) {
-        long viewCount = storyViewRepository.countByStoryId(story.getStoryId());
-        boolean isViewedByMe = currentUserId != null && 
-                storyViewRepository.findByStoryIdAndViewerId(story.getStoryId(), currentUserId).isPresent();
-        
-        return StoryResponse.builder()
-                .storyId(story.getStoryId())
-                .authorId(story.getAuthorId())
-                .mediaUrl(story.getMediaUrl())
-                .mediaType(story.getMediaType())
-                .caption(story.getCaption())
-                .viewCount((int) viewCount)
-                .isViewedByMe(isViewedByMe)
-                .createdAt(story.getCreatedAt())
-                .expiresAt(story.getExpiresAt())
-                .build();
     }
 }

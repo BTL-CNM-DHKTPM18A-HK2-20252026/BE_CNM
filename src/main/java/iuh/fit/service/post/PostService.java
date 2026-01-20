@@ -4,8 +4,8 @@ import iuh.fit.dto.request.post.CreatePostRequest;
 import iuh.fit.dto.request.post.UpdatePostRequest;
 import iuh.fit.dto.response.post.PostResponse;
 import iuh.fit.entity.Post;
+import iuh.fit.mapper.PostMapper;
 import iuh.fit.repository.PostRepository;
-import iuh.fit.repository.PostReactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -22,7 +22,7 @@ import java.util.UUID;
 public class PostService {
     
     private final PostRepository postRepository;
-    private final PostReactionRepository postReactionRepository;
+    private final PostMapper postMapper;
     
     @Transactional
     public PostResponse createPost(String authorId, CreatePostRequest request) {
@@ -38,24 +38,24 @@ public class PostService {
         post = postRepository.save(post);
         log.info("Post created: {}", post.getPostId());
         
-        return mapToResponse(post, authorId);
+        return postMapper.toResponse(post, authorId);
     }
     
     public Page<PostResponse> getUserPosts(String userId, Pageable pageable) {
         return postRepository.findByAuthorIdAndIsDeletedFalseOrderByCreatedAtDesc(userId, pageable)
-                .map(post -> mapToResponse(post, userId));
+                .map(post -> postMapper.toResponse(post, userId));
     }
     
     public Page<PostResponse> getNewsFeed(Pageable pageable) {
         return postRepository.findByIsDeletedFalseOrderByCreatedAtDesc(pageable)
-                .map(post -> mapToResponse(post, null));
+                .map(post -> postMapper.toResponse(post, null));
     }
     
     public PostResponse getPostById(String postId, String currentUserId) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new RuntimeException("Post not found"));
         
-        return mapToResponse(post, currentUserId);
+        return postMapper.toResponse(post, currentUserId);
     }
     
     @Transactional
@@ -74,7 +74,7 @@ public class PostService {
         post = postRepository.save(post);
         log.info("Post updated: {}", postId);
         
-        return mapToResponse(post, userId);
+        return postMapper.toResponse(post, userId);
     }
     
     @Transactional
@@ -89,26 +89,5 @@ public class PostService {
         post.setIsDeleted(true);
         postRepository.save(post);
         log.info("Post deleted: {}", postId);
-    }
-    
-    private PostResponse mapToResponse(Post post, String currentUserId) {
-        PostResponse.PostResponseBuilder builder = PostResponse.builder()
-                .postId(post.getPostId())
-                .authorId(post.getAuthorId())
-                .content(post.getContent())
-                .location(post.getLocation())
-                .createdAt(post.getCreatedAt())
-                .updatedAt(post.getUpdatedAt());
-        
-        // Check if current user liked the post
-        if (currentUserId != null) {
-            postReactionRepository.findByPostIdAndUserId(post.getPostId(), currentUserId)
-                    .ifPresent(reaction -> {
-                        builder.isLikedByMe(true);
-                        builder.myReactionType(reaction.getReactionType().toString());
-                    });
-        }
-        
-        return builder.build();
     }
 }
