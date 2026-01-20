@@ -15,8 +15,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import iuh.fit.dto.request.FriendActionRequest;
-import iuh.fit.dto.response.FriendRequestResponse;
+import iuh.fit.dto.request.friend.FriendActionRequest;
+import iuh.fit.dto.response.friend.FriendRequestResponse;
 import iuh.fit.service.friend.FriendService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

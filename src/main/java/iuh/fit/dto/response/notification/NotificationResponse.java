@@ -1,4 +1,4 @@
-package iuh.fit.dto.response;
+package iuh.fit.dto.response.notification;
 
 import java.time.LocalDateTime;
 

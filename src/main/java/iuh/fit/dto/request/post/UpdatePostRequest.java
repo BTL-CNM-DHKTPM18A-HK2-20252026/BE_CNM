@@ -1,4 +1,4 @@
-package iuh.fit.dto.request;
+package iuh.fit.dto.request.post;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

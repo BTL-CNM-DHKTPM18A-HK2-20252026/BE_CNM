@@ -1,4 +1,4 @@
-package iuh.fit.dto.request;
+package iuh.fit.dto.request.conversation;
 
 import java.util.List;
 

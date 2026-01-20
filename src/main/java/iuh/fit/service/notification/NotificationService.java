@@ -1,6 +1,6 @@
 package iuh.fit.service.notification;
 
-import iuh.fit.dto.response.NotificationResponse;
+import iuh.fit.dto.response.notification.NotificationResponse;
 import iuh.fit.entity.Notification;
 import iuh.fit.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;

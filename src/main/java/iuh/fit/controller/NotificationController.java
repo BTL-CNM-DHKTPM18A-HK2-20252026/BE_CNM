@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import iuh.fit.dto.response.NotificationResponse;
+import iuh.fit.dto.response.notification.NotificationResponse;
 import iuh.fit.service.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 

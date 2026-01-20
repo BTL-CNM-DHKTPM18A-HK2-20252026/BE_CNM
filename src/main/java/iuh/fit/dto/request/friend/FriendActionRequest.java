@@ -1,4 +1,4 @@
-package iuh.fit.dto.request;
+package iuh.fit.dto.request.friend;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;

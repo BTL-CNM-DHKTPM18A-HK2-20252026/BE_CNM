@@ -1,8 +1,8 @@
 package iuh.fit.service.post;
 
-import iuh.fit.dto.request.CreatePostRequest;
-import iuh.fit.dto.request.UpdatePostRequest;
-import iuh.fit.dto.response.PostResponse;
+import iuh.fit.dto.request.post.CreatePostRequest;
+import iuh.fit.dto.request.post.UpdatePostRequest;
+import iuh.fit.dto.response.post.PostResponse;
 import iuh.fit.entity.Post;
 import iuh.fit.repository.PostRepository;
 import iuh.fit.repository.PostReactionRepository;

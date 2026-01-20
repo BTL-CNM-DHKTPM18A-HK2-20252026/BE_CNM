@@ -1,4 +1,4 @@
-package iuh.fit.dto.request;
+package iuh.fit.dto.request.story;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;

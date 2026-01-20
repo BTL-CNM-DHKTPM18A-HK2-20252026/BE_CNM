@@ -1,4 +1,4 @@
-package iuh.fit.dto.response;
+package iuh.fit.dto.response.conversation;
 
 import java.time.LocalDateTime;
 import java.util.List;

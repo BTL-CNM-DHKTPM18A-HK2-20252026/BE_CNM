@@ -1,6 +1,6 @@
 package iuh.fit.service.friend;
 
-import iuh.fit.dto.response.FriendRequestResponse;
+import iuh.fit.dto.response.friend.FriendRequestResponse;
 import iuh.fit.entity.FriendRequest;
 import iuh.fit.entity.FriendShip;
 import iuh.fit.enums.FriendRequestStatus;

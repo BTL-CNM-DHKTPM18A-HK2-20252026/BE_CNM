@@ -1,7 +1,7 @@
 package iuh.fit.service.message;
 
-import iuh.fit.dto.request.SendMessageRequest;
-import iuh.fit.dto.response.MessageResponse;
+import iuh.fit.dto.request.message.SendMessageRequest;
+import iuh.fit.dto.response.message.MessageResponse;
 import iuh.fit.entity.Message;
 import iuh.fit.enums.MessageType;
 import iuh.fit.repository.MessageRepository;

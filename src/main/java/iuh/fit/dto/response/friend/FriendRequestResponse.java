@@ -1,4 +1,4 @@
-package iuh.fit.dto.response;
+package iuh.fit.dto.response.friend;
 
 import java.time.LocalDateTime;
 
@@ -11,17 +11,14 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class MessageResponse {
-    private String messageId;
-    private String conversationId;
+public class FriendRequestResponse {
+    private String requestId;
     private String senderId;
     private String senderName;
     private String senderAvatarUrl;
-    private String content;
-    private String messageType;
-    private String replyToMessageId;
-    private Boolean isEdited;
-    private Boolean isDeleted;
+    private String receiverId;
+    private String receiverName;
+    private String receiverAvatarUrl;
+    private String status;
     private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
 }

@@ -17,7 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import iuh.fit.dto.request.SendMessageRequest;
+import iuh.fit.dto.request.message.SendMessageRequest;
+import iuh.fit.dto.response.message.MessageResponse;
 import iuh.fit.dto.response.MessageResponse;
 import iuh.fit.service.message.MessageService;
 import jakarta.validation.Valid;

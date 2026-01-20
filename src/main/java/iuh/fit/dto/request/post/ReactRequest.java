@@ -1,4 +1,4 @@
-package iuh.fit.dto.request;
+package iuh.fit.dto.request.post;
 
 import iuh.fit.enums.ReactionType;
 import jakarta.validation.constraints.NotNull;

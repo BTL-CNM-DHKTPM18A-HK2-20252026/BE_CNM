@@ -1,7 +1,7 @@
 package iuh.fit.service.story;
 
-import iuh.fit.dto.request.CreateStoryRequest;
-import iuh.fit.dto.response.StoryResponse;
+import iuh.fit.dto.request.story.CreateStoryRequest;
+import iuh.fit.dto.response.story.StoryResponse;
 import iuh.fit.entity.Story;
 import iuh.fit.entity.StoryView;
 import iuh.fit.repository.StoryRepository;
