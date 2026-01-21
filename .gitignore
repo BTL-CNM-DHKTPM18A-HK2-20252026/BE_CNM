@@ -43,3 +43,8 @@ uploads/
 
 ### Test API ###
 test_api/
+
+### Test Scripts ###
+test-registration.bat
+test-registration.ps1
+test-registration.sh
