@@ -1,5 +1,7 @@
 package iuh.fit.entity;
 
+import java.util.UUID;
+
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -23,7 +25,8 @@ import lombok.experimental.FieldDefaults;
 public class MessageAttachment {
     
     @Id
-    String attachmentId;
+    @Builder.Default
+    String attachmentId = UUID.randomUUID().toString();
     
     String messageId; // Reference to Message
     String url; // File URL

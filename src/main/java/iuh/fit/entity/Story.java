@@ -1,6 +1,6 @@
 package iuh.fit.entity;
 
-import java.util.Date;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -27,13 +27,16 @@ import lombok.experimental.FieldDefaults;
 public class Story {
     
     @Id
-    String storyId;
-    
-    String userId; // Reference to UserAuth (who created the story)
+    @Builder.Default
+    String storyId = UUID.randomUUID().toString();
+
+    String authorId; // Reference to UserAuth (who created the story)
     String mediaUrl; // Story image/video URL
-    String type; // IMAGE, VIDEO, TEXT
+    String mediaType; // IMAGE, VIDEO, TEXT
     Integer duration; // Duration in seconds
-    Date expiresAt; // When story expires (24 hours)
+    java.time.LocalDateTime expiresAt; // When story expires (24 hours)
     PrivacyLevel privacy; // Who can see this story
-    String content; // Text content for text stories
+    String caption; // Text caption for story
+    Boolean isDeleted;
+    java.time.LocalDateTime createdAt;
 }

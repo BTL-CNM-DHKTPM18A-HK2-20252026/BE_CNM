@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -27,14 +28,17 @@ import lombok.experimental.FieldDefaults;
 public class Message {
     
     @Id
-    String messageId;
-    
+    @Builder.Default
+    String messageId = UUID.randomUUID().toString();
+
     String conversationId; // Reference to Conversations
     String senderId; // Reference to UserAuth (who sent the message)
-    MessageType type;
+    MessageType messageType;
     String content; // Text content or file URL
-    String replyToId; // Reference to another Message (for replies)
+    String replyToMessageId; // Reference to another Message (for replies)
     LocalDateTime createdAt;
+    LocalDateTime updatedAt;
     Boolean isDeleted;
     Boolean isRecalled; // User can recall/unsend message
+    Boolean isEdited;
 }

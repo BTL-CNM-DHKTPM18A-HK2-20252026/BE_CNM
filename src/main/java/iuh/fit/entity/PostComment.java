@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -26,11 +27,14 @@ import lombok.experimental.FieldDefaults;
 public class PostComment {
     
     @Id
-    String commentId;
+    @Builder.Default
+    String commentId = UUID.randomUUID().toString();
     
     String postId; // Reference to Post
     String userId; // Reference to UserAuth (who commented)
     String content; // Comment text
     String parentCommentId; // Reference to parent PostComment (for nested comments)
+    Boolean isDeleted; // Soft-delete flag
     LocalDateTime createdAt;
+    LocalDateTime updatedAt;
 }

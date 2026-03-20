@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -27,9 +28,10 @@ import lombok.experimental.FieldDefaults;
 public class Post {
     
     @Id
-    String postId;
-    
-    String userId; // Reference to UserAuth (who created the post)
+    @Builder.Default
+    String postId = UUID.randomUUID().toString();
+
+    String authorId; // Reference to UserAuth (who created the post)
     String content; // Post text content
     PrivacyLevel privacy; // Who can see this post
     LocalDateTime createdAt;

@@ -32,5 +32,6 @@ public class RegisterRequest {
     String displayName;
     
     String firstName;
+
     String lastName;
 }

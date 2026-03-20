@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import org.springframework.data.domain.Page;
+
 import java.util.List;
 
 /**
@@ -46,7 +48,7 @@ public class PageResponse<T> {
     /**
      * Tạo PageResponse từ Spring Data Page object
      */
-    public static <T> PageResponse<T> of(org.springframework.data.domain.Page<T> page) {
+    public static <T> PageResponse<T> of(Page<T> page) {
         return PageResponse.<T>builder()
             .items(page.getContent())
             .pageInfo(PageInfo.builder()

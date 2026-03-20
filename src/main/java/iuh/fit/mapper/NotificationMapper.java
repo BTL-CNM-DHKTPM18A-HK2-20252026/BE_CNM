@@ -1,8 +1,9 @@
 package iuh.fit.mapper;
 
+import org.springframework.stereotype.Component;
+
 import iuh.fit.dto.response.notification.NotificationResponse;
 import iuh.fit.entity.Notification;
-import org.springframework.stereotype.Component;
 
 @Component
 public class NotificationMapper {
@@ -13,15 +14,15 @@ public class NotificationMapper {
         }
         
         return NotificationResponse.builder()
-                .notificationId(notification.getNotificationId())
-                .receiverId(notification.getReceiverId())
-                .actorId(notification.getActorId())
-                .notificationType(notification.getNotificationType() != null ? 
-                        notification.getNotificationType().toString() : null)
-                .content(notification.getContent())
-                .relatedObjectId(notification.getRelatedObjectId())
-                .isRead(notification.getIsRead())
-                .createdAt(notification.getCreatedAt())
-                .build();
+            .notificationId(notification.getNotificationId())
+            .receiverId(notification.getReceiverId())
+            .actorId(notification.getActorId())
+            .notificationType(notification.getNotificationType() != null ? 
+                notification.getNotificationType().toString() : null)
+            .content(null)
+            .relatedObjectId(notification.getEntityId())
+            .isRead(notification.getIsRead())
+            .createdAt(notification.getCreatedAt())
+            .build();
     }
 }

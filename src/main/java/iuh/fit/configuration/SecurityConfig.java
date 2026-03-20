@@ -20,7 +20,7 @@ import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 public class SecurityConfig {
-    
+
     @Value("${jwt.signer-key}")
     private String signerKey;
 
@@ -32,20 +32,20 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // === PUBLIC ENDPOINTS ===
                         .requestMatchers("/auth/**").permitAll() // Login, logout, refresh
-                        .requestMatchers(HttpMethod.POST, "/users").permitAll() // Đăng ký tài khoản
-                        .requestMatchers(HttpMethod.GET, "/users/**").permitAll() // Xem thông tin user (temporary for testing)
+                        .requestMatchers(HttpMethod.POST, "/users").permitAll() // Register account
+                        .requestMatchers(HttpMethod.GET, "/users/**").permitAll()// View user info (temporary for testing)
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // CORS preflight
-                        
+
                         // === Swagger/OpenAPI endpoints ===
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
-                        
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/webjars/**").permitAll()
+
                         // === File endpoints (Temporarily public for testing) ===
                         .requestMatchers("/files/**").permitAll() // Upload & view files (TODO: Add auth for POST/DELETE)
-                        
+
                         // === WebSocket endpoints ===
                         .requestMatchers("/ws/**").permitAll()
-                        
-                        // === TẤT CẢ ENDPOINTS KHÁC CẦN AUTHENTICATION ===
+
+                        // === ALL OTHER ENDPOINTS REQUIRE AUTHENTICATION ===
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
@@ -60,7 +60,7 @@ public class SecurityConfig {
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
         grantedAuthoritiesConverter.setAuthorityPrefix("ROLE_");
-        grantedAuthoritiesConverter.setAuthoritiesClaimName("scope"); // Sử dụng "scope" làm tên claim chứa vai trò
+        grantedAuthoritiesConverter.setAuthoritiesClaimName("scope"); // Use "scope" as the claim name for roles
 
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);

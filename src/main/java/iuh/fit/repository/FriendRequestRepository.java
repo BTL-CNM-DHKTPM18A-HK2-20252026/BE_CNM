@@ -1,21 +1,22 @@
 package iuh.fit.repository;
 
-import iuh.fit.entity.FriendRequest;
-import iuh.fit.enums.FriendRequestStatus;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
-import java.util.Optional;
+import iuh.fit.entity.FriendRequest;
+import iuh.fit.enums.RequestStatus;
 
 @Repository
 public interface FriendRequestRepository extends MongoRepository<FriendRequest, String> {
     
     // Find pending requests sent by user
-    List<FriendRequest> findBySenderIdAndStatus(String senderId, FriendRequestStatus status);
+    List<FriendRequest> findBySenderIdAndStatus(String senderId, RequestStatus status);
     
     // Find pending requests received by user
-    List<FriendRequest> findByReceiverIdAndStatus(String receiverId, FriendRequestStatus status);
+    List<FriendRequest> findByReceiverIdAndStatus(String receiverId, RequestStatus status);
     
     // Check if request exists between two users
     Optional<FriendRequest> findBySenderIdAndReceiverId(String senderId, String receiverId);

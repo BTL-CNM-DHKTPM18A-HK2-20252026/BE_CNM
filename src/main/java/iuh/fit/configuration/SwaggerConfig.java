@@ -33,7 +33,7 @@ public class SwaggerConfig {
         return new OpenAPI()
                 .info(new Info()
                         .title("Fruvia Backend API")
-                        .description("API tài liệu cho ứng dụng mạng xã hội Fruvia")
+                        .description("API documentation for the Fruvia social networking application")
                         .version("1.0.0")
                         .contact(new Contact()
                                 .name("Fruvia Development Team")
@@ -57,6 +57,6 @@ public class SwaggerConfig {
                                         .type(SecurityScheme.Type.HTTP)
                                         .scheme("bearer")
                                         .bearerFormat("JWT")
-                                        .description("Nhập JWT token để xác thực. Token có thể lấy từ endpoint /auth/login")));
+                                        .description("Enter JWT token for authentication. Token can be obtained from the /auth/login endpoint")));
     }
 }

@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -26,7 +27,10 @@ import lombok.experimental.FieldDefaults;
 public class ConversationMember {
     
     @Id
-    String conversationId; // Reference to Conversations (composite key with userId)
+    @Builder.Default
+    String id = UUID.randomUUID().toString();
+    
+    String conversationId; // Reference to Conversations
     
     String userId; // Reference to UserAuth
     MemberRole role; // ADMIN, DEPUTY, MEMBER

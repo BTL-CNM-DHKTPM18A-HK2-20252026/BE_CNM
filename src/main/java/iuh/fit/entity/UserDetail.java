@@ -2,6 +2,7 @@ package iuh.fit.entity;
 
 import java.time.LocalDateTime;
 import java.util.Date;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -26,7 +27,8 @@ import lombok.experimental.FieldDefaults;
 public class UserDetail {
     
     @Id
-    String userId; // Same as UserAuth.userId
+    @Builder.Default
+    String userId = UUID.randomUUID().toString(); // Same as UserAuth.userId
     
     String displayName;
     String firstName;

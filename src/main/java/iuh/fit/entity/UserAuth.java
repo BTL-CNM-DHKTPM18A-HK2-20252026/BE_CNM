@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -26,7 +27,8 @@ import lombok.experimental.FieldDefaults;
 public class UserAuth {
     
     @Id
-    String userId; // Primary key and reference to other user collections
+    @Builder.Default
+    String userId = UUID.randomUUID().toString(); // Primary key and reference to other user collections
     
     String phoneNumber;
     String email;

@@ -1,5 +1,7 @@
 package iuh.fit.entity;
 
+import java.util.UUID;
+
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -24,7 +26,8 @@ import lombok.experimental.FieldDefaults;
 public class UserSetting {
     
     @Id
-    String userId; // Same as UserAuth.userId
+    @Builder.Default
+    String userId = UUID.randomUUID().toString(); // Same as UserAuth.userId
     
     Boolean allowFriendRequests;
     PrivacyLevel whoCanSeeProfile;

@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -25,9 +26,11 @@ import lombok.experimental.FieldDefaults;
 public class PostReaction {
     
     @Id
-    String postId; // Reference to Post (composite key with userId)
-    
+    @Builder.Default
+    String reactionId = UUID.randomUUID().toString();
+
+    String postId; // Reference to Post
     String userId; // Reference to UserAuth (who reacted)
-    String icon; // Reaction emoji (like, love, haha, etc.)
+    iuh.fit.enums.ReactionType reactionType; // Reaction enum
     LocalDateTime createdAt;
 }

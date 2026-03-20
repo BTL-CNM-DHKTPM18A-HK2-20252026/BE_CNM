@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -27,9 +28,10 @@ import lombok.experimental.FieldDefaults;
 public class Conversations {
     
     @Id
-    String conversationId;
+    @Builder.Default
+    String conversationId = UUID.randomUUID().toString();
     
-    ConversationType type; // PRIVATE or GROUP
+    ConversationType conversationType; // PRIVATE or GROUP
     String conversationName; // Group name (null for private chats)
     String avatarUrl; // Group avatar (null for private chats)
     String creatorId; // Reference to UserAuth (who created the group)
@@ -38,4 +40,5 @@ public class Conversations {
     Boolean isPinned;
     String groupDescription; // Group description
     LocalDateTime updatedAt;
+    Boolean isDeleted; // Soft-delete flag
 }

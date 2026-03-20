@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.Id;
@@ -30,7 +31,8 @@ import lombok.experimental.FieldDefaults;
 public class FileUpload {
 
     @Id
-    String fileId;
+    @Builder.Default
+    String fileId = UUID.randomUUID().toString();
 
     /**
      * Tên file gốc

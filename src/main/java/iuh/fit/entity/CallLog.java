@@ -1,6 +1,6 @@
 package iuh.fit.entity;
 
-import java.util.Date;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -26,13 +26,15 @@ import lombok.experimental.FieldDefaults;
 public class CallLog {
     
     @Id
-    String callId;
-    
-    String callerId; // Reference to UserAuth (who initiated the call)
+    @Builder.Default
+    String callId = UUID.randomUUID().toString();
+
+    String initiatorId; // Reference to UserAuth (who initiated the call)
     String conversationId; // Reference to Conversations
-    String type; // AUDIO, VIDEO
-    String status; // COMPLETED, MISSED, REJECTED, CANCELLED
-    Date startedAt;
-    Date endedAt;
+    iuh.fit.enums.CallType callType; // AUDIO, VIDEO
+    iuh.fit.enums.CallStatus callStatus; // COMPLETED, MISSED, REJECTED, CANCELLED
+    java.time.LocalDateTime createdAt;
+    java.time.LocalDateTime startedAt;
+    java.time.LocalDateTime endedAt;
     Integer durationSeconds; // Call duration
 }

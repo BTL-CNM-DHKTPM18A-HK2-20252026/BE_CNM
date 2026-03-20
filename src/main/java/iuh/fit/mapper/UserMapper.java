@@ -3,6 +3,7 @@ package iuh.fit.mapper;
 import org.springframework.stereotype.Component;
 
 import iuh.fit.dto.response.user.UserProfileResponse;
+import iuh.fit.dto.response.user.UserResponse;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
 import iuh.fit.repository.FriendShipRepository;
@@ -45,6 +46,25 @@ public class UserMapper {
             builder.isFriend(isFriend);
         }
         
+        return builder.build();
+    }
+
+    public UserResponse toUserResponse(UserAuth userAuth, UserDetail userDetail) {
+        if (userAuth == null) return null;
+
+        UserResponse.UserResponseBuilder builder = UserResponse.builder()
+                .userId(userAuth.getUserId())
+                .phoneNumber(userAuth.getPhoneNumber())
+                .email(userAuth.getEmail())
+                .accountStatus(userAuth.getAccountStatus() != null ? userAuth.getAccountStatus().name() : null);
+
+        if (userDetail != null) {
+            builder.displayName(userDetail.getDisplayName())
+                    .firstName(userDetail.getFirstName())
+                    .lastName(userDetail.getLastName())
+                    .avatarUrl(userDetail.getAvatarUrl());
+        }
+
         return builder.build();
     }
 }

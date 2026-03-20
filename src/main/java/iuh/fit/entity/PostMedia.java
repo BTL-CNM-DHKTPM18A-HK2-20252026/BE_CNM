@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -25,7 +26,8 @@ import lombok.experimental.FieldDefaults;
 public class PostMedia {
     
     @Id
-    String mediaId;
+    @Builder.Default
+    String mediaId = UUID.randomUUID().toString();
     
     String postId; // Reference to Post
     String url; // Media URL

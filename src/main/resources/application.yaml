@@ -2,6 +2,14 @@ spring:
   application:
     name: fruvia_backend
 
+  data:
+    mongodb:
+      host: ${MONGODB_HOST:localhost}
+      port: ${MONGODB_PORT:27017}
+      database: ${MONGODB_DATABASE:fruvia_db}
+      auto-index-creation: true
+      ddl-auto: create-drop
+
   # Multipart File Upload Configuration
   servlet:
     multipart:
@@ -37,8 +45,11 @@ springdoc:
   api-docs:
     path: /v3/api-docs
   swagger-ui:
-    path: /swagger-ui.html
+    path: /swagger-ui
     enabled: true
     operations-sorter: method
     tags-sorter: alpha
   show-actuator: false
+
+dotenv:
+  enabled: true

@@ -1,8 +1,9 @@
 package iuh.fit.mapper;
 
+import org.springframework.stereotype.Component;
+
 import iuh.fit.dto.response.friend.FriendRequestResponse;
 import iuh.fit.entity.FriendRequest;
-import org.springframework.stereotype.Component;
 
 @Component
 public class FriendMapper {
@@ -17,7 +18,7 @@ public class FriendMapper {
                 .senderId(request.getSenderId())
                 .receiverId(request.getReceiverId())
                 .status(request.getStatus() != null ? request.getStatus().toString() : null)
-                .createdAt(request.getCreatedAt())
+                .createdAt(request.getSentAt())
                 .build();
     }
 }

@@ -14,6 +14,9 @@ import iuh.fit.entity.UserDetail;
 import iuh.fit.entity.UserSetting;
 import iuh.fit.enums.AccountStatus;
 import iuh.fit.enums.PrivacyLevel;
+import iuh.fit.exception.AppException;
+import iuh.fit.exception.ErrorCode;
+import iuh.fit.mapper.UserMapper;
 import iuh.fit.repository.UserAuthRepository;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserSettingRepository;
@@ -32,6 +35,7 @@ public class UserServiceImpl implements UserService {
     UserDetailRepository userDetailRepository;
     UserSettingRepository userSettingRepository;
     PasswordEncoder passwordEncoder;
+    UserMapper userMapper;
 
     @Override
     @Transactional
@@ -40,11 +44,11 @@ public class UserServiceImpl implements UserService {
 
         // Validate email and phone uniqueness
         if (userAuthRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email already exists");
+            throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
         }
 
         if (userAuthRepository.existsByPhoneNumber(request.getPhoneNumber())) {
-            throw new RuntimeException("Phone number already exists");
+            throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS);
         }
 
         // Generate user ID
@@ -67,6 +71,8 @@ public class UserServiceImpl implements UserService {
 
         userAuthRepository.save(userAuth);
         log.info("UserAuth created for userId: {}", userId);
+
+
 
         // Create UserDetail
         UserDetail userDetail = UserDetail.builder()
@@ -96,7 +102,7 @@ public class UserServiceImpl implements UserService {
         userSettingRepository.save(userSetting);
         log.info("UserSetting created for userId: {}", userId);
 
-        // Return user response
+        // --- CÁCH 1: KHÔNG XÀI MAPPER (Thủ công) ---
         return UserResponse.builder()
                 .userId(userId)
                 .phoneNumber(userAuth.getPhoneNumber())
@@ -109,12 +115,62 @@ public class UserServiceImpl implements UserService {
                 .build();
     }
 
+    /**
+     * PHIÊN BẢN SỬ DỤNG MAPPER (Viết đầy đủ để so sánh)
+     */
+    @Transactional
+    public UserResponse registerWithMapper(RegisterRequest request) {
+        log.info("Registering (with Mapper) for email: {}", request.getEmail());
+
+        // 1. Kiểm tra duy nhất
+        if (userAuthRepository.existsByEmail(request.getEmail())) {
+            throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
+        }
+        if (userAuthRepository.existsByPhoneNumber(request.getPhoneNumber())) {
+            throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS);
+        }
+
+        // 2. Tạo ID chuyên biệt (UUID đã được cấu hình tự động trong Entity, nhưng gán tay để đồng bộ các bảng)
+        String userId = UUID.randomUUID().toString();
+
+        // 3. Xây dựng các Entity
+        UserAuth userAuth = UserAuth.builder()
+                .userId(userId)
+                .phoneNumber(request.getPhoneNumber())
+                .email(request.getEmail())
+                .passwordHash(passwordEncoder.encode(request.getPassword()))
+                .accountStatus(AccountStatus.ACTIVE)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        UserDetail userDetail = UserDetail.builder()
+                .userId(userId)
+                .displayName(request.getDisplayName())
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
+                .build();
+
+        UserSetting userSetting = UserSetting.builder()
+                .userId(userId)
+                .allowFriendRequests(true)
+                .build();
+
+        // 4. Lưu vào Database
+        userAuthRepository.save(userAuth);
+        userDetailRepository.save(userDetail);
+        userSettingRepository.save(userSetting);
+
+        // --- CÁCH 2: XÀI MAPPER (Cực kỳ gọn gàng) ---
+        // Thay vì viết builder dài như Cách 1, ta gọi Mapper làm thay việc đó:
+        return userMapper.toUserResponse(userAuth, userDetail);
+    }
+
     @Override
     public UserResponse getUserById(String userId) {
         log.info("Getting user by ID: {}", userId);
 
         UserAuth userAuth = userAuthRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         UserDetail userDetail = userDetailRepository.findByUserId(userId)
                 .orElse(null);

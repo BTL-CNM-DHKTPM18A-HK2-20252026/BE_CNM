@@ -1,6 +1,6 @@
 package iuh.fit.entity;
 
-import java.util.Date;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -25,9 +25,11 @@ import lombok.experimental.FieldDefaults;
 public class StoryView {
     
     @Id
-    String storyId; // Reference to Story (composite key with userId)
-    
-    String userId; // Reference to UserAuth (who viewed)
-    Date viewedAt;
+    @Builder.Default
+    String viewId = UUID.randomUUID().toString(); // Primary id for the view record
+
+    String storyId; // Reference to Story
+    String viewerId; // Reference to UserAuth (who viewed)
+    java.time.LocalDateTime viewedAt;
     String reaction; // Optional reaction to story
 }

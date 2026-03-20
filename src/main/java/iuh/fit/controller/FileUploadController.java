@@ -41,7 +41,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Slf4j
-@Tag(name = "File Management", description = "API quản lý file uploads (ảnh, video, tài liệu)")
+@Tag(name = "File Management", description = "API for managing file uploads (images, videos, documents)")
 public class FileUploadController {
 
     FileStorageService fileStorageService;
@@ -49,16 +49,17 @@ public class FileUploadController {
     /**
      * Upload một file
      */
-    @Operation(summary = "Upload một file", 
-               description = "Upload file (ảnh, video, tài liệu) lên Cloudinary hoặc dịch vụ lưu trữ khác")
+    @Operation(summary = "Upload a file", 
+               description = "Upload file (image, video, document) to Cloudinary or other storage services")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "Upload thành công",
+            @ApiResponse(responseCode = "201", description = "Upload successful",
                     content = @Content(schema = @Schema(implementation = FileUploadResponse.class))),
-            @ApiResponse(responseCode = "400", description = "File không hợp lệ",
+            @ApiResponse(responseCode = "400", description = "Invalid file",
                     content = @Content),
-            @ApiResponse(responseCode = "401", description = "Chưa xác thực",
+            @ApiResponse(responseCode = "401", description = "Unauthorized",
                     content = @Content)
     })
+
     @SecurityRequirement(name = "bearerAuth")
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<FileUploadResponse> uploadFile(
@@ -88,13 +89,13 @@ public class FileUploadController {
     /**
      * Upload nhiều file cùng lúc
      */
-    @Operation(summary = "Upload nhiều file", 
-               description = "Upload nhiều file cùng lúc lên Cloudinary")
+    @Operation(summary = "Upload multiple files", 
+               description = "Upload multiple files at once to Cloudinary")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "Upload thành công"),
-            @ApiResponse(responseCode = "400", description = "File không hợp lệ",
+            @ApiResponse(responseCode = "201", description = "Upload successful"),
+            @ApiResponse(responseCode = "400", description = "Invalid file",
                     content = @Content),
-            @ApiResponse(responseCode = "401", description = "Chưa xác thực",
+            @ApiResponse(responseCode = "401", description = "Unauthorized",
                     content = @Content)
     })
     @SecurityRequirement(name = "bearerAuth")
@@ -126,11 +127,11 @@ public class FileUploadController {
     /**
      * Lấy thông tin file theo ID
      */
-    @Operation(summary = "Lấy thông tin file", description = "Lấy thông tin chi tiết của một file")
+    @Operation(summary = "Get file info", description = "Get detailed information of a file")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Thành công",
+            @ApiResponse(responseCode = "200", description = "Success",
                     content = @Content(schema = @Schema(implementation = FileUploadResponse.class))),
-            @ApiResponse(responseCode = "404", description = "Không tìm thấy file",
+            @ApiResponse(responseCode = "404", description = "File not found",
                     content = @Content)
     })
     @GetMapping("/{fileId}")
@@ -143,11 +144,11 @@ public class FileUploadController {
     /**
      * Lấy danh sách file của user hiện tại
      */
-    @Operation(summary = "Lấy danh sách file của user", 
-               description = "Lấy tất cả file đã upload của user hiện tại")
+    @Operation(summary = "Get user file list", 
+               description = "Get all uploaded files of the current user")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Thành công"),
-            @ApiResponse(responseCode = "401", description = "Chưa xác thực",
+            @ApiResponse(responseCode = "200", description = "Success"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized",
                     content = @Content)
     })
     @SecurityRequirement(name = "bearerAuth")
@@ -164,14 +165,14 @@ public class FileUploadController {
     /**
      * Xóa file
      */
-    @Operation(summary = "Xóa file", description = "Xóa file đã upload")
+    @Operation(summary = "Delete file", description = "Delete an uploaded file")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Xóa thành công"),
-            @ApiResponse(responseCode = "403", description = "Không có quyền xóa file này",
+            @ApiResponse(responseCode = "200", description = "Delete successful"),
+            @ApiResponse(responseCode = "403", description = "Forbidden: No permission to delete this file",
                     content = @Content),
-            @ApiResponse(responseCode = "404", description = "Không tìm thấy file",
+            @ApiResponse(responseCode = "404", description = "File not found",
                     content = @Content),
-            @ApiResponse(responseCode = "401", description = "Chưa xác thực",
+            @ApiResponse(responseCode = "401", description = "Unauthorized",
                     content = @Content)
     })
     @SecurityRequirement(name = "bearerAuth")
@@ -194,10 +195,10 @@ public class FileUploadController {
     /**
      * Xóa nhiều file
      */
-    @Operation(summary = "Xóa nhiều file", description = "Xóa nhiều file cùng lúc")
+    @Operation(summary = "Delete multiple files", description = "Delete multiple files at once")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Xóa thành công"),
-            @ApiResponse(responseCode = "401", description = "Chưa xác thực",
+            @ApiResponse(responseCode = "200", description = "Delete successful"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized",
                     content = @Content)
     })
     @SecurityRequirement(name = "bearerAuth")
@@ -220,11 +221,11 @@ public class FileUploadController {
     /**
      * Lấy URL tạm thời để truy cập file
      */
-    @Operation(summary = "Lấy URL tạm thời", 
-               description = "Lấy URL tạm thời để truy cập file (cho private file)")
+    @Operation(summary = "Get temporary URL", 
+               description = "Get a temporary URL to access a file (for private files)")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Thành công"),
-            @ApiResponse(responseCode = "404", description = "Không tìm thấy file",
+            @ApiResponse(responseCode = "200", description = "Success"),
+            @ApiResponse(responseCode = "404", description = "File not found",
                     content = @Content)
     })
     @GetMapping("/{fileId}/temporary-url")

@@ -17,6 +17,10 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 public class CorsConfig {
 
+    // Port configuration:
+    // 3000: React/Next.js development server
+    // 5173: Vite development server (Vue/React)
+    // 8081: Mobile app (React Native/Flutter) or alternative frontend
     @Value("${cors.allowed-origins:http://localhost:3000,http://localhost:5173,http://localhost:8081}")
     private String[] allowedOrigins;
 

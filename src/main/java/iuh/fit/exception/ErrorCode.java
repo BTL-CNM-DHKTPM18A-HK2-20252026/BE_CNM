@@ -8,6 +8,7 @@ import lombok.Getter;
  * Enum định nghĩa các error codes chuẩn cho Fruvia Chat.
  * Mỗi error code bao gồm HTTP status và message template.
  */
+
 @Getter
 public enum ErrorCode {
     // Authentication & Authorization - 401, 403
@@ -20,6 +21,7 @@ public enum ErrorCode {
     // User - 404, 400, 409
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng"),
     USER_ALREADY_EXISTS(HttpStatus.CONFLICT, "Email này đã được đăng ký"),
+    PHONE_NUMBER_ALREADY_EXISTS(HttpStatus.CONFLICT, "Số điện thoại này đã được đăng ký"),
     USER_INACTIVE(HttpStatus.FORBIDDEN, "Tài khoản đã bị vô hiệu hóa"),
     INVALID_USER_DATA(HttpStatus.BAD_REQUEST, "Dữ liệu người dùng không hợp lệ"),
     

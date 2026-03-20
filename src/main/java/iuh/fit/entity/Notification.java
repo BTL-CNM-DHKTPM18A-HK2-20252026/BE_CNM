@@ -1,5 +1,8 @@
 package iuh.fit.entity;
 
+import java.time.LocalDateTime;
+import java.util.UUID;
+
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -25,11 +28,14 @@ import lombok.experimental.FieldDefaults;
 public class Notification {
     
     @Id
-    String notificationId;
-    
-    String userId; // Reference to UserAuth (who receives the notification)
+    @Builder.Default
+    String notificationId = UUID.randomUUID().toString();
+
+    String receiverId; // Reference to UserAuth (who receives the notification)
     String actorId; // Reference to UserAuth (who triggered the notification)
     String entityId; // Reference to related entity (Post, FriendRequest, etc.)
-    NotificationType type; // FRIEND_REQ, LIKE_POST, etc.
+    NotificationType notificationType; // FRIEND_REQ, LIKE_POST, etc.
     Boolean isRead;
+    LocalDateTime createdAt;
+    Boolean isDeleted;
 }

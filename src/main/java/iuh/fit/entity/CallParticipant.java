@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.util.Date;
+import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -25,7 +26,10 @@ import lombok.experimental.FieldDefaults;
 public class CallParticipant {
     
     @Id
-    String callId; // Reference to CallLog (composite key with userId)
+    @Builder.Default
+    String id = UUID.randomUUID().toString();
+    
+    String callId; // Reference to CallLog
     
     String userId; // Reference to UserAuth (participant)
     Date joinedAt;

@@ -13,7 +13,6 @@ import com.nimbusds.jose.JOSEException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.auth.AuthenticationRequest;
@@ -21,6 +20,7 @@ import iuh.fit.dto.request.auth.IntrospectRequest;
 import iuh.fit.dto.request.auth.LogoutRequest;
 import iuh.fit.dto.response.auth.AuthenticationResponse;
 import iuh.fit.dto.response.auth.IntrospectResponse;
+import iuh.fit.response.ApiResponse;
 import iuh.fit.service.auth.AuthenticationService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +36,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Slf4j
-@Tag(name = "Authentication", description = "API xác thực người dùng")
+@Tag(name = "Authentication", description = "User authentication APIs")
 public class AuthenticationController {
 
     AuthenticationService authenticationService;
@@ -47,18 +47,20 @@ public class AuthenticationController {
      * 
      * @param request Authentication request containing username and password
      * @return Authentication response with access token
-     */    @Operation(summary = "Đăng nhập", description = "Xác thực người dùng và trả về JWT token")
+     */    
+    @Operation(summary = "Login", description = "Authenticate user and return JWT token")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Đăng nhập thành công",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Login successful",
                     content = @Content(schema = @Schema(implementation = AuthenticationResponse.class))),
-            @ApiResponse(responseCode = "401", description = "Thông tin đăng nhập không chính xác",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid credentials",
                     content = @Content)
-    })    @PostMapping("/login")
-    public ResponseEntity<AuthenticationResponse> authenticate(@RequestBody AuthenticationRequest request) 
+    })
+    @PostMapping("/login")
+    public ResponseEntity<ApiResponse<AuthenticationResponse>> authenticate(@RequestBody AuthenticationRequest request) 
             throws JOSEException {
         log.info("Login attempt for user: {}", request.getUsername());
         AuthenticationResponse response = authenticationService.authenticate(request);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.success(response, "Đăng nhập thành công"));
     }
 
     /**
@@ -68,18 +70,18 @@ public class AuthenticationController {
      * @param request Introspect request containing token
      * @return Introspect response with token validity status
      */
-    @Operation(summary = "Xác thực token", description = "Kiểm tra tính hợp lệ của JWT token")
+    @Operation(summary = "Introspect token", description = "Verify the validity of a JWT token")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Token hợp lệ",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Valid token",
                     content = @Content(schema = @Schema(implementation = IntrospectResponse.class))),
-            @ApiResponse(responseCode = "400", description = "Token không hợp lệ",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid token",
                     content = @Content)
     })
     @PostMapping("/introspect")
-    public ResponseEntity<IntrospectResponse> introspect(@RequestBody IntrospectRequest request) 
+    public ResponseEntity<ApiResponse<IntrospectResponse>> introspect(@RequestBody IntrospectRequest request) 
             throws JOSEException, ParseException {
         IntrospectResponse response = authenticationService.introspect(request);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.success(response, "Kiểm tra token thành công"));
     }
 
     /**
@@ -89,15 +91,15 @@ public class AuthenticationController {
      * @param request Logout request containing token
      * @return Success response
      */
-    @Operation(summary = "Đăng xuất", description = "Vô hiệu hóa JWT token hiện tại")
+    @Operation(summary = "Logout", description = "Invalidate the current JWT token")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Đăng xuất thành công"),
-            @ApiResponse(responseCode = "400", description = "Token không hợp lệ",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Logout successful"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid token",
                     content = @Content)
     })
     @PostMapping("/logout")
-    public ResponseEntity<String> logout(@RequestBody LogoutRequest request) {
+    public ResponseEntity<ApiResponse<Void>> logout(@RequestBody LogoutRequest request) {
         authenticationService.logout(request);
-        return ResponseEntity.ok("Logged out successfully");
+        return ResponseEntity.ok(ApiResponse.success("Đăng xuất thành công"));
     }
 }

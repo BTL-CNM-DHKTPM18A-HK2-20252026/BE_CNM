@@ -1,21 +1,23 @@
 package iuh.fit.service.friend;
 
-import iuh.fit.dto.response.friend.FriendRequestResponse;
-import iuh.fit.entity.FriendRequest;
-import iuh.fit.entity.FriendShip;
-import iuh.fit.enums.FriendRequestStatus;
-import iuh.fit.mapper.FriendMapper;
-import iuh.fit.repository.FriendRequestRepository;
-import iuh.fit.repository.FriendShipRepository;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import iuh.fit.dto.response.friend.FriendRequestResponse;
+import iuh.fit.entity.FriendRequest;
+import iuh.fit.entity.FriendShip;
+import iuh.fit.enums.RequestStatus;
+import iuh.fit.mapper.FriendMapper;
+import iuh.fit.repository.FriendRequestRepository;
+import iuh.fit.repository.FriendShipRepository;
+import iuh.fit.service.conversation.ConversationService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +26,7 @@ public class FriendService {
     
     private final FriendRequestRepository friendRequestRepository;
     private final FriendShipRepository friendShipRepository;
+    private final ConversationService conversationService;
     private final FriendMapper friendMapper;
     
     @Transactional
@@ -39,11 +42,10 @@ public class FriendService {
         }
         
         FriendRequest request = FriendRequest.builder()
-                .requestId(UUID.randomUUID().toString())
                 .senderId(senderId)
                 .receiverId(receiverId)
-                .status(FriendRequestStatus.PENDING)
-                .createdAt(LocalDateTime.now())
+            .status(RequestStatus.PENDING)
+            .sentAt(LocalDateTime.now())
                 .build();
         
         request = friendRequestRepository.save(request);
@@ -61,25 +63,28 @@ public class FriendService {
             throw new RuntimeException("Not authorized to accept this request");
         }
         
-        if (request.getStatus() != FriendRequestStatus.PENDING) {
+        if (request.getStatus() != RequestStatus.PENDING) {
             throw new RuntimeException("Request is not pending");
         }
         
         // Update request status
-        request.setStatus(FriendRequestStatus.ACCEPTED);
-        request.setRespondedAt(LocalDateTime.now());
+        request.setStatus(RequestStatus.ACCEPTED);
+        request.setResponseAt(LocalDateTime.now());
         friendRequestRepository.save(request);
         
         // Create friendship
         FriendShip friendship = FriendShip.builder()
-                .friendShipId(UUID.randomUUID().toString())
-                .userId1(request.getSenderId())
-                .userId2(request.getReceiverId())
-                .createdAt(LocalDateTime.now())
+            .userId1(request.getSenderId())
+            .userId2(request.getReceiverId())
+            .createdAt(LocalDateTime.now())
                 .build();
         
         friendShipRepository.save(friendship);
-        log.info("Friend request accepted: {}", requestId);
+        
+        // TỰ ĐỘNG tạo cuộc hội thoại 1-1 ngay khi kết bạn (như Zalo/Facebook)
+        conversationService.getOrCreatePrivateConversation(request.getSenderId(), request.getReceiverId());
+        
+        log.info("Friend request accepted and conversation created: {}", requestId);
     }
     
     @Transactional
@@ -91,14 +96,14 @@ public class FriendService {
             throw new RuntimeException("Not authorized to reject this request");
         }
         
-        request.setStatus(FriendRequestStatus.REJECTED);
-        request.setRespondedAt(LocalDateTime.now());
+        request.setStatus(RequestStatus.REJECTED);
+        request.setResponseAt(LocalDateTime.now());
         friendRequestRepository.save(request);
         log.info("Friend request rejected: {}", requestId);
     }
     
     public List<FriendRequestResponse> getPendingRequests(String userId) {
-        return friendRequestRepository.findByReceiverIdAndStatus(userId, FriendRequestStatus.PENDING)
+        return friendRequestRepository.findByReceiverIdAndStatus(userId, RequestStatus.PENDING)
                 .stream()
                 .map(friendMapper::toResponse)
                 .collect(Collectors.toList());
