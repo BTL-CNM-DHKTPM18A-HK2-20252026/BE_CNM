@@ -3,6 +3,7 @@ package iuh.fit.controller;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,8 +18,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.user.RegisterRequest;
+import iuh.fit.dto.request.user.UpdateProfileRequest;
+import iuh.fit.dto.response.user.UserMeResponse;
 import iuh.fit.dto.response.user.UserResponse;
 import iuh.fit.service.user.UserService;
+import iuh.fit.utils.JwtUtils;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -95,15 +99,40 @@ public class UserController {
     })
     @SecurityRequirement(name = "bearerAuth")
     @GetMapping("/me")
-    public ResponseEntity<UserResponse> getCurrentUser() {
-        // TODO: Get userId from JWT token in SecurityContext
+    public ResponseEntity<iuh.fit.response.ApiResponse<UserMeResponse>> getCurrentUser() {
         log.info("Get current user profile request");
-        // String userId = SecurityContextHolder.getContext().getAuthentication().getName();
-        // UserResponse response = userService.getUserById(userId);
-        return ResponseEntity.ok(UserResponse.builder()
-                .userId("current-user-id")
-                .email("user@example.com")
-                .displayName("Current User")
-                .build());
+        
+        String userId = JwtUtils.getCurrentUserId();
+        log.info("Extracted userId from JWT: {}", userId);
+        
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        UserMeResponse response = userService.getUserMe(userId);
+        return ResponseEntity.ok(iuh.fit.response.ApiResponse.success(response, "Lấy thông tin cá nhân thành công"));
+    }
+
+    @Operation(summary = "Update current user profile", 
+               description = "Update information of the currently logged-in user")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Profile updated successfully",
+                    content = @Content(schema = @Schema(implementation = UserMeResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Unauthorized",
+                    content = @Content)
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    @PatchMapping("/me")
+    public ResponseEntity<iuh.fit.response.ApiResponse<UserMeResponse>> updateProfile(
+            @RequestBody UpdateProfileRequest request) {
+        log.info("Update current user profile request");
+        
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        UserMeResponse response = userService.updateProfile(userId, request);
+        return ResponseEntity.ok(iuh.fit.response.ApiResponse.success(response, "Cập nhật thông tin cá nhân thành công"));
     }
 }

@@ -46,6 +46,10 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Value("${jwt.signer-key}")
     protected String SIGNER_KEY;
 
+    @NonFinal
+    @Value("${jwt.expiration}")
+    protected long JWT_EXPIRATION;
+
     @Override
     public AuthenticationResponse authenticate(AuthenticationRequest request) throws JOSEException {
         log.info("Authenticating user: {}", request.getUsername());
@@ -59,11 +63,11 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         }
 
         // Generate token
-        String accessToken = generateToken(user.getUserId(), user.getPhoneNumber(), "ROLE_USER", 30, ChronoUnit.DAYS);
+        String accessToken = generateToken(user.getUserId(), user.getPhoneNumber(), "ROLE_USER", JWT_EXPIRATION);
         
         return AuthenticationResponse.builder()
                 .accessToken(accessToken)
-                .expiresIn(30 * 24 * 3600) // 30 days in seconds
+                .expiresIn(JWT_EXPIRATION)
                 .tokenType("Bearer")
                 .build();
     }
@@ -71,6 +75,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     public IntrospectResponse introspect(IntrospectRequest request) throws JOSEException, ParseException {
         String token = request.getAccessToken();
+        if (token == null || token.isEmpty()) {
+            return IntrospectResponse.builder().valid(false).build();
+        }
         
         try {
             SignedJWT signedJWT = SignedJWT.parse(token);
@@ -102,8 +109,14 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     @Override
     public void logout(LogoutRequest request) {
+        String token = request.getAccessToken();
+        if (token == null || token.isEmpty()) {
+            log.error("Token is null or empty during logout");
+            throw new AppException(ErrorCode.INVALID_TOKEN);
+        }
+        
         try {
-            SignedJWT signedJWT = SignedJWT.parse(request.getAccessToken());
+            SignedJWT signedJWT = SignedJWT.parse(token);
             String tokenId = signedJWT.getJWTClaimsSet().getJWTID();
             Date expireAt = signedJWT.getJWTClaimsSet().getExpirationTime();
             
@@ -134,7 +147,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
      * @throws JOSEException if token generation fails
      */
     private String generateToken(String userId, String username, String roles, 
-                                 long timeAmount, ChronoUnit chronoUnit) throws JOSEException {
+                                 long expirationInSeconds) throws JOSEException {
         JWSHeader jwsHeader = new JWSHeader(JWSAlgorithm.HS512);
 
         JWTClaimsSet jwtClaimsSet = new JWTClaimsSet.Builder()
@@ -143,7 +156,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 .claim("username", username)
                 .issuer("Fruvia")
                 .issueTime(new Date())
-                .expirationTime(Date.from(Instant.now().plus(timeAmount, chronoUnit)))
+                .expirationTime(new Date(Instant.now().plus(expirationInSeconds, ChronoUnit.SECONDS).toEpochMilli()))
                 .jwtID(UUID.randomUUID().toString())
                 .build();
 

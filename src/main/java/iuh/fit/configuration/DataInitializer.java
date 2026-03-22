@@ -16,7 +16,9 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
+import java.util.Date;
 
 @Configuration
 @Slf4j
@@ -44,10 +46,10 @@ public class DataInitializer {
 
             // 1. Tạo danh sách 4 user mặc định nếu chưa có
             String[][] defaultUsers = {
-                {"Nguyễn Quang Huy", "0399614016", "huy.nguyen@fruvia.com", "Nam", "TP. Hồ Chí Minh", "Sinh viên IUH - Khoa CNTT", "Đại học Công nghiệp TP.HCM (IUH)"},
-                {"Lê Mẫn Nghi", "0901234562", "nghi.le@fruvia.com", "Nữ", "Đà Lạt, Lâm Đồng", "Yêu thích du lịch và lập trình", "Đại học Công nghiệp TP.HCM"},
-                {"Trần Hồng Nhiên", "0901234563", "nhien.tran@fruvia.com", "Nữ", "Cần Thơ", "Chuyên gia về thiết kế UI/UX", "Đại học Công nghiệp TP.HCM"},
-                {"Nguyễn Ngọc Hồng Minh", "0901234564", "minh.nguyen@fruvia.com", "Nữ", "Hà Nội", "Data Scientist đam mê AI", "Đại học Công nghiệp TP.HCM"}
+                {"Nguyễn Quang Huy", "0399614016", "huy.nguyen@fruvia.com", "Nam", "TP. Hồ Chí Minh", "Sinh viên IUH - Khoa CNTT", "Đại học Công nghiệp TP.HCM (IUH)", "20/04/2004"},
+                {"Lê Mẫn Nghi", "0901234562", "nghi.le@fruvia.com", "Nữ", "Đà Lạt, Lâm Đồng", "Yêu thích du lịch và lập trình", "Đại học Công nghiệp TP.HCM", "15/08/2004"},
+                {"Trần Hồng Nhiên", "0901234563", "nhien.tran@fruvia.com", "Nữ", "Cần Thơ", "Chuyên gia về thiết kế UI/UX", "Đại học Công nghiệp TP.HCM", "10/10/2004"},
+                {"Nguyễn Ngọc Hồng Minh", "0901234564", "minh.nguyen@fruvia.com", "Nữ", "Hà Nội", "Data Scientist đam mê AI", "Đại học Công nghiệp TP.HCM", "05/12/2004"}
             };
 
             for (String[] userData : defaultUsers) {
@@ -58,6 +60,8 @@ public class DataInitializer {
                 String city = userData[4];
                 String bio = userData[5];
                 String education = userData[6];
+                String dobString = userData[7];
+                Date dob = new SimpleDateFormat("dd/MM/yyyy").parse(dobString);
 
                 if (!mongoTemplate.exists(Query.query(
                         Criteria.where("phoneNumber").is(phone)), UserAuth.class)) {
@@ -84,6 +88,7 @@ public class DataInitializer {
                             .city(city)
                             .address(city) // Tạm lấy thành phố làm địa chỉ
                             .bio(bio)
+                            .dob(dob)
                             .education(education)
                             .workplace("IUH - Industrial University of Ho Chi Minh City")
                             .avatarUrl("https://ui-avatars.com/api/?name=" + fullName.replace(" ", "+") + "&background=random")

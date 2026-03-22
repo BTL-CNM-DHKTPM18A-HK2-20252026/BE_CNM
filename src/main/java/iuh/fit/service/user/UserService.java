@@ -18,4 +18,19 @@ public interface UserService {
      * @return User response
      */
     UserResponse getUserById(String userId);
+
+    /**
+     * Get essential user information for current user
+     * @param userId User ID
+     * @return UserMeResponse
+     */
+    iuh.fit.dto.response.user.UserMeResponse getUserMe(String userId);
+
+    /**
+     * Update user profile information
+     * @param userId User ID
+     * @param request UpdateProfileRequest object
+     * @return UserMeResponse with updated information
+     */
+    iuh.fit.dto.response.user.UserMeResponse updateProfile(String userId, iuh.fit.dto.request.user.UpdateProfileRequest request);
 }

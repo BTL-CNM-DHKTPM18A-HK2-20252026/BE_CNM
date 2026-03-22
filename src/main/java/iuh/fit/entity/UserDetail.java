@@ -29,7 +29,6 @@ public class UserDetail {
     @Id
     @Builder.Default
     String userId = UUID.randomUUID().toString(); // Same as UserAuth.userId
-    
     String displayName;
     String firstName;
     String lastName;

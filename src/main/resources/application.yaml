@@ -24,6 +24,8 @@ server:
 
 jwt:
   signer-key: "${JWT_SIGNER_KEY:wDhbSSpxZfV5HKciZOEUlvBExqAuzHmHhLDAuO6PALLAqTP163lNPxLYsUxs3UUI}"
+  expiration: ${JWT_EXPIRATION:2592000} # default: 30 days in seconds
+
 
 # Cloudinary Configuration
 cloudinary:

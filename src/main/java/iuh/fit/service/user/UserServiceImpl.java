@@ -112,6 +112,8 @@ public class UserServiceImpl implements UserService {
                 .lastName(userDetail.getLastName())
                 .avatarUrl(userDetail.getAvatarUrl())
                 .accountStatus(userAuth.getAccountStatus().name())
+                .gender(userDetail.getGender())
+                .dob(userDetail.getDob())
                 .build();
     }
 
@@ -184,6 +186,68 @@ public class UserServiceImpl implements UserService {
                 .lastName(userDetail != null ? userDetail.getLastName() : null)
                 .avatarUrl(userDetail != null ? userDetail.getAvatarUrl() : null)
                 .accountStatus(userAuth.getAccountStatus().name())
+                .gender(userDetail != null ? userDetail.getGender() : null)
+                .dob(userDetail != null ? userDetail.getDob() : null)
                 .build();
+    }
+
+    @Override
+    public iuh.fit.dto.response.user.UserMeResponse getUserMe(String userId) {
+        log.info("Getting user me information for userId: {}", userId);
+
+        UserAuth userAuth = userAuthRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        UserDetail userDetail = userDetailRepository.findByUserId(userId)
+                .orElse(null);
+
+        String fullName = "";
+        if (userDetail != null) {
+            String firstName = userDetail.getFirstName() != null ? userDetail.getFirstName() : "";
+            String lastName = userDetail.getLastName() != null ? userDetail.getLastName() : "";
+            fullName = (lastName + " " + firstName).trim();
+            if (fullName.isEmpty()) {
+                fullName = userDetail.getDisplayName();
+            }
+        }
+
+        return iuh.fit.dto.response.user.UserMeResponse.builder()
+                .fullName(fullName)
+                .gender(userDetail != null ? userDetail.getGender() : null)
+                .dob(userDetail != null ? userDetail.getDob() : null)
+                .phoneNumber(userAuth.getPhoneNumber())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public iuh.fit.dto.response.user.UserMeResponse updateProfile(String userId, iuh.fit.dto.request.user.UpdateProfileRequest request) {
+        log.info("Updating profile for userId: {}", userId);
+
+        userAuthRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        UserDetail userDetail = userDetailRepository.findByUserId(userId)
+                .orElseGet(() -> UserDetail.builder().userId(userId).build());
+
+        if (request.getFullName() != null) {
+            userDetail.setDisplayName(request.getFullName());
+            // Clear firstName and lastName to ensure fullName calculation on /me uses displayName
+            userDetail.setFirstName(null);
+            userDetail.setLastName(null);
+        }
+
+        if (request.getGender() != null) {
+            userDetail.setGender(request.getGender());
+        }
+
+        if (request.getDob() != null) {
+            userDetail.setDob(request.getDob());
+        }
+
+        userDetail.setLastUpdateProfile(LocalDateTime.now());
+        userDetailRepository.save(userDetail);
+
+        return getUserMe(userId);
     }
 }

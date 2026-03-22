@@ -13,8 +13,8 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.example</groupId>
-    <artifactId>Fruvia Chat Backend</artifactId>
+    <groupId>iuh.fit</groupId>
+    <artifactId>fruvia</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>fruvia_backend</name>
     <description>Zalo app with Spring Boot</description>
@@ -117,6 +117,14 @@
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <!--   Springboot Devtools     -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
         </dependency>
 
     </dependencies>

@@ -38,4 +38,10 @@ public class UserResponse {
     
     @JsonProperty("account_status")
     String accountStatus;
+
+    String gender;
+    
+    @JsonProperty("dob")
+    java.util.Date dob;
 }
+

@@ -33,7 +33,8 @@ public class SecurityConfig {
                         // === PUBLIC ENDPOINTS ===
                         .requestMatchers("/auth/**").permitAll() // Login, logout, refresh
                         .requestMatchers(HttpMethod.POST, "/users").permitAll() // Register account
-                        .requestMatchers(HttpMethod.GET, "/users/**").permitAll()// View user info (temporary for testing)
+                        // .requestMatchers(HttpMethod.GET, "/users/**").permitAll()// View user info (temporary for testing) - Now protected
+
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // CORS preflight
 
                         // === Swagger/OpenAPI endpoints ===
