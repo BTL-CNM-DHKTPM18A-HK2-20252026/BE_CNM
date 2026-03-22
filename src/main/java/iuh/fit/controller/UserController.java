@@ -13,15 +13,16 @@ import org.springframework.web.bind.annotation.RestController;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.user.RegisterRequest;
+import iuh.fit.dto.request.user.UpdateAvatarRequest;
 import iuh.fit.dto.request.user.UpdateProfileRequest;
 import iuh.fit.dto.response.user.UserMeResponse;
 import iuh.fit.dto.response.user.UserResponse;
 import iuh.fit.service.user.UserService;
+import iuh.fit.response.ApiResponse;
 import iuh.fit.utils.JwtUtils;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
@@ -51,9 +52,9 @@ public class UserController {
      */
     @Operation(summary = "Register new user", description = "Create a new user account with full information")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "201", description = "Registration successful",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Registration successful",
                     content = @Content(schema = @Schema(implementation = UserResponse.class))),
-            @ApiResponse(responseCode = "400", description = "Invalid information or email/phone already exists",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid information or email/phone already exists",
                     content = @Content)
     })
     @PostMapping
@@ -71,9 +72,9 @@ public class UserController {
      */
     @Operation(summary = "Get user by ID", description = "Returns detailed information of a user")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "User found",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "User found",
                     content = @Content(schema = @Schema(implementation = UserResponse.class))),
-            @ApiResponse(responseCode = "404", description = "User not found",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "User not found",
                     content = @Content)
     })
     @GetMapping("/{userId}")
@@ -92,14 +93,14 @@ public class UserController {
     @Operation(summary = "Get current user profile", 
                description = "Returns information of the currently logged-in user (requires authentication)")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved profile",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Successfully retrieved profile",
                     content = @Content(schema = @Schema(implementation = UserResponse.class))),
-            @ApiResponse(responseCode = "401", description = "Unauthorized",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized",
                     content = @Content)
     })
     @SecurityRequirement(name = "bearerAuth")
     @GetMapping("/me")
-    public ResponseEntity<iuh.fit.response.ApiResponse<UserMeResponse>> getCurrentUser() {
+    public ResponseEntity<ApiResponse<UserMeResponse>> getCurrentUser() {
         log.info("Get current user profile request");
         
         String userId = JwtUtils.getCurrentUserId();
@@ -110,20 +111,20 @@ public class UserController {
         }
         
         UserMeResponse response = userService.getUserMe(userId);
-        return ResponseEntity.ok(iuh.fit.response.ApiResponse.success(response, "Lấy thông tin cá nhân thành công"));
+        return ResponseEntity.ok(ApiResponse.success(response, "Lấy thông tin cá nhân thành công"));
     }
 
     @Operation(summary = "Update current user profile", 
                description = "Update information of the currently logged-in user")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Profile updated successfully",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Profile updated successfully",
                     content = @Content(schema = @Schema(implementation = UserMeResponse.class))),
-            @ApiResponse(responseCode = "401", description = "Unauthorized",
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized",
                     content = @Content)
     })
     @SecurityRequirement(name = "bearerAuth")
     @PatchMapping("/me")
-    public ResponseEntity<iuh.fit.response.ApiResponse<UserMeResponse>> updateProfile(
+    public ResponseEntity<ApiResponse<UserMeResponse>> updateProfile(
             @RequestBody UpdateProfileRequest request) {
         log.info("Update current user profile request");
         
@@ -133,6 +134,29 @@ public class UserController {
         }
         
         UserMeResponse response = userService.updateProfile(userId, request);
-        return ResponseEntity.ok(iuh.fit.response.ApiResponse.success(response, "Cập nhật thông tin cá nhân thành công"));
+        return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật thông tin cá nhân thành công"));
+    }
+
+    @Operation(summary = "Update current user avatar", 
+               description = "Update only the avatar URL of the currently logged-in user")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Avatar updated successfully",
+                    content = @Content(schema = @Schema(implementation = UserMeResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized",
+                    content = @Content)
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    @PatchMapping("/me/avatar")
+    public ResponseEntity<ApiResponse<UserMeResponse>> updateAvatar(
+            @RequestBody UpdateAvatarRequest request) {
+        log.info("Update current user avatar request");
+        
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        UserMeResponse response = userService.updateAvatar(userId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật ảnh đại diện thành công"));
     }
 }

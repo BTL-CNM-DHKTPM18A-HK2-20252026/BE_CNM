@@ -1,6 +1,9 @@
 package iuh.fit.service.user;
 
 import iuh.fit.dto.request.user.RegisterRequest;
+import iuh.fit.dto.request.user.UpdateAvatarRequest;
+import iuh.fit.dto.request.user.UpdateProfileRequest;
+import iuh.fit.dto.response.user.UserMeResponse;
 import iuh.fit.dto.response.user.UserResponse;
 
 public interface UserService {
@@ -24,7 +27,7 @@ public interface UserService {
      * @param userId User ID
      * @return UserMeResponse
      */
-    iuh.fit.dto.response.user.UserMeResponse getUserMe(String userId);
+    UserMeResponse getUserMe(String userId);
 
     /**
      * Update user profile information
@@ -32,5 +35,13 @@ public interface UserService {
      * @param request UpdateProfileRequest object
      * @return UserMeResponse with updated information
      */
-    iuh.fit.dto.response.user.UserMeResponse updateProfile(String userId, iuh.fit.dto.request.user.UpdateProfileRequest request);
+    UserMeResponse updateProfile(String userId, UpdateProfileRequest request);
+
+    /**
+     * Update user avatar URL
+     * @param userId User ID
+     * @param request UpdateAvatarRequest object
+     * @return UserMeResponse with updated information
+     */
+    UserMeResponse updateAvatar(String userId, UpdateAvatarRequest request);
 }

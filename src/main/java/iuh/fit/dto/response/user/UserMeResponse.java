@@ -18,6 +18,8 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserMeResponse {
     
+    String id;
+
     @JsonProperty("full_name")
     String fullName;
     
@@ -29,4 +31,16 @@ public class UserMeResponse {
     
     @JsonProperty("phone_number")
     String phoneNumber;
+
+    String bio;
+    String address;
+    String city;
+    String education;
+    String workplace;
+    
+    @JsonProperty("avatar_url")
+    String avatarUrl;
+    
+    @JsonProperty("cover_photo_url")
+    String coverPhotoUrl;
 }

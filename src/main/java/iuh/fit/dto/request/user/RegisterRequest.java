@@ -3,6 +3,7 @@ package iuh.fit.dto.request.user;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.util.Date;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -34,4 +35,8 @@ public class RegisterRequest {
     String firstName;
 
     String lastName;
+    
+    Date dob;
+    
+    String gender;
 }

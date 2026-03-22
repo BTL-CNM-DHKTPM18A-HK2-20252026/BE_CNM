@@ -8,6 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import iuh.fit.dto.request.user.RegisterRequest;
+import iuh.fit.dto.request.user.UpdateAvatarRequest;
+import iuh.fit.dto.request.user.UpdateProfileRequest;
+import iuh.fit.dto.response.user.UserMeResponse;
 import iuh.fit.dto.response.user.UserResponse;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
@@ -74,12 +77,19 @@ public class UserServiceImpl implements UserService {
 
 
 
+        // Assign random default avatar (image1.jpg to image8.jpg)
+        int defaultAvatarIndex = (int)(Math.random() * 8) + 1;
+        String defaultAvatar = "/default/image" + defaultAvatarIndex + ".jpg";
+
         // Create UserDetail
         UserDetail userDetail = UserDetail.builder()
                 .userId(userId)
                 .displayName(request.getDisplayName())
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())
+                .dob(request.getDob())
+                .gender(request.getGender())
+                .avatarUrl(defaultAvatar)
                 .isOrgActive(false)
                 .lastUpdateProfile(LocalDateTime.now())
                 .build();
@@ -192,7 +202,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public iuh.fit.dto.response.user.UserMeResponse getUserMe(String userId) {
+    public UserMeResponse getUserMe(String userId) {
         log.info("Getting user me information for userId: {}", userId);
 
         UserAuth userAuth = userAuthRepository.findById(userId)
@@ -211,17 +221,24 @@ public class UserServiceImpl implements UserService {
             }
         }
 
-        return iuh.fit.dto.response.user.UserMeResponse.builder()
+        return UserMeResponse.builder()
                 .fullName(fullName)
                 .gender(userDetail != null ? userDetail.getGender() : null)
                 .dob(userDetail != null ? userDetail.getDob() : null)
                 .phoneNumber(userAuth.getPhoneNumber())
+                .bio(userDetail != null ? userDetail.getBio() : null)
+                .address(userDetail != null ? userDetail.getAddress() : null)
+                .city(userDetail != null ? userDetail.getCity() : null)
+                .education(userDetail != null ? userDetail.getEducation() : null)
+                .workplace(userDetail != null ? userDetail.getWorkplace() : null)
+                .avatarUrl(userDetail != null ? userDetail.getAvatarUrl() : null)
+                .coverPhotoUrl(userDetail != null ? userDetail.getCoverPhotoUrl() : null)
                 .build();
     }
 
     @Override
     @Transactional
-    public iuh.fit.dto.response.user.UserMeResponse updateProfile(String userId, iuh.fit.dto.request.user.UpdateProfileRequest request) {
+    public UserMeResponse updateProfile(String userId, UpdateProfileRequest request) {
         log.info("Updating profile for userId: {}", userId);
 
         userAuthRepository.findById(userId)
@@ -243,6 +260,52 @@ public class UserServiceImpl implements UserService {
 
         if (request.getDob() != null) {
             userDetail.setDob(request.getDob());
+        }
+
+        if (request.getBio() != null) {
+            userDetail.setBio(request.getBio());
+        }
+
+        if (request.getAddress() != null) {
+            userDetail.setAddress(request.getAddress());
+        }
+
+        if (request.getCity() != null) {
+            userDetail.setCity(request.getCity());
+        }
+
+        if (request.getEducation() != null) {
+            userDetail.setEducation(request.getEducation());
+        }
+
+        if (request.getWorkplace() != null) {
+            userDetail.setWorkplace(request.getWorkplace());
+        }
+
+        if (request.getAvatarUrl() != null) {
+            userDetail.setAvatarUrl(request.getAvatarUrl());
+        }
+
+        if (request.getCoverPhotoUrl() != null) {
+            userDetail.setCoverPhotoUrl(request.getCoverPhotoUrl());
+        }
+
+        userDetail.setLastUpdateProfile(LocalDateTime.now());
+        userDetailRepository.save(userDetail);
+
+        return getUserMe(userId);
+    }
+
+    @Override
+    @Transactional
+    public UserMeResponse updateAvatar(String userId, UpdateAvatarRequest request) {
+        log.info("Updating avatar for userId: {}", userId);
+
+        UserDetail userDetail = userDetailRepository.findByUserId(userId)
+                .orElseGet(() -> UserDetail.builder().userId(userId).build());
+
+        if (request.getAvatarUrl() != null) {
+            userDetail.setAvatarUrl(request.getAvatarUrl());
         }
 
         userDetail.setLastUpdateProfile(LocalDateTime.now());

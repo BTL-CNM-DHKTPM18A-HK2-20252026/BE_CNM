@@ -24,4 +24,16 @@ public class UpdateProfileRequest {
     String gender;
     
     Date dob;
+
+    String bio;
+    String address;
+    String city;
+    String education;
+    String workplace;
+    
+    @JsonProperty("avatar_url")
+    String avatarUrl;
+    
+    @JsonProperty("cover_photo_url")
+    String coverPhotoUrl;
 }
