@@ -33,4 +33,11 @@ public interface AuthenticationService {
      * @param request Logout request containing token
      */
     void logout(LogoutRequest request);
+
+    /**
+     * Check if a phone number exists in the database
+     * @param phoneNumber Phone number to check
+     * @return true if exists, false otherwise
+     */
+    boolean checkPhoneNumberExists(String phoneNumber);
 }

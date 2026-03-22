@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import iuh.fit.enums.AccountStatus;
@@ -30,7 +31,10 @@ public class UserAuth {
     @Builder.Default
     String userId = UUID.randomUUID().toString(); // Primary key and reference to other user collections
     
+    @Indexed(unique = true)
     String phoneNumber;
+    
+    @Indexed(unique = true)
     String email;
     String passwordHash;
     String salt;

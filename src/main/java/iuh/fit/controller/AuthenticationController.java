@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.auth.AuthenticationRequest;
+import iuh.fit.dto.request.auth.CheckPhoneNumberRequest;
 import iuh.fit.dto.request.auth.IntrospectRequest;
 import iuh.fit.dto.request.auth.LogoutRequest;
 import iuh.fit.dto.response.auth.AuthenticationResponse;
@@ -101,5 +102,18 @@ public class AuthenticationController {
     public ResponseEntity<ApiResponse<Void>> logout(@RequestBody LogoutRequest request) {
         authenticationService.logout(request);
         return ResponseEntity.ok(ApiResponse.success("Đăng xuất thành công"));
+    }
+
+    /**
+     * Check if a phone number exists
+     * 
+     * @param request Request containing phone number
+     * @return true if exists, false otherwise
+     */
+    @Operation(summary = "Check phone number", description = "Verify if a phone number exists in the system")
+    @PostMapping("/check-phone-number")
+    public ResponseEntity<ApiResponse<Boolean>> checkPhoneNumber(@RequestBody CheckPhoneNumberRequest request) {
+        boolean exists = authenticationService.checkPhoneNumberExists(request.getPhoneNumber());
+        return ResponseEntity.ok(ApiResponse.success(exists, "Kiểm tra số điện thoại thành công"));
     }
 }

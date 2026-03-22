@@ -14,7 +14,7 @@
     </parent>
 
     <groupId>com.example</groupId>
-    <artifactId>demo</artifactId>
+    <artifactId>Fruvia Chat Backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>fruvia_backend</name>
     <description>Zalo app with Spring Boot</description>

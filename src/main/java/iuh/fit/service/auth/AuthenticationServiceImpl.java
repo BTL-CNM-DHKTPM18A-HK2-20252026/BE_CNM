@@ -10,14 +10,19 @@ import iuh.fit.dto.request.auth.IntrospectRequest;
 import iuh.fit.dto.request.auth.LogoutRequest;
 import iuh.fit.dto.response.auth.AuthenticationResponse;
 import iuh.fit.dto.response.auth.IntrospectResponse;
+import iuh.fit.entity.UserAuth;
+import iuh.fit.exception.AppException;
+import iuh.fit.exception.ErrorCode;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import iuh.fit.repository.UserAuthRepository;
 import java.text.ParseException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -34,10 +39,8 @@ import java.util.UUID;
 @FieldDefaults(makeFinal = true, level = AccessLevel.PRIVATE)
 public class AuthenticationServiceImpl implements AuthenticationService {
 
-    // TODO: Inject necessary repositories here
-    // UserRepository userRepository;
-    // PasswordEncoder passwordEncoder;
-    // RedisTokenService redisTokenService; // Optional: for token blacklisting
+    UserAuthRepository userAuthRepository;
+    PasswordEncoder passwordEncoder;
 
     @NonFinal
     @Value("${jwt.signer-key}")
@@ -45,27 +48,18 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     @Override
     public AuthenticationResponse authenticate(AuthenticationRequest request) throws JOSEException {
-        // TODO: Implement authentication logic
-        // 1. Find user by username or email
-        // 2. Verify password
-        // 3. Generate JWT token
-        
         log.info("Authenticating user: {}", request.getUsername());
         
-        // Example implementation (replace with actual logic)
-        /*
-        User user = userRepository.findByUsername(request.getUsername())
-                .or(() -> userRepository.findByEmail(request.getUsername()))
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        boolean authenticated = passwordEncoder.matches(request.getPassword(), user.getPassword());
-        if (!authenticated) {
-            throw new RuntimeException("Invalid credentials");
+        UserAuth user = userAuthRepository.findByPhoneNumber(request.getUsername())
+                .or(() -> userAuthRepository.findByEmail(request.getUsername()))
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_CREDENTIALS));
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            throw new AppException(ErrorCode.INVALID_CREDENTIALS);
         }
-        */
-        
-        // Generate token (example with dummy user)
-        String accessToken = generateToken("user-id", "username", "ROLE_USER", 30, ChronoUnit.DAYS);
+
+        // Generate token
+        String accessToken = generateToken(user.getUserId(), user.getPhoneNumber(), "ROLE_USER", 30, ChronoUnit.DAYS);
         
         return AuthenticationResponse.builder()
                 .accessToken(accessToken)
@@ -163,5 +157,11 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             log.error("Cannot create token", e);
             throw e;
         }
+    }
+
+    @Override
+    public boolean checkPhoneNumberExists(String phoneNumber) {
+        log.info("Checking if phone number exists: {}", phoneNumber);
+        return userAuthRepository.existsByPhoneNumber(phoneNumber);
     }
 }

@@ -44,7 +44,7 @@ public class DataInitializer {
 
             // 1. Tạo danh sách 4 user mặc định nếu chưa có
             String[][] defaultUsers = {
-                {"Nguyễn Quang Huy", "0901234561", "huy.nguyen@fruvia.com", "Nam", "TP. Hồ Chí Minh", "Sinh viên IUH - Khoa CNTT", "Đại học Công nghiệp TP.HCM (IUH)"},
+                {"Nguyễn Quang Huy", "0399614016", "huy.nguyen@fruvia.com", "Nam", "TP. Hồ Chí Minh", "Sinh viên IUH - Khoa CNTT", "Đại học Công nghiệp TP.HCM (IUH)"},
                 {"Lê Mẫn Nghi", "0901234562", "nghi.le@fruvia.com", "Nữ", "Đà Lạt, Lâm Đồng", "Yêu thích du lịch và lập trình", "Đại học Công nghiệp TP.HCM"},
                 {"Trần Hồng Nhiên", "0901234563", "nhien.tran@fruvia.com", "Nữ", "Cần Thơ", "Chuyên gia về thiết kế UI/UX", "Đại học Công nghiệp TP.HCM"},
                 {"Nguyễn Ngọc Hồng Minh", "0901234564", "minh.nguyen@fruvia.com", "Nữ", "Hà Nội", "Data Scientist đam mê AI", "Đại học Công nghiệp TP.HCM"}
