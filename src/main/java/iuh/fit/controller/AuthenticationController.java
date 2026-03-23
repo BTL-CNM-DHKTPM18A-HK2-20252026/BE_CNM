@@ -3,6 +3,7 @@ package iuh.fit.controller;
 import java.text.ParseException;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,6 +20,7 @@ import iuh.fit.dto.request.auth.AuthenticationRequest;
 import iuh.fit.dto.request.auth.CheckPhoneNumberRequest;
 import iuh.fit.dto.request.auth.IntrospectRequest;
 import iuh.fit.dto.request.auth.LogoutRequest;
+import iuh.fit.dto.request.auth.QrConfirmRequest;
 import iuh.fit.dto.response.auth.AuthenticationResponse;
 import iuh.fit.dto.response.auth.IntrospectResponse;
 import iuh.fit.response.ApiResponse;
@@ -115,5 +117,43 @@ public class AuthenticationController {
     public ResponseEntity<ApiResponse<Boolean>> checkPhoneNumber(@RequestBody CheckPhoneNumberRequest request) {
         boolean exists = authenticationService.checkPhoneNumberExists(request.getPhoneNumber());
         return ResponseEntity.ok(ApiResponse.success(exists, "Kiểm tra số điện thoại thành công"));
+    }
+
+    /**
+     * Get a unique QR session UUID
+     * 
+     * @return UUID string
+     */
+    @Operation(summary = "Get QR session", description = "Get a unique UUID for QR login, valid for 120s")
+    @GetMapping("/qr-session")
+    public ResponseEntity<ApiResponse<String>> getQrSession() {
+        log.info("Request for a new QR session");
+        String uuid = authenticationService.generateQrSession();
+        return ResponseEntity.ok(ApiResponse.success(uuid, "Tạo phiên QR thành công"));
+    }
+
+    /**
+     * Confirm QR login from mobile app
+     * 
+     * @param request Request containing UUID and User ID
+     * @return Success response
+     * @throws JOSEException if token generation fails
+     */
+    @Operation(summary = "Confirm QR Login", description = "Called by Mobile App to authorize a QR login session")
+    @PostMapping("/qr-confirm")
+    public ResponseEntity<ApiResponse<Void>> confirmQr(@RequestBody QrConfirmRequest request) 
+            throws JOSEException {
+        log.info("Mobile app confirmed QR login for session: {}", request.getUuid());
+        authenticationService.qrConfirm(request.getUuid(), request.getUserId());
+        return ResponseEntity.ok(ApiResponse.success("Xác nhận đăng nhập thành công"));
+    }
+
+    @Operation(summary = "Notify QR Scanned", description = "Called by Mobile App when a QR code is first scanned")
+    @PostMapping("/qr-scan")
+    public ResponseEntity<ApiResponse<Void>> scanQr(@RequestBody QrConfirmRequest request) 
+            throws JOSEException {
+        log.info("Mobile app scanned QR login for session: {}", request.getUuid());
+        authenticationService.qrScanned(request.getUuid(), request.getUserId());
+        return ResponseEntity.ok(ApiResponse.success("Thông báo quét mã thành công"));
     }
 }

@@ -46,10 +46,10 @@ public class DataInitializer {
 
             // 1. Tạo danh sách 4 user mặc định nếu chưa có
             String[][] defaultUsers = {
-                {"Nguyễn Quang Huy", "0399614016", "huy.nguyen@fruvia.com", "Nam", "TP. Hồ Chí Minh", "Sinh viên IUH - Khoa CNTT", "Đại học Công nghiệp TP.HCM (IUH)", "20/04/2004"},
-                {"Lê Mẫn Nghi", "0901234562", "nghi.le@fruvia.com", "Nữ", "Đà Lạt, Lâm Đồng", "Yêu thích du lịch và lập trình", "Đại học Công nghiệp TP.HCM", "15/08/2004"},
-                {"Trần Hồng Nhiên", "0901234563", "nhien.tran@fruvia.com", "Nữ", "Cần Thơ", "Chuyên gia về thiết kế UI/UX", "Đại học Công nghiệp TP.HCM", "10/10/2004"},
-                {"Nguyễn Ngọc Hồng Minh", "0901234564", "minh.nguyen@fruvia.com", "Nữ", "Hà Nội", "Data Scientist đam mê AI", "Đại học Công nghiệp TP.HCM", "05/12/2004"}
+                {"Nguyễn Quang Huy", "0399614016", "huy.nguyen@fruvia.com", "Nam", "TP. Hồ Chí Minh", "Sinh viên IUH - Khoa CNTT", "Đại học Công nghiệp TP.HCM (IUH)", "20/04/2004", "/default/image1.jpg"},
+                {"Lê Mẫn Nghi", "0901234562", "nghi.le@fruvia.com", "Nữ", "Đà Lạt, Lâm Đồng", "Yêu thích du lịch và lập trình", "Đại học Công nghiệp TP.HCM", "15/08/2004", "/default/image2.jpg"},
+                {"Trần Hồng Nhiên", "0901234563", "nhien.tran@fruvia.com", "Nữ", "Cần Thơ", "Chuyên gia về thiết kế UI/UX", "Đại học Công nghiệp TP.HCM", "10/10/2004", "/default/image3.jpg"},
+                {"Nguyễn Ngọc Hồng Minh", "0901234564", "minh.nguyen@fruvia.com", "Nữ", "Hà Nội", "Data Scientist đam mê AI", "Đại học Công nghiệp TP.HCM", "05/12/2004", "/default/image4.jpg"}
             };
 
             for (String[] userData : defaultUsers) {
@@ -61,6 +61,7 @@ public class DataInitializer {
                 String bio = userData[5];
                 String education = userData[6];
                 String dobString = userData[7];
+                String avatarUrl = userData[8];
                 Date dob = new SimpleDateFormat("dd/MM/yyyy").parse(dobString);
 
                 if (!mongoTemplate.exists(Query.query(
@@ -91,12 +92,24 @@ public class DataInitializer {
                             .dob(dob)
                             .education(education)
                             .workplace("IUH - Industrial University of Ho Chi Minh City")
-                            .avatarUrl("https://ui-avatars.com/api/?name=" + fullName.replace(" ", "+") + "&background=random")
+                            .avatarUrl(avatarUrl)
                             .lastUpdateProfile(LocalDateTime.now())
                             .build();
                     
                     mongoTemplate.save(userDetail);
                     log.info(">> Created default user: {} with full profile info", fullName);
+                } else {
+                    // Update avatar if missing for existing users
+                    UserDetail existingDetail = mongoTemplate.findOne(
+                            Query.query(Criteria.where("displayName").is(fullName)), 
+                            UserDetail.class
+                    );
+                    if (existingDetail != null && (existingDetail.getAvatarUrl() == null || existingDetail.getAvatarUrl().isEmpty() || existingDetail.getAvatarUrl().contains("ui-avatars.com"))) {
+                        existingDetail.setAvatarUrl(avatarUrl);
+                        existingDetail.setLastUpdateProfile(LocalDateTime.now());
+                        mongoTemplate.save(existingDetail);
+                        log.info(">> Updated avatar for existing user: {} to local path: {}", fullName, avatarUrl);
+                    }
                 }
             }
 

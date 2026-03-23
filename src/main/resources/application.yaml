@@ -9,6 +9,11 @@ spring:
       database: ${MONGODB_DATABASE:fruvia_db}
       auto-index-creation: true
       ddl-auto: create-drop
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: ${REDIS_TIMEOUT:2000ms}
 
   # Multipart File Upload Configuration
   servlet:

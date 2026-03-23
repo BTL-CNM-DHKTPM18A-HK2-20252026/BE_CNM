@@ -13,16 +13,19 @@ import iuh.fit.dto.response.auth.IntrospectResponse;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.exception.AppException;
 import iuh.fit.exception.ErrorCode;
+import iuh.fit.response.ApiResponse;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import iuh.fit.repository.UserAuthRepository;
+import iuh.fit.repository.UserDetailRepository;
 import java.text.ParseException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -40,7 +43,10 @@ import java.util.UUID;
 public class AuthenticationServiceImpl implements AuthenticationService {
 
     UserAuthRepository userAuthRepository;
+    UserDetailRepository userDetailRepository;
     PasswordEncoder passwordEncoder;
+    QrSessionService qrSessionService;
+    SimpMessagingTemplate messagingTemplate;
 
     @NonFinal
     @Value("${jwt.signer-key}")
@@ -62,13 +68,20 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.INVALID_CREDENTIALS);
         }
 
-        // Generate token
-        String accessToken = generateToken(user.getUserId(), user.getPhoneNumber(), "ROLE_USER", JWT_EXPIRATION);
+        // Fetch user display name
+        var userDetail = userDetailRepository.findById(user.getUserId()).orElse(null);
+        String nameToInToken = (userDetail != null && userDetail.getDisplayName() != null) 
+                             ? userDetail.getDisplayName() : user.getPhoneNumber();
+
+        // Generate token with name as "username" claim
+        String accessToken = generateToken(user.getUserId(), nameToInToken, "ROLE_USER", JWT_EXPIRATION);
         
         return AuthenticationResponse.builder()
                 .accessToken(accessToken)
                 .expiresIn(JWT_EXPIRATION)
                 .tokenType("Bearer")
+                .displayName(userDetail != null ? userDetail.getDisplayName() : user.getPhoneNumber())
+                .avatarUrl(userDetail != null ? userDetail.getAvatarUrl() : "")
                 .build();
     }
 
@@ -176,5 +189,65 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     public boolean checkPhoneNumberExists(String phoneNumber) {
         log.info("Checking if phone number exists: {}", phoneNumber);
         return userAuthRepository.existsByPhoneNumber(phoneNumber);
+    }
+
+    @Override
+    public String generateQrSession() {
+        log.info("Generating a new QR login session");
+        return qrSessionService.createQrSession();
+    }
+
+    @Override
+    public void qrScanned(String uuid, String userId) throws JOSEException {
+        log.info("QR Scanned: {} for user: {}", uuid, userId);
+        
+        // Find user details by ID
+        var userDetail = userDetailRepository.findById(userId).orElse(null);
+        var user = userAuthRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        // Notify Web Client over WebSocket with status "SCANNED"
+        AuthenticationResponse response = AuthenticationResponse.builder()
+                .displayName(userDetail != null ? userDetail.getDisplayName() : user.getPhoneNumber())
+                .avatarUrl(userDetail != null ? userDetail.getAvatarUrl() : "")
+                .build();
+                
+        String destination = "/topic/qr-login/" + uuid;
+        log.info("Notifying web client (Scanned) via WebSocket on: {}", destination);
+        messagingTemplate.convertAndSend(destination, ApiResponse.builder()
+                .success(true)
+                .message("SCANNED")
+                .data(response)
+                .build());
+    }
+
+    @Override
+    public void qrConfirm(String uuid, String userId) throws JOSEException {
+        log.info("QR Confirm: {} for user: {}", uuid, userId);
+        
+        // Find user by ID
+        UserAuth user = userAuthRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        // Fetch user display name
+        var userDetail = userDetailRepository.findById(user.getUserId()).orElse(null);
+        String nameToInToken = (userDetail != null && userDetail.getDisplayName() != null) 
+                             ? userDetail.getDisplayName() : user.getPhoneNumber();
+
+        // Generate token for Web Client with name
+        String accessToken = generateToken(user.getUserId(), nameToInToken, "ROLE_USER", JWT_EXPIRATION);
+        
+        // Notify Web Client over WebSocket: /topic/qr-login/{uuid}
+        AuthenticationResponse response = AuthenticationResponse.builder()
+                .accessToken(accessToken)
+                .expiresIn(JWT_EXPIRATION)
+                .tokenType("Bearer")
+                .displayName(userDetail != null ? userDetail.getDisplayName() : user.getPhoneNumber())
+                .avatarUrl(userDetail != null ? userDetail.getAvatarUrl() : "")
+                .build();
+                
+        String destination = "/topic/qr-login/" + uuid;
+        log.info("Notifying web client via WebSocket on: {}", destination);
+        messagingTemplate.convertAndSend(destination, ApiResponse.success(response, "QR đăng nhập thành công!"));
     }
 }

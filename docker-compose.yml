@@ -1,0 +1,25 @@
+services:
+  # Redis service for QR sessions and caching
+  redis:
+    image: redis:alpine
+    container_name: fruvia-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--appendonly", "yes"]
+
+  # MongoDB service for database
+  mongodb:
+    image: mongo:latest
+    container_name: fruvia-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+volumes:
+  redis_data:
+  mongo_data:

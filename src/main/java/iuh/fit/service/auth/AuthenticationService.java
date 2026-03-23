@@ -40,4 +40,18 @@ public interface AuthenticationService {
      * @return true if exists, false otherwise
      */
     boolean checkPhoneNumberExists(String phoneNumber);
+
+    /**
+     * Generate a new QR session UUID and store it in Redis with a short TTL (120s)
+     * @return Generated UUID string
+     */
+    String generateQrSession();
+    void qrScanned(String uuid, String userId) throws com.nimbusds.jose.JOSEException;
+    /**
+     * Confirm a QR login from a mobile device
+     * @param uuid QR session UUID to confirm
+     * @param userId User ID of the logged-in mobile user
+     * @throws JOSEException if token generation fails
+     */
+    void qrConfirm(String uuid, String userId) throws com.nimbusds.jose.JOSEException;
 }
