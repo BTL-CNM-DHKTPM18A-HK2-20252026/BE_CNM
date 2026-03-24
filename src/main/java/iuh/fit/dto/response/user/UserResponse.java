@@ -43,5 +43,11 @@ public class UserResponse {
     
     @JsonProperty("dob")
     java.util.Date dob;
+
+    @JsonProperty("friendship_status")
+    String friendshipStatus;
+
+    @JsonProperty("is_requester")
+    Boolean isRequester;
 }
 

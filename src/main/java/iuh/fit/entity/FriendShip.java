@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import iuh.fit.enums.FriendshipStatus;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,22 +15,26 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;
 
 /**
- * FriendShip entity - Stores friendship relationships
- * Bidirectional relationship between two users
+ * Friendship entity - Stores relationship states between two users
+ * Manages the entire lifecycle: PENDING, ACCEPTED, DECLINED, BLOCKED
  */
-@Document(collection = "friend_ship")
+@Document(collection = "friendships")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class FriendShip {
+public class Friendship {
     
     @Id
     @Builder.Default
     String id = UUID.randomUUID().toString();
     
-    String userId1; // First user in friendship
-    String userId2; // Second user in friendship
-    LocalDateTime createdAt; // When they became friends
+    String requesterId; // User who initiated the relationship/request
+    String receiverId;  // User who received the relationship/request
+    
+    FriendshipStatus status; // PENDING, ACCEPTED, DECLINED, BLOCKED
+    
+    LocalDateTime createdAt; // Time of first interaction/request
+    LocalDateTime updatedAt; // Time of last status change
 }

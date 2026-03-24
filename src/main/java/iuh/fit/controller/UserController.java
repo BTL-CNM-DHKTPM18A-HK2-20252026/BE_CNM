@@ -159,4 +159,19 @@ public class UserController {
         UserMeResponse response = userService.updateAvatar(userId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật ảnh đại diện thành công"));
     }
+
+    @Operation(summary = "Get user by phone number", description = "Find a user profile using their phone number")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "User found",
+                    content = @Content(schema = @Schema(implementation = UserResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "User not found",
+                    content = @Content)
+    })
+    @GetMapping("/phone/{phoneNumber}")
+    public ResponseEntity<UserResponse> getUserByPhoneNumber(@PathVariable String phoneNumber) {
+        log.info("Get user by phone number request: {}", phoneNumber);
+        String currentUserId = JwtUtils.getCurrentUserId();
+        UserResponse response = userService.getUserByPhoneNumber(phoneNumber, currentUserId);
+        return ResponseEntity.ok(response);
+    }
 }

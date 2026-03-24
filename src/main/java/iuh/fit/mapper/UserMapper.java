@@ -6,14 +6,15 @@ import iuh.fit.dto.response.user.UserProfileResponse;
 import iuh.fit.dto.response.user.UserResponse;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
-import iuh.fit.repository.FriendShipRepository;
+import iuh.fit.enums.FriendshipStatus;
+import iuh.fit.repository.FriendshipRepository;
 import lombok.RequiredArgsConstructor;
 
 @Component
 @RequiredArgsConstructor
 public class UserMapper {
     
-    private final FriendShipRepository friendShipRepository;
+    private final FriendshipRepository friendshipRepository;
     
     public UserProfileResponse toProfileResponse(UserAuth userAuth, UserDetail userDetail, String currentUserId) {
         if (userAuth == null) {
@@ -36,20 +37,20 @@ public class UserMapper {
         }
         
         // Calculate friend count
-        long friendCount = friendShipRepository.countByUserId1OrUserId2(userAuth.getUserId(), userAuth.getUserId());
+        long friendCount = friendshipRepository.countAcceptedFriends(userAuth.getUserId());
         builder.friendCount((int) friendCount);
         
         // Check if current user is friend
         if (currentUserId != null && !currentUserId.equals(userAuth.getUserId())) {
-            boolean isFriend = friendShipRepository.findByUserId1AndUserId2(currentUserId, userAuth.getUserId()).isPresent() ||
-                    friendShipRepository.findByUserId1AndUserId2(userAuth.getUserId(), currentUserId).isPresent();
+            boolean isFriend = friendshipRepository.findByRequesterIdAndReceiverIdAndStatus(currentUserId, userAuth.getUserId(), FriendshipStatus.ACCEPTED).isPresent() ||
+                    friendshipRepository.findByRequesterIdAndReceiverIdAndStatus(userAuth.getUserId(), currentUserId, FriendshipStatus.ACCEPTED).isPresent();
             builder.isFriend(isFriend);
         }
         
         return builder.build();
     }
 
-    public UserResponse toUserResponse(UserAuth userAuth, UserDetail userDetail) {
+    public UserResponse toUserResponse(UserAuth userAuth, UserDetail userDetail, String currentUserId) {
         if (userAuth == null) return null;
 
         UserResponse.UserResponseBuilder builder = UserResponse.builder()
@@ -63,6 +64,15 @@ public class UserMapper {
                     .firstName(userDetail.getFirstName())
                     .lastName(userDetail.getLastName())
                     .avatarUrl(userDetail.getAvatarUrl());
+        }
+
+        // Check friendship status
+        if (currentUserId != null && !currentUserId.equals(userAuth.getUserId())) {
+            friendshipRepository.findByRequesterIdAndReceiverId(currentUserId, userAuth.getUserId())
+                    .ifPresent(f -> {
+                        builder.friendshipStatus(f.getStatus().name());
+                        builder.isRequester(f.getRequesterId().equals(currentUserId));
+                    });
         }
 
         return builder.build();

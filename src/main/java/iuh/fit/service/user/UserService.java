@@ -44,4 +44,12 @@ public interface UserService {
      * @return UserMeResponse with updated information
      */
     UserMeResponse updateAvatar(String userId, UpdateAvatarRequest request);
+
+    /**
+     * Get user information by phone number
+     * @param phoneNumber Phone number to search for
+     * @param currentUserId Optional current user ID to check friendship status
+     * @return UserResponse
+     */
+    UserResponse getUserByPhoneNumber(String phoneNumber, String currentUserId);
 }

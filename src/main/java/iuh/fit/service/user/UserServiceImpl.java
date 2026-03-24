@@ -172,9 +172,8 @@ public class UserServiceImpl implements UserService {
         userDetailRepository.save(userDetail);
         userSettingRepository.save(userSetting);
 
-        // --- CÁCH 2: XÀI MAPPER (Cực kỳ gọn gàng) ---
-        // Thay vì viết builder dài như Cách 1, ta gọi Mapper làm thay việc đó:
-        return userMapper.toUserResponse(userAuth, userDetail);
+        // --- CÁCH 2: XÀI MAPPER ---
+        return userMapper.toUserResponse(userAuth, userDetail, null);
     }
 
     @Override
@@ -312,5 +311,18 @@ public class UserServiceImpl implements UserService {
         userDetailRepository.save(userDetail);
 
         return getUserMe(userId);
+    }
+
+    @Override
+    public UserResponse getUserByPhoneNumber(String phoneNumber, String currentUserId) {
+        log.info("Getting user by phone number: {} for searcher: {}", phoneNumber, currentUserId);
+
+        UserAuth userAuth = userAuthRepository.findByPhoneNumber(phoneNumber)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        UserDetail userDetail = userDetailRepository.findByUserId(userAuth.getUserId())
+                .orElse(null);
+
+        return userMapper.toUserResponse(userAuth, userDetail, currentUserId);
     }
 }
