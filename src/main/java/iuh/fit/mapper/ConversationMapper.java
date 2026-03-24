@@ -24,7 +24,7 @@ public class ConversationMapper {
 
         return ConversationResponse.builder()
                 .conversationId(conversation.getConversationId())
-                .conversationType(conversation.getConversationType().name())
+                .conversationType(conversation.getConversationType() != null ? conversation.getConversationType().name() : "UNKNOWN")
                 .conversationName(conversation.getConversationName())
                 .conversationAvatarUrl(conversation.getAvatarUrl())
                 .members(memberInfos)

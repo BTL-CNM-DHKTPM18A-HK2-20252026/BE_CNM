@@ -11,6 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import iuh.fit.utils.JwtUtils;
+import org.springframework.http.HttpStatus;
+
 import java.util.List;
 
 @RestController
@@ -24,16 +27,18 @@ public class ConversationController {
     @PostMapping
     @Operation(summary = "Create a group conversation")
     public ResponseEntity<ApiResponse<ConversationResponse>> createGroup(
-            @RequestHeader("X-User-Id") String userId,
             @Valid @RequestBody CreateConversationRequest request) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         ConversationResponse response = conversationService.createGroupConversation(userId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "Tạo nhóm chat thành công"));
     }
 
     @GetMapping
     @Operation(summary = "Get all conversations of current user")
-    public ResponseEntity<ApiResponse<List<ConversationResponse>>> getMyConversations(
-            @RequestHeader("X-User-Id") String userId) {
+    public ResponseEntity<ApiResponse<List<ConversationResponse>>> getMyConversations() {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         List<ConversationResponse> response = conversationService.getUserConversations(userId);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách hội thoại thành công"));
     }
@@ -41,9 +46,19 @@ public class ConversationController {
     @GetMapping("/private/{otherUserId}")
     @Operation(summary = "Get or create a private conversation with another user")
     public ResponseEntity<ApiResponse<ConversationResponse>> getOrCreatePrivate(
-            @RequestHeader("X-User-Id") String userId,
             @PathVariable String otherUserId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         ConversationResponse response = conversationService.getOrCreatePrivateConversation(userId, otherUserId);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy hội thoại cá nhân thành công"));
+    }
+
+    @GetMapping("/self")
+    @Operation(summary = "Get or create self conversation (My Documents / Cloud)")
+    public ResponseEntity<ApiResponse<ConversationResponse>> getOrCreateSelf() {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        ConversationResponse response = conversationService.getOrCreateSelfConversation(userId);
+        return ResponseEntity.ok(ApiResponse.success(response, "Lấy hội thoại Cloud thành công"));
     }
 }

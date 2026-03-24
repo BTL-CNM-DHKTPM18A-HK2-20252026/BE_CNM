@@ -18,5 +18,7 @@ public class SendMessageRequest {
     @Size(max = 5000, message = "Message content must not exceed 5000 characters")
     private String content;
     
+    private String messageType; // Enum string: TEXT, IMAGE, VIDEO, MEDIA
+    
     private String replyToMessageId; // Optional: for replying to a message
 }

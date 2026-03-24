@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+import org.springframework.messaging.simp.SimpMessageSendingOperations;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -23,15 +25,25 @@ public class MessageService {
     
     private final MessageRepository messageRepository;
     private final MessageMapper messageMapper;
+    private final SimpMessageSendingOperations messagingTemplate;
     
     @Transactional
     public MessageResponse sendMessage(String senderId, SendMessageRequest request) {
+        MessageType type = MessageType.TEXT;
+        if (request.getMessageType() != null) {
+            try {
+                type = MessageType.valueOf(request.getMessageType().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                type = MessageType.TEXT;
+            }
+        }
+
         Message message = Message.builder()
                 .messageId(UUID.randomUUID().toString())
                 .conversationId(request.getConversationId())
                 .senderId(senderId)
                 .content(request.getContent())
-                .messageType(MessageType.TEXT)
+                .messageType(type)
                 .replyToMessageId(request.getReplyToMessageId())
                 .isEdited(false)
                 .isDeleted(false)
@@ -41,12 +53,29 @@ public class MessageService {
         message = messageRepository.save(message);
         log.info("Message sent: {}", message.getMessageId());
         
-        return messageMapper.toResponse(message);
+        MessageResponse response = messageMapper.toResponse(message);
+        messagingTemplate.convertAndSend("/topic/chat/" + request.getConversationId(), response);
+        
+        return response;
     }
     
     public Page<MessageResponse> getConversationMessages(String conversationId, Pageable pageable) {
         return messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
                 .map(messageMapper::toResponse);
+    }
+    
+    public Page<MessageResponse> getMessagesBefore(String conversationId, String beforeId, int size) {
+        Pageable pageable = PageRequest.of(0, size);
+        
+        // Find the cursor message first
+        Message beforeMsg = messageRepository.findById(beforeId).orElse(null);
+        if (beforeMsg == null) {
+            return Page.empty();
+        }
+        
+        return messageRepository.findByConversationIdAndCreatedAtBeforeOrderByCreatedAtDesc(
+            conversationId, beforeMsg.getCreatedAt(), pageable)
+            .map(messageMapper::toResponse);
     }
     
     @Transactional

@@ -23,6 +23,7 @@ import iuh.fit.mapper.UserMapper;
 import iuh.fit.repository.UserAuthRepository;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserSettingRepository;
+import iuh.fit.service.conversation.ConversationService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -39,6 +40,7 @@ public class UserServiceImpl implements UserService {
     UserSettingRepository userSettingRepository;
     PasswordEncoder passwordEncoder;
     UserMapper userMapper;
+    ConversationService conversationService;
 
     @Override
     @Transactional
@@ -112,6 +114,9 @@ public class UserServiceImpl implements UserService {
         userSettingRepository.save(userSetting);
         log.info("UserSetting created for userId: {}", userId);
 
+        // Tạo sẵn hội thoại Cloud của tôi
+        conversationService.getOrCreateSelfConversation(userId);
+
         // --- CÁCH 1: KHÔNG XÀI MAPPER (Thủ công) ---
         return UserResponse.builder()
                 .userId(userId)
@@ -171,6 +176,9 @@ public class UserServiceImpl implements UserService {
         userAuthRepository.save(userAuth);
         userDetailRepository.save(userDetail);
         userSettingRepository.save(userSetting);
+
+        // Tạo sẵn hội thoại Cloud của tôi
+        conversationService.getOrCreateSelfConversation(userId);
 
         // --- CÁCH 2: XÀI MAPPER ---
         return userMapper.toUserResponse(userAuth, userDetail, null);

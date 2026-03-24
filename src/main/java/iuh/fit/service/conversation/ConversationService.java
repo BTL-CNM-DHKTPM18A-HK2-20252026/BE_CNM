@@ -143,4 +143,38 @@ public class ConversationService {
                 .filter(resp -> resp != null)
                 .collect(Collectors.toList());
     }
+    @Transactional
+    public ConversationResponse getOrCreateSelfConversation(String userId) {
+        // Find existing SELF conversation for user
+        List<ConversationMember> userConvs = conversationMemberRepository.findByUserId(userId);
+        for (ConversationMember member : userConvs) {
+            Optional<Conversations> convOpt = conversationRepository.findById(member.getConversationId());
+            if (convOpt.isPresent() && convOpt.get().getConversationType() == ConversationType.SELF) {
+                return conversationMapper.toResponse(convOpt.get(), List.of(member));
+            }
+        }
+
+        // Create new SELF conversation if not exists
+        Conversations newConv = Conversations.builder()
+                .conversationId(UUID.randomUUID().toString())
+                .conversationType(ConversationType.SELF)
+                .conversationName("Cloud của tôi")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .isDeleted(false)
+                .build();
+        newConv = conversationRepository.save(newConv);
+
+        ConversationMember member = ConversationMember.builder()
+                .id(UUID.randomUUID().toString())
+                .conversationId(newConv.getConversationId())
+                .userId(userId)
+                .joinedAt(LocalDateTime.now())
+                .role(MemberRole.ADMIN) // Single user has ADMIN role
+                .build();
+        conversationMemberRepository.save(member);
+
+        log.info("Created new SELF conversation (Cloud) for user {}", userId);
+        return conversationMapper.toResponse(newConv, List.of(member));
+    }
 }

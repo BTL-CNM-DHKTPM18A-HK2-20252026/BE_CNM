@@ -16,6 +16,10 @@ public interface MessageRepository extends MongoRepository<Message, String> {
     // Find messages by conversation
     Page<Message> findByConversationIdOrderByCreatedAtDesc(String conversationId, Pageable pageable);
     
+    // Find messages older than a specific date for Cursor-based pagination
+    Page<Message> findByConversationIdAndCreatedAtBeforeOrderByCreatedAtDesc(
+        String conversationId, LocalDateTime createdAt, Pageable pageable);
+    
     // Find messages by sender
     List<Message> findBySenderId(String senderId);
     

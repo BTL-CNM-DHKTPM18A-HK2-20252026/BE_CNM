@@ -3,8 +3,12 @@ package iuh.fit.configuration;
 import iuh.fit.entity.Conversations;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
+import iuh.fit.entity.UserSetting;
 import iuh.fit.enums.AccountStatus;
 import iuh.fit.enums.ConversationType;
+import iuh.fit.enums.PrivacyLevel;
+import iuh.fit.repository.UserSettingRepository;
+import iuh.fit.service.conversation.ConversationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,12 +30,18 @@ public class DataInitializer {
 
     private final String ddlAuto;
     private final PasswordEncoder passwordEncoder;
+    private final ConversationService conversationService;
+    private final UserSettingRepository userSettingRepository;
 
     public DataInitializer(
             @Value("${spring.data.mongodb.ddl-auto:none}") String ddlAuto,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            ConversationService conversationService,
+            UserSettingRepository userSettingRepository) {
         this.ddlAuto = ddlAuto;
         this.passwordEncoder = passwordEncoder;
+        this.conversationService = conversationService;
+        this.userSettingRepository = userSettingRepository;
     }
 
     @Bean
@@ -113,8 +123,35 @@ public class DataInitializer {
                             .build();
                     
                     mongoTemplate.save(userDetail);
-                    log.info(">> Created default user: {} with full profile info", fullName);
+
+                    // Create UserSetting with default values
+                    UserSetting userSetting = UserSetting.builder()
+                            .userId(savedAuth.getUserId())
+                            .allowFriendRequests(true)
+                            .whoCanSeeProfile(PrivacyLevel.PUBLIC)
+                            .whoCanSeePost(PrivacyLevel.FRIEND_ONLY)
+                            .whoCanTagMe(PrivacyLevel.FRIEND_ONLY)
+                            .whoCanSendMessages(PrivacyLevel.PUBLIC)
+                            .showOnlineStatus(true)
+                            .showReadReceipts(true)
+                            .build();
+
+                    userSettingRepository.save(userSetting);
+
+                    // Tạo Cloud của tôi (Self-chat)
+                    conversationService.getOrCreateSelfConversation(savedAuth.getUserId());
+
+                    log.info(">> Created default user: {} with full profile info and My Documents", fullName);
                 } else {
+                    // Cập nhật existing user
+                    UserAuth existingAuth = mongoTemplate.findOne(
+                            Query.query(Criteria.where("phoneNumber").is(phone)), 
+                            UserAuth.class
+                    );
+                    if (existingAuth != null) {
+                        conversationService.getOrCreateSelfConversation(existingAuth.getUserId());
+                    }
+
                     // Update avatar if missing for existing users
                     UserDetail existingDetail = mongoTemplate.findOne(
                             Query.query(Criteria.where("displayName").is(fullName)), 
