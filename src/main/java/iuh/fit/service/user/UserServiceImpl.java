@@ -221,6 +221,7 @@ public class UserServiceImpl implements UserService {
         }
 
         return UserMeResponse.builder()
+                .id(userId)
                 .fullName(fullName)
                 .gender(userDetail != null ? userDetail.getGender() : null)
                 .dob(userDetail != null ? userDetail.getDob() : null)

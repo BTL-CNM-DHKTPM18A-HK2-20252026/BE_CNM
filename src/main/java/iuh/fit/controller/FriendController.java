@@ -44,7 +44,7 @@ public class FriendController {
     public ResponseEntity<ApiResponse<FriendRequestResponse>> sendFriendRequest(
             @Valid @RequestBody FriendActionRequest request) {
         String userId = JwtUtils.getCurrentUserId();
-        return ResponseEntity.ok(ApiResponse.success(friendService.sendFriendRequest(userId, request.getUserId()), "Đã gửi lời mời kết bạn"));
+        return ResponseEntity.ok(ApiResponse.success(friendService.sendFriendRequest(userId, request.getUserId(), request.getMessage()), "Đã gửi lời mời kết bạn"));
     }
     
     @GetMapping("/requests/received")
@@ -86,5 +86,14 @@ public class FriendController {
         String userId = JwtUtils.getCurrentUserId();
         friendService.unfriend(userId, request.getUserId());
         return ResponseEntity.ok(ApiResponse.success("Đã xóa bạn bè/lời mời"));
+    }
+
+    @PostMapping("/block")
+    @Operation(summary = "Block a user")
+    public ResponseEntity<ApiResponse<Void>> blockUser(
+            @Valid @RequestBody FriendActionRequest request) {
+        String userId = JwtUtils.getCurrentUserId();
+        friendService.blockUser(userId, request.getUserId());
+        return ResponseEntity.ok(ApiResponse.success("Đã chặn người dùng này"));
     }
 }

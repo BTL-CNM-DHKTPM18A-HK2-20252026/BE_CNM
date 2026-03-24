@@ -25,6 +25,7 @@ public class FriendMapper {
                 .senderId(rel.getRequesterId())
                 .receiverId(rel.getReceiverId())
                 .status(rel.getStatus() != null ? rel.getStatus().toString() : null)
+                .message(rel.getMessage())
                 .createdAt(rel.getCreatedAt());
 
         // Fetch Sender Info

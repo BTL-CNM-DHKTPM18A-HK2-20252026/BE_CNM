@@ -1,5 +1,6 @@
 package iuh.fit.entity;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
@@ -34,9 +35,9 @@ public class Story {
     String mediaUrl; // Story image/video URL
     String mediaType; // IMAGE, VIDEO, TEXT
     Integer duration; // Duration in seconds
-    java.time.LocalDateTime expiresAt; // When story expires (24 hours)
+    LocalDateTime expiresAt; // When story expires (24 hours)
     PrivacyLevel privacy; // Who can see this story
     String caption; // Text caption for story
     Boolean isDeleted;
-    java.time.LocalDateTime createdAt;
+    LocalDateTime createdAt;
 }

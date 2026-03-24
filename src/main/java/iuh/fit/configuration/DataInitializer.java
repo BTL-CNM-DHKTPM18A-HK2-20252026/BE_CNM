@@ -61,7 +61,7 @@ public class DataInitializer {
                 {"Dương Hoàng Anh", "0901234573", "anh.duong@fruvia.com", "Nam", "Bắc Ninh", "Security Researcher", "Đại học Công nghiệp TP.HCM", "20/05/2004", "/default/image5.jpg"},
                 {"Lý Gia Hân", "0901234574", "han.ly@fruvia.com", "Nữ", "Long An", "Data Analyst", "Đại học Công nghiệp TP.HCM", "25/06/2004", "/default/image6.jpg"},
                 {"Trịnh Công Sơn", "0901234575", "son.trinh@fruvia.com", "Nam", "Thừa Thiên Huế", "Software Architect", "Đại học Công nghiệp TP.HCM", "30/07/2004", "/default/image7.jpg"},
-                {"Võ Hoàng Yến", "0901234576", "yen.vo@fruvia.com", "Nữ", "Vũng Tàu", "Project Manager", "Đại học Công nghiệp TP.HCM", "05/08/2004", "/default/image8.jpg"},
+                    {"Võ Hoàng Yến", "0901234576", "yen.vo@fruvia.com", "Nữ", "Vũng Tàu", "Project Manager", "Đại học Công nghiệp TP.HCM", "05/08/2004", "/default/image8.jpg"},
                 {"Mai Phương Thúy", "0901234577", "thuy.mai@fruvia.com", "Nữ", "Khánh Hòa", "Business Analyst", "Đại học Công nghiệp TP.HCM", "10/09/2004", "/default/image1.jpg"},
                 {"Đinh Tiến Dũng", "0901234578", "dung.dinh@fruvia.com", "Nam", "Nghệ An", "Database Administrator", "Đại học Công nghiệp TP.HCM", "15/10/2004", "/default/image2.jpg"},
                 {"Hồ Xuân Hương", "0901234579", "huong.ho@fruvia.com", "Nữ", "Quảng Bình", "System Admin", "Đại học Công nghiệp TP.HCM", "20/11/2004", "/default/image3.jpg"},

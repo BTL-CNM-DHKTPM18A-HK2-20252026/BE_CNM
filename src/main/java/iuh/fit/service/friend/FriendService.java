@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,9 +35,10 @@ public class FriendService {
     private final UserAuthRepository userAuthRepository;
     private final UserDetailRepository userDetailRepository;
     private final UserMapper userMapper;
+    private final SimpMessagingTemplate messagingTemplate;
     
     @Transactional
-    public FriendRequestResponse sendFriendRequest(String senderId, String receiverId) {
+    public FriendRequestResponse sendFriendRequest(String senderId, String receiverId, String message) {
         // 1. Check if receiver has BLOCKED sender
         Optional<Friendship> blockCheck = friendshipRepository.findByRequesterIdAndReceiverIdAndStatus(receiverId, senderId, FriendshipStatus.BLOCKED);
         if (blockCheck.isPresent()) {
@@ -62,6 +64,7 @@ public class FriendService {
             friendship.setStatus(FriendshipStatus.PENDING);
             friendship.setRequesterId(senderId);
             friendship.setReceiverId(receiverId);
+            friendship.setMessage(message);
             friendship.setUpdatedAt(LocalDateTime.now());
             friendship = friendshipRepository.save(friendship);
         } else {
@@ -69,6 +72,7 @@ public class FriendService {
                     .requesterId(senderId)
                     .receiverId(receiverId)
                     .status(FriendshipStatus.PENDING)
+                    .message(message)
                     .createdAt(LocalDateTime.now())
                     .updatedAt(LocalDateTime.now())
                     .build();
@@ -76,6 +80,12 @@ public class FriendService {
         }
         
         log.info("Friend request sent from {} to {}", senderId, receiverId);
+        
+        // Notify receiver
+        messagingTemplate.convertAndSend("/topic/friend-events/" + receiverId, "RECEIVED");
+        // Notify sender (for real-time update on other devices/tabs)
+        messagingTemplate.convertAndSend("/topic/friend-events/" + senderId, "SENT");
+        
         return friendMapper.toResponse(friendship);
     }
     
@@ -98,6 +108,10 @@ public class FriendService {
         
         conversationService.getOrCreatePrivateConversation(friendship.getRequesterId(), friendship.getReceiverId());
         log.info("Friendship ACCEPTED between {} and {}", friendship.getRequesterId(), friendship.getReceiverId());
+        
+        // Notify both users to update friend list
+        messagingTemplate.convertAndSend("/topic/friend-events/" + friendship.getRequesterId(), "ACCEPTED");
+        messagingTemplate.convertAndSend("/topic/friend-events/" + friendship.getReceiverId(), "ACCEPTED");
     }
     
     @Transactional
@@ -113,6 +127,9 @@ public class FriendService {
         friendship.setUpdatedAt(LocalDateTime.now());
         friendshipRepository.save(friendship);
         log.info("Friendship DECLINED between {} and {}", friendship.getRequesterId(), friendship.getReceiverId());
+        
+        // Notify user to update UI (other devices)
+        messagingTemplate.convertAndSend("/topic/friend-events/" + userId, "REJECTED");
     }
     
     public List<FriendRequestResponse> getReceivedRequests(String userId) {
@@ -134,6 +151,10 @@ public class FriendService {
         Optional<Friendship> rel = friendshipRepository.findByRequesterIdAndReceiverId(userId1, userId2);
         rel.ifPresent(friendshipRepository::delete);
         log.info("Unfriended: {} and {}", userId1, userId2);
+        
+        // Notify both users to update UI
+        messagingTemplate.convertAndSend("/topic/friend-events/" + userId1, "UNFRIENDED");
+        messagingTemplate.convertAndSend("/topic/friend-events/" + userId2, "UNFRIENDED");
     }
 
     public List<UserResponse> getFriendsList(String userId) {
@@ -171,6 +192,10 @@ public class FriendService {
             friendshipRepository.save(newBlock);
         }
         log.info("User {} BLOCKED {}", blockerId, blockedId);
+        
+        // Notify both users
+        messagingTemplate.convertAndSendToUser(blockerId, "/queue/friend-updates", "BLOCKED");
+        messagingTemplate.convertAndSendToUser(blockedId, "/queue/friend-updates", "BLOCKED");
     }
 }
 

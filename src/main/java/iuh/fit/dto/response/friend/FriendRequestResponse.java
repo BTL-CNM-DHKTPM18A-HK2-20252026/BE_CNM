@@ -20,5 +20,6 @@ public class FriendRequestResponse {
     private String receiverName;
     private String receiverAvatarUrl;
     private String status;
+    private String message;
     private LocalDateTime createdAt;
 }

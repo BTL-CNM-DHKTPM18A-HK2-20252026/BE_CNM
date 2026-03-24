@@ -35,6 +35,8 @@ public class Friendship {
     
     FriendshipStatus status; // PENDING, ACCEPTED, DECLINED, BLOCKED
     
+    String message; // Optional message from sender
+    
     LocalDateTime createdAt; // Time of first interaction/request
     LocalDateTime updatedAt; // Time of last status change
 }

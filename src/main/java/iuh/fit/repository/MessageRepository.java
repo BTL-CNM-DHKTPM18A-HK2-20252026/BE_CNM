@@ -1,5 +1,6 @@
 package iuh.fit.repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.data.domain.Page;
@@ -20,5 +21,5 @@ public interface MessageRepository extends MongoRepository<Message, String> {
     
     // Count unread messages in conversation for a user
     long countByConversationIdAndIsDeletedFalseAndCreatedAtGreaterThan(
-        String conversationId, java.time.LocalDateTime lastSeenAt);
+        String conversationId, LocalDateTime lastSeenAt);
 }

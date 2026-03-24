@@ -46,12 +46,12 @@ public interface AuthenticationService {
      * @return Generated UUID string
      */
     String generateQrSession();
-    void qrScanned(String uuid, String userId) throws com.nimbusds.jose.JOSEException;
+    void qrScanned(String uuid, String userId) throws JOSEException;
     /**
      * Confirm a QR login from a mobile device
      * @param uuid QR session UUID to confirm
      * @param userId User ID of the logged-in mobile user
      * @throws JOSEException if token generation fails
      */
-    void qrConfirm(String uuid, String userId) throws com.nimbusds.jose.JOSEException;
+    void qrConfirm(String uuid, String userId) throws JOSEException;
 }

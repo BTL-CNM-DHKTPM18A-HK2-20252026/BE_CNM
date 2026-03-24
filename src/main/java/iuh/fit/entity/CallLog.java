@@ -1,6 +1,10 @@
 package iuh.fit.entity;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
+
+import iuh.fit.enums.CallStatus;
+import iuh.fit.enums.CallType;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -31,10 +35,10 @@ public class CallLog {
 
     String initiatorId; // Reference to UserAuth (who initiated the call)
     String conversationId; // Reference to Conversations
-    iuh.fit.enums.CallType callType; // AUDIO, VIDEO
-    iuh.fit.enums.CallStatus callStatus; // COMPLETED, MISSED, REJECTED, CANCELLED
-    java.time.LocalDateTime createdAt;
-    java.time.LocalDateTime startedAt;
-    java.time.LocalDateTime endedAt;
+    CallType callType; // AUDIO, VIDEO
+    CallStatus callStatus; // COMPLETED, MISSED, REJECTED, CANCELLED
+    LocalDateTime createdAt;
+    LocalDateTime startedAt;
+    LocalDateTime endedAt;
     Integer durationSeconds; // Call duration
 }

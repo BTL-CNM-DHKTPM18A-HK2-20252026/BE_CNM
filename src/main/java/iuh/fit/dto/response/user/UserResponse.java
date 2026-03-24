@@ -2,6 +2,8 @@ package iuh.fit.dto.response.user;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.Date;
+
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -42,7 +44,7 @@ public class UserResponse {
     String gender;
     
     @JsonProperty("dob")
-    java.util.Date dob;
+    Date dob;
 
     @JsonProperty("friendship_status")
     String friendshipStatus;
