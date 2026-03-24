@@ -80,8 +80,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 .accessToken(accessToken)
                 .expiresIn(JWT_EXPIRATION)
                 .tokenType("Bearer")
-                .displayName(userDetail != null ? userDetail.getDisplayName() : user.getPhoneNumber())
-                .avatarUrl(userDetail != null ? userDetail.getAvatarUrl() : "")
                 .build();
     }
 
@@ -154,8 +152,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
      * @param userId User ID to be set as subject
      * @param username Username to be included in claims
      * @param roles User roles (space-separated string)
-     * @param timeAmount Time amount for token expiration
-     * @param chronoUnit Time unit for token expiration
      * @return Generated JWT token string
      * @throws JOSEException if token generation fails
      */
@@ -206,11 +202,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         var user = userAuthRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        // Notify Web Client over WebSocket with status "SCANNED"
-        AuthenticationResponse response = AuthenticationResponse.builder()
-                .displayName(userDetail != null ? userDetail.getDisplayName() : user.getPhoneNumber())
-                .avatarUrl(userDetail != null ? userDetail.getAvatarUrl() : "")
-                .build();
+        // Notify Web Client over WebSocket with status "SCANNED" (No data needed, just status)
+        AuthenticationResponse response = AuthenticationResponse.builder().build();
                 
         String destination = "/topic/qr-login/" + uuid;
         log.info("Notifying web client (Scanned) via WebSocket on: {}", destination);
@@ -242,8 +235,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 .accessToken(accessToken)
                 .expiresIn(JWT_EXPIRATION)
                 .tokenType("Bearer")
-                .displayName(userDetail != null ? userDetail.getDisplayName() : user.getPhoneNumber())
-                .avatarUrl(userDetail != null ? userDetail.getAvatarUrl() : "")
                 .build();
                 
         String destination = "/topic/qr-login/" + uuid;

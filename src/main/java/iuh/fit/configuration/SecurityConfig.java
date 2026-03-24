@@ -44,7 +44,7 @@ public class SecurityConfig {
                         .requestMatchers("/files/**").permitAll() // Upload & view files (TODO: Add auth for POST/DELETE)
 
                         // === WebSocket endpoints ===
-                        .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers("/ws", "/ws/**", "/ws-native", "/ws-native/**").permitAll()
 
                         // === ALL OTHER ENDPOINTS REQUIRE AUTHENTICATION ===
                         .anyRequest().authenticated()

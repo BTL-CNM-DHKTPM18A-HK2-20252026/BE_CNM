@@ -26,13 +26,23 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // Register the "/ws" endpoint, enabling the SockJS fallback options so that 
-        // alternate transports can be used if WebSocket is not available.
+        // Standard SockJS endpoint
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*") // Allow all origins for testing
+                .setAllowedOriginPatterns("*")
                 .withSockJS();
-        
-        registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*");
+                
+        // Native WebSocket endpoint with logging interceptor
+        registry.addEndpoint("/ws-native")
+                .setAllowedOriginPatterns("*")
+                .addInterceptors(new org.springframework.web.socket.server.support.HttpSessionHandshakeInterceptor() {
+                    @Override
+                    public boolean beforeHandshake(org.springframework.http.server.ServerHttpRequest request, 
+                                                 org.springframework.http.server.ServerHttpResponse response, 
+                                                 org.springframework.web.socket.WebSocketHandler wsHandler, 
+                                                 java.util.Map<String, Object> attributes) throws Exception {
+                        System.out.println("[WS-SERVER-DEBUG] Incoming handshake request from: " + request.getRemoteAddress());
+                        return super.beforeHandshake(request, response, wsHandler, attributes);
+                    }
+                });
     }
 }

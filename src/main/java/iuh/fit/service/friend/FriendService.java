@@ -56,7 +56,8 @@ public class FriendService {
             }
             if (friendship.getStatus() == FriendshipStatus.PENDING) {
                 if (friendship.getRequesterId().equals(senderId)) {
-                    throw new RuntimeException("Friend request already sent");
+                    log.info("Friend request already exists and is PENDING from {} to {}", senderId, receiverId);
+                    return friendMapper.toResponse(friendship); // Just return existing
                 } else {
                     throw new RuntimeException("You already have a pending request from this user");
                 }

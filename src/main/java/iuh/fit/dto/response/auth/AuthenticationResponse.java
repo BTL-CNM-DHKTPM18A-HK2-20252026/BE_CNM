@@ -18,10 +18,4 @@ public class AuthenticationResponse {
     
     @JsonProperty("token_type")
     String tokenType;
-
-    @JsonProperty("display_name")
-    String displayName;
-
-    @JsonProperty("avatar_url")
-    String avatarUrl;
 }
