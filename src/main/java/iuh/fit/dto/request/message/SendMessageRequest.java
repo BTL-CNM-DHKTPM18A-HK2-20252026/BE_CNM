@@ -11,8 +11,11 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class SendMessageRequest {
     
-    @NotBlank(message = "Conversation ID is required")
+    // Optional for first P2P message, required if room exists
     private String conversationId;
+    
+    // Required for first P2P message
+    private String recipientId;
     
     @NotBlank(message = "Message content is required")
     @Size(max = 5000, message = "Message content must not exceed 5000 characters")
@@ -24,4 +27,5 @@ public class SendMessageRequest {
 
     private String fileName;
     private Long fileSize;
+    private Integer voiceDuration;
 }

@@ -4,6 +4,11 @@ import iuh.fit.dto.response.message.MessageResponse;
 import iuh.fit.entity.Message;
 import iuh.fit.entity.UserDetail;
 import iuh.fit.repository.UserDetailRepository;
+import iuh.fit.repository.MessageReactionRepository;
+import iuh.fit.dto.response.message.MessageReactionDto;
+import iuh.fit.entity.MessageReaction;
+import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +17,7 @@ import org.springframework.stereotype.Component;
 public class MessageMapper {
     
     private final UserDetailRepository userDetailRepository;
+    private final MessageReactionRepository messageReactionRepository;
     
     public MessageResponse toResponse(Message message) {
         if (message == null) {
@@ -20,6 +26,8 @@ public class MessageMapper {
         
         UserDetail detail = userDetailRepository.findByUserId(message.getSenderId()).orElse(null);
         
+        List<MessageReactionDto> reactionDtos = messageReactionRepository.findReactionsWithUserByMessageId(message.getMessageId());
+
         return MessageResponse.builder()
                 .messageId(message.getMessageId())
                 .conversationId(message.getConversationId())
@@ -33,6 +41,10 @@ public class MessageMapper {
                 .isDeleted(message.getIsDeleted())
                 .createdAt(message.getCreatedAt())
                 .updatedAt(message.getUpdatedAt())
+                .linkTitle(message.getLinkTitle())
+                .linkThumbnail(message.getLinkThumbnail())
+                .voiceDuration(message.getVoiceDuration())
+                .reactions(reactionDtos)
                 .build();
     }
 }

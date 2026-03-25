@@ -25,15 +25,23 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ConversationMember {
-    
+
     @Id
     @Builder.Default
     String id = UUID.randomUUID().toString();
-    
+
     String conversationId; // Reference to Conversations
-    
+
     String userId; // Reference to UserAuth
     MemberRole role; // ADMIN, DEPUTY, MEMBER
     LocalDateTime joinedAt;
     String nickname; // Custom nickname in this conversation
+    String lastReadMessageId; // Last message this member has read
+    LocalDateTime lastReadAt;
+
+    @Builder.Default
+    Boolean isPinned = false; // Per-user pin status
+
+    @Builder.Default
+    Boolean isHidden = false; // Per-user soft delete (hide conversation)
 }

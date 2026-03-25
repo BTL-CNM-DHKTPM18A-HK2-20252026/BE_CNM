@@ -41,4 +41,11 @@ public class Message {
     Boolean isDeleted;
     Boolean isRecalled; // User can recall/unsend message
     Boolean isEdited;
+    
+    // Link Metadata
+    String linkTitle;
+    String linkThumbnail;
+
+    // Voice Metadata
+    Integer voiceDuration; // in seconds
 }

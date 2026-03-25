@@ -1,6 +1,8 @@
 package iuh.fit.dto.response.message;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,6 +24,12 @@ public class MessageResponse {
     private String replyToMessageId;
     private Boolean isEdited;
     private Boolean isDeleted;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
     private LocalDateTime createdAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
     private LocalDateTime updatedAt;
+    private String linkTitle;
+    private String linkThumbnail;
+    private Integer voiceDuration;
+    private List<MessageReactionDto> reactions;
 }

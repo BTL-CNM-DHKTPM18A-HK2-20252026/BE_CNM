@@ -20,9 +20,10 @@ public class ConversationResponse {
     private String lastMessageContent;
     private LocalDateTime lastMessageTime;
     private Integer unreadCount;
+    private Boolean isPinned;
     private List<MemberInfo> members;
     private LocalDateTime createdAt;
-    
+
     @Data
     @AllArgsConstructor
     @NoArgsConstructor

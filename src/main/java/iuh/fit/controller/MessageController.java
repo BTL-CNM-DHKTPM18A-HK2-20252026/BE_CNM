@@ -19,12 +19,16 @@ import org.springframework.http.HttpStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.message.SendMessageRequest;
+import iuh.fit.dto.request.message.ReactMessageRequest;
 import iuh.fit.dto.response.message.MessageResponse;
+import iuh.fit.dto.response.message.MessageAndConversationResponse;
 import iuh.fit.service.message.MessageService;
 import iuh.fit.service.s3.S3Service;
 import iuh.fit.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/messages")
@@ -36,8 +40,8 @@ public class MessageController {
     private final S3Service s3Service;
     
     @PostMapping
-    @Operation(summary = "Send a message")
-    public ResponseEntity<MessageResponse> sendMessage(
+    @Operation(summary = "Send a message (Supports Lazy Creation for P2P)")
+    public ResponseEntity<MessageAndConversationResponse> sendMessage(
             @Valid @RequestBody SendMessageRequest request) {
         String userId = JwtUtils.getCurrentUserId();
         if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -60,6 +64,20 @@ public class MessageController {
         return ResponseEntity.ok(messageService.getConversationMessages(conversationId, pageable));
     }
     
+    @GetMapping("/conversation/{conversationId}/media")
+    @Operation(summary = "Get all media messages (Images, Videos, Files) in a conversation")
+    public ResponseEntity<List<MessageResponse>> getConversationMedia(
+            @PathVariable String conversationId) {
+        return ResponseEntity.ok(messageService.getConversationMedia(conversationId));
+    }
+
+    @GetMapping("/conversation/{conversationId}/links")
+    @Operation(summary = "Get all shared links in a conversation")
+    public ResponseEntity<List<MessageResponse>> getConversationLinks(
+            @PathVariable String conversationId) {
+        return ResponseEntity.ok(messageService.getConversationLinks(conversationId));
+    }
+    
     @PutMapping("/{messageId}")
     @Operation(summary = "Update a message")
     public ResponseEntity<MessageResponse> updateMessage(
@@ -78,6 +96,17 @@ public class MessageController {
         if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         messageService.deleteMessage(messageId, userId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{messageId}/react")
+    @Operation(summary = "Add or remove a reaction to a message")
+    public ResponseEntity<ApiResponse<Void>> reactToMessage(
+            @PathVariable String messageId,
+            @Valid @RequestBody ReactMessageRequest request) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        messageService.addReaction(messageId, userId, request.getReactionType());
+        return ResponseEntity.ok(ApiResponse.success(null, "Cập nhật cảm xúc thành công"));
     }
 
     @GetMapping("/presigned-url")

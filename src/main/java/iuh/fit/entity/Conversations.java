@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
@@ -26,12 +27,13 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Conversations {
-    
+
     @Id
     @Builder.Default
     String conversationId = UUID.randomUUID().toString();
-    
+
     ConversationType conversationType; // PRIVATE or GROUP
+    List<String> participants; // Members in a sorted list (e.g., ["user1", "user2"])
     String conversationName; // Group name (null for private chats)
     String avatarUrl; // Group avatar (null for private chats)
     String creatorId; // Reference to UserAuth (who created the group)

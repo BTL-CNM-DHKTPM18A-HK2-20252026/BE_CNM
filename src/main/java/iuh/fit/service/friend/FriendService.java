@@ -28,7 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Slf4j
 public class FriendService {
-    
+
     private final FriendshipRepository friendshipRepository;
     private final ConversationService conversationService;
     private final FriendMapper friendMapper;
@@ -36,11 +36,17 @@ public class FriendService {
     private final UserDetailRepository userDetailRepository;
     private final UserMapper userMapper;
     private final SimpMessagingTemplate messagingTemplate;
-    
+
     @Transactional
     public FriendRequestResponse sendFriendRequest(String senderId, String receiverId, String message) {
+        // 0. Cannot send friend request to yourself
+        if (senderId.equals(receiverId)) {
+            throw new RuntimeException("Không thể kết bạn với chính mình");
+        }
+
         // 1. Check if receiver has BLOCKED sender
-        Optional<Friendship> blockCheck = friendshipRepository.findByRequesterIdAndReceiverIdAndStatus(receiverId, senderId, FriendshipStatus.BLOCKED);
+        Optional<Friendship> blockCheck = friendshipRepository.findByRequesterIdAndReceiverIdAndStatus(receiverId,
+                senderId, FriendshipStatus.BLOCKED);
         if (blockCheck.isPresent()) {
             throw new RuntimeException("User not found or you are blocked");
         }
@@ -79,26 +85,26 @@ public class FriendService {
                     .build();
             friendship = friendshipRepository.save(friendship);
         }
-        
+
         log.info("Friend request sent from {} to {}", senderId, receiverId);
-        
+
         // Notify receiver
         messagingTemplate.convertAndSend("/topic/friend-events/" + receiverId, "RECEIVED");
         // Notify sender (for real-time update on other devices/tabs)
         messagingTemplate.convertAndSend("/topic/friend-events/" + senderId, "SENT");
-        
+
         return friendMapper.toResponse(friendship);
     }
-    
+
     @Transactional
     public void acceptFriendRequest(String requestId, String userId) {
         Friendship friendship = friendshipRepository.findById(requestId)
                 .orElseThrow(() -> new RuntimeException("Friend request not found"));
-                
+
         if (!friendship.getReceiverId().equals(userId)) {
             throw new RuntimeException("Not authorized to accept this request");
         }
-        
+
         if (friendship.getStatus() != FriendshipStatus.PENDING) {
             throw new RuntimeException("Request is not pending");
         }
@@ -106,40 +112,40 @@ public class FriendService {
         friendship.setStatus(FriendshipStatus.ACCEPTED);
         friendship.setUpdatedAt(LocalDateTime.now());
         friendshipRepository.save(friendship);
-        
+
         conversationService.getOrCreatePrivateConversation(friendship.getRequesterId(), friendship.getReceiverId());
         log.info("Friendship ACCEPTED between {} and {}", friendship.getRequesterId(), friendship.getReceiverId());
-        
+
         // Notify both users to update friend list
         messagingTemplate.convertAndSend("/topic/friend-events/" + friendship.getRequesterId(), "ACCEPTED");
         messagingTemplate.convertAndSend("/topic/friend-events/" + friendship.getReceiverId(), "ACCEPTED");
     }
-    
+
     @Transactional
     public void rejectFriendRequest(String requestId, String userId) {
         Friendship friendship = friendshipRepository.findById(requestId)
                 .orElseThrow(() -> new RuntimeException("Friend request not found"));
-                
+
         if (!friendship.getReceiverId().equals(userId)) {
             throw new RuntimeException("Not authorized to reject this request");
         }
-        
+
         friendship.setStatus(FriendshipStatus.DECLINED);
         friendship.setUpdatedAt(LocalDateTime.now());
         friendshipRepository.save(friendship);
         log.info("Friendship DECLINED between {} and {}", friendship.getRequesterId(), friendship.getReceiverId());
-        
+
         // Notify user to update UI (other devices)
         messagingTemplate.convertAndSend("/topic/friend-events/" + userId, "REJECTED");
     }
-    
+
     public List<FriendRequestResponse> getReceivedRequests(String userId) {
         return friendshipRepository.findByReceiverIdAndStatus(userId, FriendshipStatus.PENDING)
                 .stream()
                 .map(friendMapper::toResponse)
                 .collect(Collectors.toList());
     }
-    
+
     public List<FriendRequestResponse> getSentRequests(String userId) {
         return friendshipRepository.findByRequesterIdAndStatus(userId, FriendshipStatus.PENDING)
                 .stream()
@@ -152,7 +158,7 @@ public class FriendService {
         Optional<Friendship> rel = friendshipRepository.findByRequesterIdAndReceiverId(userId1, userId2);
         rel.ifPresent(friendshipRepository::delete);
         log.info("Unfriended: {} and {}", userId1, userId2);
-        
+
         // Notify both users to update UI
         messagingTemplate.convertAndSend("/topic/friend-events/" + userId1, "UNFRIENDED");
         messagingTemplate.convertAndSend("/topic/friend-events/" + userId2, "UNFRIENDED");
@@ -160,13 +166,13 @@ public class FriendService {
 
     public List<UserResponse> getFriendsList(String userId) {
         List<Friendship> friendships = friendshipRepository.findAllAcceptedFriends(userId);
-        
+
         return friendships.stream().map(f -> {
             String friendId = f.getRequesterId().equals(userId) ? f.getReceiverId() : f.getRequesterId();
-            
+
             UserAuth auth = userAuthRepository.findById(friendId).orElse(null);
             UserDetail detail = userDetailRepository.findByUserId(friendId).orElse(null);
-            
+
             return userMapper.toUserResponse(auth, detail, userId);
         }).collect(Collectors.toList());
     }
@@ -174,7 +180,7 @@ public class FriendService {
     @Transactional
     public void blockUser(String blockerId, String blockedId) {
         Optional<Friendship> rel = friendshipRepository.findByRequesterIdAndReceiverId(blockerId, blockedId);
-        
+
         if (rel.isPresent()) {
             Friendship f = rel.get();
             f.setRequesterId(blockerId);
@@ -193,10 +199,9 @@ public class FriendService {
             friendshipRepository.save(newBlock);
         }
         log.info("User {} BLOCKED {}", blockerId, blockedId);
-        
+
         // Notify both users
         messagingTemplate.convertAndSendToUser(blockerId, "/queue/friend-updates", "BLOCKED");
         messagingTemplate.convertAndSendToUser(blockedId, "/queue/friend-updates", "BLOCKED");
     }
 }
-

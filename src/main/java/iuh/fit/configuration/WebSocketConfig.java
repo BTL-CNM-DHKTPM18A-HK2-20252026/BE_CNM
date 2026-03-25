@@ -22,6 +22,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         
         // Designate the /app prefix for messages that are bound for methods annotated with @MessageMapping
         config.setApplicationDestinationPrefixes("/app");
+        
+        // Prefix for user-specific destinations
+        config.setUserDestinationPrefix("/user");
     }
 
     @Override
