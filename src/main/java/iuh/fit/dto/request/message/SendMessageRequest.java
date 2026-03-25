@@ -21,4 +21,7 @@ public class SendMessageRequest {
     private String messageType; // Enum string: TEXT, IMAGE, VIDEO, MEDIA
     
     private String replyToMessageId; // Optional: for replying to a message
+
+    private String fileName;
+    private Long fileSize;
 }

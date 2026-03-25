@@ -4,13 +4,17 @@ import iuh.fit.dto.request.conversation.CreateConversationRequest;
 import iuh.fit.dto.response.conversation.ConversationResponse;
 import iuh.fit.entity.ConversationMember;
 import iuh.fit.entity.Conversations;
+import iuh.fit.entity.Message;
 import iuh.fit.enums.ConversationType;
 import iuh.fit.enums.MemberRole;
+import iuh.fit.enums.MessageType;
 import iuh.fit.mapper.ConversationMapper;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.ConversationRepository;
+import iuh.fit.repository.MessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +32,7 @@ public class ConversationService {
 
     private final ConversationRepository conversationRepository;
     private final ConversationMemberRepository conversationMemberRepository;
+    private final MessageRepository messageRepository;
     private final ConversationMapper conversationMapper;
 
     @Transactional
@@ -48,7 +53,9 @@ public class ConversationService {
                 // Kiểm tra xem hội thoại này CÓ ĐÚNG CHỈ CÓ 2 NGƯỜI không
                 if (conversationMemberRepository.countByConversationId(convId) == 2) {
                     List<ConversationMember> members = conversationMemberRepository.findByConversationId(convId);
-                    return conversationMapper.toResponse(conv.get(), members);
+                    Conversations conversation = conv.get();
+                    enrichWithLastMessage(conversation);
+                    return conversationMapper.toResponse(conversation, members);
                 }
             }
         }
@@ -82,6 +89,7 @@ public class ConversationService {
         conversationMemberRepository.saveAll(List.of(m1, m2));
         
         log.info("Created new private conversation between {} and {}", user1Id, user2Id);
+        enrichWithLastMessage(newConv);
         return conversationMapper.toResponse(newConv, List.of(m1, m2));
     }
 
@@ -128,6 +136,7 @@ public class ConversationService {
         members = conversationMemberRepository.saveAll(members);
         log.info("Created new group conversation: {}", group.getConversationName());
         
+        enrichWithLastMessage(group);
         return conversationMapper.toResponse(group, members);
     }
 
@@ -137,10 +146,18 @@ public class ConversationService {
                 .map(m -> {
                     Conversations conv = conversationRepository.findById(m.getConversationId()).orElse(null);
                     if (conv == null || Boolean.TRUE.equals(conv.getIsDeleted())) return null;
+
+                    enrichWithLastMessage(conv);
+
                     List<ConversationMember> members = conversationMemberRepository.findByConversationId(conv.getConversationId());
                     return conversationMapper.toResponse(conv, members);
                 })
                 .filter(resp -> resp != null)
+                .sorted((c1, c2) -> {
+                    LocalDateTime t1 = c1.getLastMessageTime() != null ? c1.getLastMessageTime() : c1.getCreatedAt();
+                    LocalDateTime t2 = c2.getLastMessageTime() != null ? c2.getLastMessageTime() : c2.getCreatedAt();
+                    return t2.compareTo(t1); // Sort descending (newest first)
+                })
                 .collect(Collectors.toList());
     }
     @Transactional
@@ -150,7 +167,9 @@ public class ConversationService {
         for (ConversationMember member : userConvs) {
             Optional<Conversations> convOpt = conversationRepository.findById(member.getConversationId());
             if (convOpt.isPresent() && convOpt.get().getConversationType() == ConversationType.SELF) {
-                return conversationMapper.toResponse(convOpt.get(), List.of(member));
+                Conversations conv = convOpt.get();
+                enrichWithLastMessage(conv);
+                return conversationMapper.toResponse(conv, List.of(member));
             }
         }
 
@@ -175,6 +194,27 @@ public class ConversationService {
         conversationMemberRepository.save(member);
 
         log.info("Created new SELF conversation (Cloud) for user {}", userId);
+        enrichWithLastMessage(newConv);
         return conversationMapper.toResponse(newConv, List.of(member));
+    }
+
+    private void enrichWithLastMessage(Conversations conv) {
+        if (conv == null) return;
+        if (conv.getLastMessageContent() == null) {
+            messageRepository.findByConversationIdOrderByCreatedAtDesc(conv.getConversationId(), PageRequest.of(0, 1))
+                .getContent().stream().findFirst().ifPresent(lastMsg -> {
+                    String snippet = lastMsg.getContent();
+                    if (lastMsg.getMessageType() == MessageType.IMAGE) snippet = "[Hình ảnh]";
+                    else if (lastMsg.getMessageType() == MessageType.VIDEO) snippet = "[Video]";
+                    else if (lastMsg.getMessageType() == MessageType.MEDIA) snippet = "[File]";
+                    
+                    conv.setLastMessageId(lastMsg.getMessageId());
+                    conv.setLastMessageContent(snippet);
+                    conv.setLastMessageTime(lastMsg.getCreatedAt());
+                    if (conv.getUpdatedAt() == null) {
+                        conv.setUpdatedAt(lastMsg.getCreatedAt());
+                    }
+                });
+        }
     }
 }

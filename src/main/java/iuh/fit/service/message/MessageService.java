@@ -2,13 +2,18 @@ package iuh.fit.service.message;
 
 import iuh.fit.dto.request.message.SendMessageRequest;
 import iuh.fit.dto.response.message.MessageResponse;
+import iuh.fit.entity.Conversations;
 import iuh.fit.entity.Message;
+import iuh.fit.entity.MessageAttachment;
 import iuh.fit.enums.MessageType;
 import iuh.fit.mapper.MessageMapper;
+import iuh.fit.repository.ConversationRepository;
+import iuh.fit.repository.MessageAttachmentRepository;
 import iuh.fit.repository.MessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +29,8 @@ import org.springframework.messaging.simp.SimpMessageSendingOperations;
 public class MessageService {
     
     private final MessageRepository messageRepository;
+    private final ConversationRepository conversationRepository;
+    private final MessageAttachmentRepository messageAttachmentRepository;
     private final MessageMapper messageMapper;
     private final SimpMessageSendingOperations messagingTemplate;
     
@@ -52,6 +59,35 @@ public class MessageService {
         
         message = messageRepository.save(message);
         log.info("Message sent: {}", message.getMessageId());
+
+        // Save attachment if metadata is provided
+        if (request.getFileName() != null && request.getFileSize() != null) {
+            MessageAttachment attachment = MessageAttachment.builder()
+                    .messageId(message.getMessageId())
+                    .fileName(request.getFileName())
+                    .fileSize(request.getFileSize())
+                    .url(message.getContent())
+                    .thumbnailUrl(request.getMessageType() != null && (request.getMessageType().equalsIgnoreCase("IMAGE") || request.getMessageType().equalsIgnoreCase("VIDEO")) ? message.getContent() : null)
+                    .build();
+            messageAttachmentRepository.save(attachment);
+            log.info("Saved attachment for message: {}", message.getMessageId());
+        }
+
+        // Update conversation last message denormalized fields
+        Conversations conv = conversationRepository.findById(request.getConversationId()).orElse(null);
+        if (conv != null) {
+            String snippet = message.getContent();
+            if (message.getMessageType() == MessageType.IMAGE) snippet = "[Hình ảnh]";
+            else if (message.getMessageType() == MessageType.VIDEO) snippet = "[Video]";
+            else if (message.getMessageType() == MessageType.MEDIA) snippet = "[File]";
+            
+            conv.setLastMessageId(message.getMessageId());
+            conv.setLastMessageContent(snippet);
+            conv.setLastMessageTime(message.getCreatedAt());
+            conv.setUpdatedAt(message.getCreatedAt());
+            conversationRepository.save(conv);
+            log.info("Updated conversation {} last message snippet to: {}", conv.getConversationId(), snippet);
+        }
         
         MessageResponse response = messageMapper.toResponse(message);
         messagingTemplate.convertAndSend("/topic/chat/" + request.getConversationId(), response);

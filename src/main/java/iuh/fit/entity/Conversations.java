@@ -37,6 +37,8 @@ public class Conversations {
     String creatorId; // Reference to UserAuth (who created the group)
     LocalDateTime createdAt;
     String lastMessageId; // Reference to last Message
+    String lastMessageContent; // Denormalized content for quick snippet display
+    LocalDateTime lastMessageTime; // Denormalized time for sorting/ordering
     Boolean isPinned;
     String groupDescription; // Group description
     LocalDateTime updatedAt;

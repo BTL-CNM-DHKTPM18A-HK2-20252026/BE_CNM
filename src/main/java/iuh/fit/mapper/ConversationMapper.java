@@ -27,6 +27,8 @@ public class ConversationMapper {
                 .conversationType(conversation.getConversationType() != null ? conversation.getConversationType().name() : "UNKNOWN")
                 .conversationName(conversation.getConversationName())
                 .conversationAvatarUrl(conversation.getAvatarUrl())
+                .lastMessageContent(conversation.getLastMessageContent())
+                .lastMessageTime(conversation.getLastMessageTime())
                 .members(memberInfos)
                 .createdAt(conversation.getCreatedAt())
                 .build();

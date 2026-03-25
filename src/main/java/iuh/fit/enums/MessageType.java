@@ -7,5 +7,6 @@ public enum MessageType {
     TEXT,   // Text message
     IMAGE,  // Image message
     VIDEO,  // Video message
-    MEDIA   // Other media types
+    MEDIA,  // Other media types
+    VOICE   // Voice message
 }
