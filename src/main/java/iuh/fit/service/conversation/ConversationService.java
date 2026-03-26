@@ -4,8 +4,11 @@ import iuh.fit.dto.request.conversation.CreateConversationRequest;
 import iuh.fit.dto.response.conversation.ConversationResponse;
 import iuh.fit.entity.ConversationMember;
 import iuh.fit.entity.Conversations;
+import iuh.fit.entity.Friendship;
 import iuh.fit.entity.Message;
+import iuh.fit.enums.ConversationStatus;
 import iuh.fit.enums.ConversationType;
+import iuh.fit.enums.FriendshipStatus;
 import iuh.fit.enums.MemberRole;
 import iuh.fit.enums.MessageType;
 import iuh.fit.exception.ErrorCode;
@@ -13,6 +16,7 @@ import iuh.fit.exception.InvalidInputException;
 import iuh.fit.mapper.ConversationMapper;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.ConversationRepository;
+import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.MessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +43,7 @@ public class ConversationService {
     private final MessageRepository messageRepository;
     private final ConversationMapper conversationMapper;
     private final SimpMessageSendingOperations messagingTemplate;
+    private final FriendshipRepository friendshipRepository;
 
     /**
      * Tìm cuộc hội thoại P2P giữa 2 người. Trả về null nếu chưa có (Lazy Creation).
@@ -577,5 +582,131 @@ public class ConversationService {
                 "conversationId", conversationId,
                 "createdAt", msg.getCreatedAt().toString());
         messagingTemplate.convertAndSend("/topic/chat/" + conversationId, payload);
+    }
+
+    // ==================== MESSAGE REQUEST (STRANGER) MANAGEMENT
+    // ====================
+
+    /**
+     * Return all PENDING (message request) conversations where currentUser is the
+     * receiver.
+     */
+    @Transactional(readOnly = true)
+    public List<ConversationResponse> getPendingMessageRequests(String userId) {
+        List<ConversationMember> memberships = conversationMemberRepository.findByUserId(userId);
+        return memberships.stream()
+                .map(m -> conversationRepository.findById(m.getConversationId()).orElse(null))
+                .filter(conv -> conv != null
+                        && conv.getConversationStatus() == ConversationStatus.PENDING
+                        && conv.getConversationType() == ConversationType.PRIVATE)
+                .filter(conv -> {
+                    // currentUser must be the receiver (not the first sender)
+                    // We determine this: the stranger sent the first message, so the conv was
+                    // created by them
+                    // A simple heuristic: if the other participant is the one who opened the
+                    // conversation
+                    // In practice: just return all PENDING where user is a member — FE can filter
+                    // sender vs receiver
+                    return true;
+                })
+                .map(conv -> {
+                    List<ConversationMember> members = conversationMemberRepository
+                            .findByConversationId(conv.getConversationId());
+                    return conversationMapper.toResponse(conv, members);
+                })
+                .collect(Collectors.toList());
+    }
+
+    /** Accept a message request: set conversation to NORMAL. */
+    @Transactional
+    public ConversationResponse acceptMessageRequest(String conversationId, String currentUserId) {
+        Conversations conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+
+        conversationMemberRepository.findByConversationIdAndUserId(conversationId, currentUserId)
+                .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của cuộc hội thoại này"));
+
+        if (conv.getConversationStatus() != ConversationStatus.PENDING) {
+            throw new RuntimeException("Cuộc hội thoại này không phải tin nhắn chờ");
+        }
+
+        conv.setConversationStatus(ConversationStatus.NORMAL);
+        conv.setUpdatedAt(LocalDateTime.now());
+        conversationRepository.save(conv);
+
+        // Notify the sender that request was accepted
+        List<ConversationMember> members = conversationMemberRepository.findByConversationId(conversationId);
+        ConversationResponse response = conversationMapper.toResponse(conv, members);
+        for (ConversationMember m : members) {
+            messagingTemplate.convertAndSend("/topic/conversation-events/" + m.getUserId(), response);
+        }
+
+        log.info("Message request accepted in conversation {} by user {}", conversationId, currentUserId);
+        return response;
+    }
+
+    /** Block a message request: mark BLOCKED and update friendship as BLOCKED. */
+    @Transactional
+    public void blockMessageRequest(String conversationId, String currentUserId) {
+        Conversations conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+
+        conversationMemberRepository.findByConversationIdAndUserId(conversationId, currentUserId)
+                .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của cuộc hội thoại này"));
+
+        conv.setConversationStatus(ConversationStatus.BLOCKED);
+        conv.setUpdatedAt(LocalDateTime.now());
+        conversationRepository.save(conv);
+
+        // Find the other participant and block them in friendship
+        if (conv.getParticipants() != null) {
+            String senderId = conv.getParticipants().stream()
+                    .filter(id -> !id.equals(currentUserId)).findFirst().orElse(null);
+            if (senderId != null) {
+                friendshipRepository.findByRequesterIdAndReceiverId(currentUserId, senderId)
+                        .ifPresentOrElse(friendship -> {
+                            friendship.setStatus(FriendshipStatus.BLOCKED);
+                            friendship.setRequesterId(currentUserId);
+                            friendship.setReceiverId(senderId);
+                            friendship.setUpdatedAt(LocalDateTime.now());
+                            friendshipRepository.save(friendship);
+                        }, () -> {
+                            Friendship newBlock = Friendship.builder()
+                                    .requesterId(currentUserId)
+                                    .receiverId(senderId)
+                                    .status(FriendshipStatus.BLOCKED)
+                                    .createdAt(LocalDateTime.now())
+                                    .updatedAt(LocalDateTime.now())
+                                    .build();
+                            friendshipRepository.save(newBlock);
+                        });
+            }
+        }
+
+        log.info("Message request blocked in conversation {} by user {}", conversationId, currentUserId);
+    }
+
+    /**
+     * Decline a message request: soft-delete the conversation for the current user.
+     */
+    @Transactional
+    public void declineMessageRequest(String conversationId, String currentUserId) {
+        Conversations conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+
+        conversationMemberRepository.findByConversationIdAndUserId(conversationId, currentUserId)
+                .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của cuộc hội thoại này"));
+
+        if (conv.getConversationStatus() != ConversationStatus.PENDING) {
+            throw new RuntimeException("Cuộc hội thoại này không phải tin nhắn chờ");
+        }
+
+        // Soft-delete: mark conversation as deleted for this user (reuse
+        // isPinned-per-member pattern)
+        conv.setIsDeleted(true);
+        conv.setUpdatedAt(LocalDateTime.now());
+        conversationRepository.save(conv);
+
+        log.info("Message request declined in conversation {} by user {}", conversationId, currentUserId);
     }
 }

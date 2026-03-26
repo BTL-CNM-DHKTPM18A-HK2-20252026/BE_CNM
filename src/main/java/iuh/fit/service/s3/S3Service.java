@@ -25,6 +25,7 @@ public class S3Service {
 
     /**
      * Generates a pre-signed URL for uploading a file to S3.
+     * 
      * @param fileName The name of the file
      * @param fileType The category of the file (images, videos, files)
      * @return Pre-signed URL string
@@ -49,14 +50,30 @@ public class S3Service {
         expTimeMillis += 1000 * 60 * 10;
         expiration.setTime(expTimeMillis);
 
-        GeneratePresignedUrlRequest generatePresignedUrlRequest =
-                new GeneratePresignedUrlRequest(bucketName, objectKey)
-                        .withMethod(HttpMethod.PUT)
-                        .withExpiration(expiration);
-        
-        // Ensure the content-type is expected by S3 (optional but recommended for front-end PUT)
-        // generatePresignedUrlRequest.addRequestParameter("Content-Type", fileType);
+        GeneratePresignedUrlRequest generatePresignedUrlRequest = new GeneratePresignedUrlRequest(bucketName, objectKey)
+                .withMethod(HttpMethod.PUT)
+                .withExpiration(expiration);
 
         return s3Client.generatePresignedUrl(generatePresignedUrlRequest).toString();
+    }
+
+    /**
+     * Generates a pre-signed URL for uploading a profile or cover photo to S3.
+     * Files are stored under profiles/{userId}/ to avoid collision with message
+     * assets.
+     */
+    public String generatePresignedUrlForProfile(String fileName, String fileType, String userId) {
+        String folder = "profiles/" + userId + "/";
+        String uniqueFileName = UUID.randomUUID().toString() + "_" + fileName;
+        String objectKey = folder + uniqueFileName;
+
+        Date expiration = new Date();
+        expiration.setTime(expiration.getTime() + 1000L * 60 * 10);
+
+        GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucketName, objectKey)
+                .withMethod(HttpMethod.PUT)
+                .withExpiration(expiration);
+
+        return s3Client.generatePresignedUrl(req).toString();
     }
 }

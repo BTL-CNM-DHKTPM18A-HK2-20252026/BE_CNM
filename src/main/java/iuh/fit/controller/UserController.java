@@ -18,6 +18,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.user.RegisterRequest;
 import iuh.fit.dto.request.user.UpdateAvatarRequest;
+import iuh.fit.dto.request.user.UpdateCoverPhotoRequest;
 import iuh.fit.dto.request.user.UpdateProfileRequest;
 import iuh.fit.dto.response.user.UserMeResponse;
 import iuh.fit.dto.response.user.UserResponse;
@@ -26,6 +27,7 @@ import iuh.fit.response.ApiResponse;
 import iuh.fit.utils.JwtUtils;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
+import iuh.fit.service.s3.S3Service;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 public class UserController {
 
     UserService userService;
+    S3Service s3Service;
 
     /**
      * Register a new user
@@ -158,6 +161,36 @@ public class UserController {
         
         UserMeResponse response = userService.updateAvatar(userId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật ảnh đại diện thành công"));
+    }
+
+    @Operation(summary = "Update current user cover photo",
+               description = "Update only the cover photo URL of the currently logged-in user")
+    @SecurityRequirement(name = "bearerAuth")
+    @PatchMapping("/me/cover-photo")
+    public ResponseEntity<ApiResponse<UserMeResponse>> updateCoverPhoto(
+            @RequestBody UpdateCoverPhotoRequest request) {
+        log.info("Update current user cover photo request");
+
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        UserMeResponse response = userService.updateCoverPhoto(userId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật ảnh nền thành công"));
+    }
+
+    @Operation(summary = "Get presigned URL for profile photo upload",
+               description = "Returns a pre-signed S3 URL to upload a profile/cover photo directly from the client")
+    @SecurityRequirement(name = "bearerAuth")
+    @GetMapping("/me/presigned-url")
+    public ResponseEntity<ApiResponse<String>> getProfilePresignedUrl(
+            @org.springframework.web.bind.annotation.RequestParam String fileName,
+            @org.springframework.web.bind.annotation.RequestParam String fileType) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        String url = s3Service.generatePresignedUrlForProfile(fileName, fileType, userId);
+        return ResponseEntity.ok(ApiResponse.success(url, "Lấy URL upload ảnh profile thành công"));
     }
 
     @Operation(summary = "Get user by phone number", description = "Find a user profile using their phone number")

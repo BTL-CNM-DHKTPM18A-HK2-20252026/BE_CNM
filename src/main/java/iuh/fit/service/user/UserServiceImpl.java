@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import iuh.fit.dto.request.user.RegisterRequest;
 import iuh.fit.dto.request.user.UpdateAvatarRequest;
+import iuh.fit.dto.request.user.UpdateCoverPhotoRequest;
 import iuh.fit.dto.request.user.UpdateProfileRequest;
 import iuh.fit.dto.response.user.UserMeResponse;
 import iuh.fit.dto.response.user.UserResponse;
@@ -77,11 +78,16 @@ public class UserServiceImpl implements UserService {
         userAuthRepository.save(userAuth);
         log.info("UserAuth created for userId: {}", userId);
 
-
-
         // Assign random default avatar (image1.jpg to image8.jpg)
-        int defaultAvatarIndex = (int)(Math.random() * 8) + 1;
+        int defaultAvatarIndex = (int) (Math.random() * 8) + 1;
         String defaultAvatar = "/default/image" + defaultAvatarIndex + ".jpg";
+
+        // Assign deterministic default cover photo (image1-3) based on userId char-code
+        // hash
+        // Matches frontend getDefaultCoverPhoto() logic so the same image is shown
+        // before/after save
+        int coverIndex = (userId.chars().reduce(0, Integer::sum) % 3) + 1;
+        String defaultCoverPhoto = "/background/image" + coverIndex + ".jpg";
 
         // Create UserDetail
         UserDetail userDetail = UserDetail.builder()
@@ -92,6 +98,7 @@ public class UserServiceImpl implements UserService {
                 .dob(request.getDob())
                 .gender(request.getGender())
                 .avatarUrl(defaultAvatar)
+                .coverPhotoUrl(defaultCoverPhoto)
                 .isOrgActive(false)
                 .lastUpdateProfile(LocalDateTime.now())
                 .build();
@@ -147,7 +154,8 @@ public class UserServiceImpl implements UserService {
             throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS);
         }
 
-        // 2. Tạo ID chuyên biệt (UUID đã được cấu hình tự động trong Entity, nhưng gán tay để đồng bộ các bảng)
+        // 2. Tạo ID chuyên biệt (UUID đã được cấu hình tự động trong Entity, nhưng gán
+        // tay để đồng bộ các bảng)
         String userId = UUID.randomUUID().toString();
 
         // 3. Xây dựng các Entity
@@ -226,6 +234,15 @@ public class UserServiceImpl implements UserService {
             if (fullName.isEmpty()) {
                 fullName = userDetail.getDisplayName();
             }
+
+            // Backfill coverPhotoUrl for existing users who were created before this
+            // feature
+            if (userDetail.getCoverPhotoUrl() == null || userDetail.getCoverPhotoUrl().isEmpty()) {
+                int coverIdx = (userId.chars().reduce(0, Integer::sum) % 3) + 1;
+                userDetail.setCoverPhotoUrl("/background/image" + coverIdx + ".jpg");
+                userDetailRepository.save(userDetail);
+                log.info("Backfilled coverPhotoUrl for userId: {}", userId);
+            }
         }
 
         return UserMeResponse.builder()
@@ -257,7 +274,8 @@ public class UserServiceImpl implements UserService {
 
         if (request.getFullName() != null) {
             userDetail.setDisplayName(request.getFullName());
-            // Clear firstName and lastName to ensure fullName calculation on /me uses displayName
+            // Clear firstName and lastName to ensure fullName calculation on /me uses
+            // displayName
             userDetail.setFirstName(null);
             userDetail.setLastName(null);
         }
@@ -314,6 +332,24 @@ public class UserServiceImpl implements UserService {
 
         if (request.getAvatarUrl() != null) {
             userDetail.setAvatarUrl(request.getAvatarUrl());
+        }
+
+        userDetail.setLastUpdateProfile(LocalDateTime.now());
+        userDetailRepository.save(userDetail);
+
+        return getUserMe(userId);
+    }
+
+    @Override
+    @Transactional
+    public UserMeResponse updateCoverPhoto(String userId, UpdateCoverPhotoRequest request) {
+        log.info("Updating cover photo for userId: {}", userId);
+
+        UserDetail userDetail = userDetailRepository.findByUserId(userId)
+                .orElseGet(() -> UserDetail.builder().userId(userId).build());
+
+        if (request.getCoverPhotoUrl() != null) {
+            userDetail.setCoverPhotoUrl(request.getCoverPhotoUrl());
         }
 
         userDetail.setLastUpdateProfile(LocalDateTime.now());

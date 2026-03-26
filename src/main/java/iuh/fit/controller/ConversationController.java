@@ -191,4 +191,52 @@ public class ConversationController {
                 conversationService.softDeleteConversation(conversationId, userId),
                 "Đã xóa hội thoại"));
     }
+
+    // ==================== MESSAGE REQUEST (STRANGER) MANAGEMENT
+    // ====================
+
+    @GetMapping("/requests")
+    @Operation(summary = "Get all pending message requests for the current user")
+    public ResponseEntity<ApiResponse<List<ConversationResponse>>> getPendingMessageRequests() {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.getPendingMessageRequests(userId),
+                "Lấy danh sách tin nhắn chờ thành công"));
+    }
+
+    @PostMapping("/{conversationId}/accept")
+    @Operation(summary = "Accept a message request from a stranger")
+    public ResponseEntity<ApiResponse<ConversationResponse>> acceptMessageRequest(
+            @PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.acceptMessageRequest(conversationId, userId),
+                "Đã chấp nhận tin nhắn"));
+    }
+
+    @PostMapping("/{conversationId}/block")
+    @Operation(summary = "Block a stranger who sent a message request")
+    public ResponseEntity<ApiResponse<Void>> blockMessageRequest(
+            @PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        conversationService.blockMessageRequest(conversationId, userId);
+        return ResponseEntity.ok(ApiResponse.success("Đã chặn người dùng này"));
+    }
+
+    @DeleteMapping("/{conversationId}/decline")
+    @Operation(summary = "Decline and delete a message request")
+    public ResponseEntity<ApiResponse<Void>> declineMessageRequest(
+            @PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        conversationService.declineMessageRequest(conversationId, userId);
+        return ResponseEntity.ok(ApiResponse.success("Đã từ chối tin nhắn"));
+    }
 }

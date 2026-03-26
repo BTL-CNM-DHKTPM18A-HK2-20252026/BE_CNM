@@ -47,6 +47,9 @@ public class ConversationMapper {
                 .isPinned(isPinned)
                 .members(memberInfos)
                 .createdAt(conversation.getCreatedAt())
+                .conversationStatus(conversation.getConversationStatus() != null
+                        ? conversation.getConversationStatus().name()
+                        : "NORMAL")
                 .build();
     }
 

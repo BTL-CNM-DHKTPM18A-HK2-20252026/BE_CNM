@@ -23,6 +23,7 @@ public class ConversationResponse {
     private Boolean isPinned;
     private List<MemberInfo> members;
     private LocalDateTime createdAt;
+    private String conversationStatus; // NORMAL, PENDING, BLOCKED
 
     @Data
     @AllArgsConstructor

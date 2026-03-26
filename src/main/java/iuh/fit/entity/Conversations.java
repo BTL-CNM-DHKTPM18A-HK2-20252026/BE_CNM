@@ -8,6 +8,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import iuh.fit.enums.ConversationType;
+import iuh.fit.enums.ConversationStatus;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -33,6 +34,8 @@ public class Conversations {
     String conversationId = UUID.randomUUID().toString();
 
     ConversationType conversationType; // PRIVATE or GROUP
+    @Builder.Default
+    ConversationStatus conversationStatus = ConversationStatus.NORMAL; // NORMAL, PENDING, BLOCKED
     List<String> participants; // Members in a sorted list (e.g., ["user1", "user2"])
     String conversationName; // Group name (null for private chats)
     String avatarUrl; // Group avatar (null for private chats)

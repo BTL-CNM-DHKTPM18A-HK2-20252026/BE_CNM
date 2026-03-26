@@ -3,17 +3,24 @@ package iuh.fit.service.message;
 import iuh.fit.dto.request.message.SendMessageRequest;
 import iuh.fit.dto.response.message.MessageResponse;
 import iuh.fit.entity.Conversations;
+import iuh.fit.entity.Friendship;
 import iuh.fit.entity.Message;
 import iuh.fit.entity.MessageAttachment;
 import iuh.fit.entity.MessageReaction;
+import iuh.fit.entity.UserSetting;
+import iuh.fit.enums.ConversationStatus;
+import iuh.fit.enums.FriendshipStatus;
 import iuh.fit.enums.MessageType;
+import iuh.fit.enums.PrivacyLevel;
 import iuh.fit.enums.ReactionType;
 import iuh.fit.mapper.MessageMapper;
 import iuh.fit.repository.ConversationRepository;
+import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.MessageAttachmentRepository;
 import iuh.fit.repository.MessageReactionRepository;
 import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserDetailRepository;
+import iuh.fit.repository.UserSettingRepository;
 import iuh.fit.entity.UserDetail;
 import iuh.fit.mapper.ConversationMapper;
 import iuh.fit.dto.response.conversation.ConversationResponse;
@@ -23,6 +30,7 @@ import iuh.fit.enums.MemberRole;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.dto.response.message.MessageAndConversationResponse;
 import iuh.fit.utils.LinkScraper;
+import iuh.fit.service.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -57,6 +65,9 @@ public class MessageService {
     private final ConversationMemberRepository conversationMemberRepository;
     private final ConversationMapper conversationMapper;
     private final LinkScraper linkScraper;
+    private final StorageService storageService;
+    private final FriendshipRepository friendshipRepository;
+    private final UserSettingRepository userSettingRepository;
 
     @Transactional
     public MessageAndConversationResponse sendMessage(String senderId, SendMessageRequest request) {
@@ -127,6 +138,50 @@ public class MessageService {
                     .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của cuộc hội thoại này"));
         }
 
+        // ── Stranger-messaging guard (PRIVATE only) ──────────────────────────────
+        if (conv.getConversationType() == ConversationType.PRIVATE) {
+            // Find the other participant
+            String recipientId = conv.getParticipants() == null ? null
+                    : conv.getParticipants().stream().filter(id -> !id.equals(senderId)).findFirst().orElse(null);
+
+            if (recipientId != null) {
+                // Check if receiver blocked sender
+                boolean blocked = friendshipRepository
+                        .findByRequesterIdAndReceiverIdAndStatus(recipientId, senderId, FriendshipStatus.BLOCKED)
+                        .isPresent();
+                if (blocked) {
+                    throw new RuntimeException("Bạn đã bị chặn bởi người dùng này");
+                }
+
+                // Check receiver's privacy setting
+                UserSetting receiverSetting = userSettingRepository.findById(recipientId).orElse(null);
+                if (receiverSetting != null
+                        && receiverSetting.getWhoCanSendMessages() == PrivacyLevel.FRIEND_ONLY) {
+                    // Only friends may send messages — check friendship
+                    boolean areFriends = friendshipRepository
+                            .findByRequesterIdAndReceiverId(senderId, recipientId)
+                            .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED)
+                            .isPresent();
+                    if (!areFriends) {
+                        throw new RuntimeException("Người dùng này chỉ nhận tin nhắn từ bạn bè");
+                    }
+                }
+
+                // If conv is still NORMAL and they're not friends → mark PENDING
+                if (conv.getConversationStatus() == ConversationStatus.NORMAL
+                        || conv.getConversationStatus() == null) {
+                    boolean areFriends = friendshipRepository
+                            .findByRequesterIdAndReceiverId(senderId, recipientId)
+                            .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED)
+                            .isPresent();
+                    if (!areFriends) {
+                        conv.setConversationStatus(ConversationStatus.PENDING);
+                    }
+                }
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────────
+
         Message message = Message.builder()
                 .messageId(UUID.randomUUID().toString())
                 .conversationId(convId)
@@ -182,11 +237,31 @@ public class MessageService {
         // Broadcast to specific conversation topic
         messagingTemplate.convertAndSend("/topic/chat/" + convId, finalResponse);
 
-        // Notify all members (works for both PRIVATE and GROUP)
+        // Notify all members — for PENDING conversations send masked notification to
+        // receiver
+        boolean isPendingConv = conv.getConversationStatus() == ConversationStatus.PENDING;
         for (ConversationMember member : members) {
             if (!member.getUserId().equals(senderId)) {
-                messagingTemplate.convertAndSendToUser(member.getUserId(), "/queue/notifications", finalResponse);
+                if (isPendingConv) {
+                    // Privacy: don't reveal message content, only notify about pending request
+                    java.util.Map<String, Object> maskedNotification = new java.util.HashMap<>();
+                    maskedNotification.put("type", "MESSAGE_REQUEST");
+                    maskedNotification.put("conversationId", convId);
+                    maskedNotification.put("senderName", message.getSenderId()); // resolved on FE
+                    maskedNotification.put("text", "Bạn có một tin nhắn chờ mới");
+                    messagingTemplate.convertAndSendToUser(member.getUserId(), "/queue/notifications",
+                            maskedNotification);
+                } else {
+                    messagingTemplate.convertAndSendToUser(member.getUserId(), "/queue/notifications", finalResponse);
+                }
             }
+        }
+
+        // Push storage update if this is a SELF (My Cloud) conversation and file was
+        // sent
+        if (conv.getConversationType() == ConversationType.SELF && type != MessageType.TEXT
+                && type != MessageType.LINK) {
+            storageService.pushStorageUpdate(senderId);
         }
 
         return finalResponse;
