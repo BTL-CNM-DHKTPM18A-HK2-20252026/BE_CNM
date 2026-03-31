@@ -42,6 +42,10 @@ public class ConversationMember {
     @Builder.Default
     Boolean isPinned = false; // Per-user pin status
 
+    LocalDateTime pinnedAt; // Last time user pinned this conversation
+
     @Builder.Default
     Boolean isHidden = false; // Per-user soft delete (hide conversation)
+
+    String conversationTag; // Per-user tag: customer, family, work, friends, reply_later, colleagues
 }

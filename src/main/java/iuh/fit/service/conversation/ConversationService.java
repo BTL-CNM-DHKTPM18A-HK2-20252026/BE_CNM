@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -44,6 +45,7 @@ public class ConversationService {
     private final ConversationMapper conversationMapper;
     private final SimpMessageSendingOperations messagingTemplate;
     private final FriendshipRepository friendshipRepository;
+    private final iuh.fit.repository.UserDetailRepository userDetailRepository;
 
     /**
      * Tìm cuộc hội thoại P2P giữa 2 người. Trả về null nếu chưa có (Lazy Creation).
@@ -190,6 +192,21 @@ public class ConversationService {
                     boolean p2 = Boolean.TRUE.equals(c2.getIsPinned());
                     if (p1 != p2)
                         return p1 ? -1 : 1;
+
+                    // If both are pinned, newest pin goes first
+                    if (p1 && p2) {
+                        LocalDateTime pin1 = c1.getPinnedAt();
+                        LocalDateTime pin2 = c2.getPinnedAt();
+                        if (pin1 == null && pin2 != null)
+                            return 1;
+                        if (pin1 != null && pin2 == null)
+                            return -1;
+                        if (pin1 != null && pin2 != null) {
+                            int pinCompare = pin2.compareTo(pin1);
+                            if (pinCompare != 0)
+                                return pinCompare;
+                        }
+                    }
 
                     LocalDateTime t1 = c1.getLastMessageTime() != null ? c1.getLastMessageTime() : c1.getCreatedAt();
                     LocalDateTime t2 = c2.getLastMessageTime() != null ? c2.getLastMessageTime() : c2.getCreatedAt();
@@ -518,15 +535,29 @@ public class ConversationService {
                 .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của hội thoại này"));
 
         boolean newPinned = !Boolean.TRUE.equals(member.getIsPinned());
+
+        if (newPinned) {
+            long pinnedCount = conversationMemberRepository.countByUserIdAndIsPinnedTrue(userId);
+            if (pinnedCount >= 5) {
+                throw new InvalidInputException(
+                        ErrorCode.INVALID_INPUT,
+                        "Mỗi người chỉ được ghim tối đa 5 cuộc hội thoại");
+            }
+            member.setPinnedAt(LocalDateTime.now());
+        } else {
+            member.setPinnedAt(null);
+        }
+
         member.setIsPinned(newPinned);
         conversationMemberRepository.save(member);
 
         log.info("User {} {} conversation {}", userId, newPinned ? "pinned" : "unpinned", conversationId);
 
-        java.util.Map<String, Object> event = java.util.Map.of(
-                "type", "PIN_UPDATED",
-                "conversationId", conversationId,
-                "isPinned", newPinned);
+        HashMap<String, Object> event = new HashMap<>();
+        event.put("type", "PIN_UPDATED");
+        event.put("conversationId", conversationId);
+        event.put("isPinned", newPinned);
+        event.put("pinnedAt", member.getPinnedAt() != null ? member.getPinnedAt().toString() : null);
         messagingTemplate.convertAndSend("/topic/conversation-events/" + userId, event);
 
         return event;
@@ -553,6 +584,76 @@ public class ConversationService {
         messagingTemplate.convertAndSend("/topic/conversation-events/" + userId, event);
 
         return event;
+    }
+
+    // ==================== NICKNAME MANAGEMENT ====================
+
+    /**
+     * Update the nickname for a contact/member in a conversation.
+     * Cập nhật biệt danh cho thành viên trong cuộc hội thoại.
+     * Biệt danh chỉ hiển thị cho người đặt (owner).
+     */
+    @Transactional
+    public String updateNickname(String conversationId, String userId, String nickname) {
+        ConversationMember member = conversationMemberRepository
+                .findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của hội thoại này"));
+
+        String trimmed = (nickname != null) ? nickname.trim() : null;
+        member.setNickname((trimmed != null && !trimmed.isEmpty()) ? trimmed : null);
+        conversationMemberRepository.save(member);
+
+        log.info("User {} updated nickname in conversation {} to: {}", userId, conversationId, trimmed);
+        return member.getNickname();
+    }
+
+    // ==================== CONVERSATION TAG ====================
+
+    public String updateConversationTag(String conversationId, String userId, String tag) {
+        ConversationMember member = conversationMemberRepository
+                .findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của hội thoại này"));
+
+        String trimmed = (tag != null) ? tag.trim() : null;
+        member.setConversationTag((trimmed != null && !trimmed.isEmpty()) ? trimmed : null);
+        conversationMemberRepository.save(member);
+
+        log.info("User {} updated conversation tag in {} to: {}", userId, conversationId, trimmed);
+        return member.getConversationTag();
+    }
+
+    // ==================== READ STATUS ====================
+
+    /**
+     * Get read status (lastReadMessageId) for all members in a conversation.
+     * Lấy trạng thái đọc tin nhắn của tất cả thành viên.
+     */
+    @Transactional(readOnly = true)
+    public List<java.util.Map<String, Object>> getReadStatus(String conversationId, String userId) {
+        // Verify user is a member
+        conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của hội thoại này"));
+
+        List<ConversationMember> members = conversationMemberRepository.findByConversationId(conversationId);
+        List<java.util.Map<String, Object>> result = new ArrayList<>();
+
+        for (ConversationMember m : members) {
+            if (m.getUserId().equals(userId))
+                continue; // Skip self
+            if (m.getLastReadMessageId() == null)
+                continue; // Not read anything yet
+
+            iuh.fit.entity.UserDetail detail = userDetailRepository.findByUserId(m.getUserId()).orElse(null);
+
+            java.util.Map<String, Object> entry = new java.util.HashMap<>();
+            entry.put("userId", m.getUserId());
+            entry.put("messageId", m.getLastReadMessageId());
+            entry.put("lastReadAt", m.getLastReadAt() != null ? m.getLastReadAt().toString() : null);
+            entry.put("displayName", detail != null ? detail.getDisplayName() : "Unknown");
+            entry.put("avatarUrl", detail != null ? detail.getAvatarUrl() : null);
+            result.add(entry);
+        }
+        return result;
     }
 
     /**

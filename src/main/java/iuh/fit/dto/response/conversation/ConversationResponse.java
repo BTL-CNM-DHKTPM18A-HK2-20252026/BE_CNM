@@ -21,9 +21,11 @@ public class ConversationResponse {
     private LocalDateTime lastMessageTime;
     private Integer unreadCount;
     private Boolean isPinned;
+    private LocalDateTime pinnedAt;
     private List<MemberInfo> members;
     private LocalDateTime createdAt;
     private String conversationStatus; // NORMAL, PENDING, BLOCKED
+    private String conversationTag; // Per-user tag: customer, family, work, friends, reply_later, colleagues
 
     @Data
     @AllArgsConstructor
@@ -34,5 +36,6 @@ public class ConversationResponse {
         private String displayName;
         private String avatarUrl;
         private String role;
+        private String nickname;
     }
 }

@@ -35,19 +35,20 @@ import java.util.List;
 @RequiredArgsConstructor
 @Tag(name = "Message", description = "Message management APIs")
 public class MessageController {
-    
+
     private final MessageService messageService;
     private final S3Service s3Service;
-    
+
     @PostMapping
     @Operation(summary = "Send a message (Supports Lazy Creation for P2P)")
     public ResponseEntity<MessageAndConversationResponse> sendMessage(
             @Valid @RequestBody SendMessageRequest request) {
         String userId = JwtUtils.getCurrentUserId();
-        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(messageService.sendMessage(userId, request));
     }
-    
+
     @GetMapping("/conversation/{conversationId}")
     @Operation(summary = "Get messages in a conversation (Pagination)")
     public ResponseEntity<Page<MessageResponse>> getConversationMessages(
@@ -55,7 +56,7 @@ public class MessageController {
             @RequestParam(required = false) String beforeId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        
+
         if (beforeId != null && !beforeId.isEmpty()) {
             return ResponseEntity.ok(messageService.getMessagesBefore(conversationId, beforeId, size));
         }
@@ -63,7 +64,7 @@ public class MessageController {
         Pageable pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(messageService.getConversationMessages(conversationId, pageable));
     }
-    
+
     @GetMapping("/conversation/{conversationId}/media")
     @Operation(summary = "Get all media messages (Images, Videos, Files) in a conversation")
     public ResponseEntity<List<MessageResponse>> getConversationMedia(
@@ -77,25 +78,58 @@ public class MessageController {
             @PathVariable String conversationId) {
         return ResponseEntity.ok(messageService.getConversationLinks(conversationId));
     }
-    
+
     @PutMapping("/{messageId}")
-    @Operation(summary = "Update a message")
-    public ResponseEntity<MessageResponse> updateMessage(
+    @Operation(summary = "Edit a message (within 15 minutes)")
+    public ResponseEntity<ApiResponse<MessageResponse>> updateMessage(
             @PathVariable String messageId,
             @RequestParam String content) {
         String userId = JwtUtils.getCurrentUserId();
-        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        return ResponseEntity.ok(messageService.updateMessage(messageId, content, userId));
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        try {
+            MessageResponse response = messageService.updateMessage(messageId, content, userId);
+            return ResponseEntity.ok(ApiResponse.success(response, "Chỉnh sửa tin nhắn thành công"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("EDIT_FAILED", e.getMessage()));
+        }
     }
-    
+
+    @PostMapping("/{messageId}/recall")
+    @Operation(summary = "Recall a message (within 60 minutes) - removes for everyone")
+    public ResponseEntity<ApiResponse<MessageResponse>> recallMessage(
+            @PathVariable String messageId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        try {
+            MessageResponse response = messageService.recallMessage(messageId, userId);
+            return ResponseEntity.ok(ApiResponse.success(response, "Thu hồi tin nhắn thành công"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("RECALL_FAILED", e.getMessage()));
+        }
+    }
+
     @DeleteMapping("/{messageId}")
-    @Operation(summary = "Delete a message")
+    @Operation(summary = "Delete a message (soft delete)")
     public ResponseEntity<Void> deleteMessage(
             @PathVariable String messageId) {
         String userId = JwtUtils.getCurrentUserId();
-        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         messageService.deleteMessage(messageId, userId);
         return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{messageId}/local")
+    @Operation(summary = "Delete a message locally (only for the requesting user)")
+    public ResponseEntity<ApiResponse<Void>> deleteMessageLocal(
+            @PathVariable String messageId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        messageService.deleteMessageLocal(messageId, userId);
+        return ResponseEntity.ok(ApiResponse.success(null, "Xóa tin nhắn thành công"));
     }
 
     @PostMapping("/{messageId}/react")
@@ -104,7 +138,8 @@ public class MessageController {
             @PathVariable String messageId,
             @Valid @RequestBody ReactMessageRequest request) {
         String userId = JwtUtils.getCurrentUserId();
-        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         messageService.addReaction(messageId, userId, request.getReactionType());
         return ResponseEntity.ok(ApiResponse.success(null, "Cập nhật cảm xúc thành công"));
     }
@@ -115,7 +150,8 @@ public class MessageController {
             @RequestParam String fileName,
             @RequestParam String fileType) {
         String userId = JwtUtils.getCurrentUserId();
-        if (userId == null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         String url = s3Service.generatePresignedUrl(fileName, fileType);
         return ResponseEntity.ok(ApiResponse.success(url, "Lấy URL upload thành công"));
     }

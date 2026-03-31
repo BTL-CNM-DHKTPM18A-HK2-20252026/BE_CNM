@@ -24,6 +24,7 @@ public class MessageResponse {
     private String replyToMessageId;
     private Boolean isEdited;
     private Boolean isDeleted;
+    private Boolean isRecalled;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
     private LocalDateTime createdAt;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")

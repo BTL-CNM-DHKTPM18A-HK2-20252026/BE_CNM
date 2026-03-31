@@ -25,6 +25,7 @@ import iuh.fit.repository.UserAuthRepository;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserSettingRepository;
 import iuh.fit.service.conversation.ConversationService;
+import iuh.fit.service.search.SearchService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -42,6 +43,7 @@ public class UserServiceImpl implements UserService {
     PasswordEncoder passwordEncoder;
     UserMapper userMapper;
     ConversationService conversationService;
+    SearchService searchService;
 
     @Override
     @Transactional
@@ -105,6 +107,9 @@ public class UserServiceImpl implements UserService {
 
         userDetailRepository.save(userDetail);
         log.info("UserDetail created for userId: {}", userId);
+
+        // Index user in Elasticsearch
+        searchService.indexUser(userDetail, userAuth.getPhoneNumber(), userAuth.getEmail());
 
         // Create UserSetting with default values
         UserSetting userSetting = UserSetting.builder()
@@ -318,6 +323,12 @@ public class UserServiceImpl implements UserService {
 
         userDetail.setLastUpdateProfile(LocalDateTime.now());
         userDetailRepository.save(userDetail);
+
+        // Re-index user in Elasticsearch after profile update
+        UserAuth auth = userAuthRepository.findById(userId).orElse(null);
+        searchService.indexUser(userDetail,
+                auth != null ? auth.getPhoneNumber() : "",
+                auth != null ? auth.getEmail() : "");
 
         return getUserMe(userId);
     }

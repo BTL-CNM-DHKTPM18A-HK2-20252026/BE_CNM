@@ -15,18 +15,24 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 public class MessageMapper {
-    
+
     private final UserDetailRepository userDetailRepository;
     private final MessageReactionRepository messageReactionRepository;
-    
+
     public MessageResponse toResponse(Message message) {
         if (message == null) {
             return null;
         }
-        
+
         UserDetail detail = userDetailRepository.findByUserId(message.getSenderId()).orElse(null);
-        
-        List<MessageReactionDto> reactionDtos = messageReactionRepository.findReactionsWithUserByMessageId(message.getMessageId());
+
+        List<MessageReactionDto> reactionDtos = messageReactionRepository
+                .findReactionsWithUserByMessageId(message.getMessageId());
+
+        // If recalled, hide the actual content
+        String displayContent = Boolean.TRUE.equals(message.getIsRecalled())
+                ? null
+                : message.getContent();
 
         return MessageResponse.builder()
                 .messageId(message.getMessageId())
@@ -34,11 +40,12 @@ public class MessageMapper {
                 .senderId(message.getSenderId())
                 .senderName(detail != null ? detail.getDisplayName() : "Unknown")
                 .senderAvatarUrl(detail != null ? detail.getAvatarUrl() : null)
-                .content(message.getContent())
+                .content(displayContent)
                 .messageType(message.getMessageType() != null ? message.getMessageType().toString() : null)
                 .replyToMessageId(message.getReplyToMessageId())
                 .isEdited(message.getIsEdited())
                 .isDeleted(message.getIsDeleted())
+                .isRecalled(message.getIsRecalled())
                 .createdAt(message.getCreatedAt())
                 .updatedAt(message.getUpdatedAt())
                 .linkTitle(message.getLinkTitle())

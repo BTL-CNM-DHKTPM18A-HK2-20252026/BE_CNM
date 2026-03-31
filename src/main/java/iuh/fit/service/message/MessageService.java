@@ -31,6 +31,7 @@ import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.dto.response.message.MessageAndConversationResponse;
 import iuh.fit.utils.LinkScraper;
 import iuh.fit.service.storage.StorageService;
+import iuh.fit.service.search.SearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -68,6 +69,7 @@ public class MessageService {
     private final StorageService storageService;
     private final FriendshipRepository friendshipRepository;
     private final UserSettingRepository userSettingRepository;
+    private final SearchService searchService;
 
     @Transactional
     public MessageAndConversationResponse sendMessage(String senderId, SendMessageRequest request) {
@@ -210,6 +212,11 @@ public class MessageService {
         message = messageRepository.save(message);
         log.info("Message sent: {} in conversation: {}", message.getMessageId(), convId);
 
+        // Index message in Elasticsearch
+        String senderDisplayName = userDetailRepository.findByUserId(senderId)
+                .map(UserDetail::getDisplayName).orElse("Unknown");
+        searchService.indexMessage(message, senderDisplayName);
+
         // Update conversation last message denormalized fields
         String snippet = message.getContent();
         if (message.getMessageType() == MessageType.IMAGE)
@@ -306,6 +313,10 @@ public class MessageService {
                 .collect(Collectors.toList());
     }
 
+    // ── Time limits (minutes) ──
+    private static final int EDIT_TIME_LIMIT_MINUTES = 15;
+    private static final int RECALL_TIME_LIMIT_MINUTES = 60;
+
     @Transactional
     public MessageResponse updateMessage(String messageId, String content, String userId) {
         Message message = messageRepository.findById(messageId)
@@ -315,14 +326,83 @@ public class MessageService {
             throw new RuntimeException("Not authorized to edit this message");
         }
 
+        if (Boolean.TRUE.equals(message.getIsRecalled())) {
+            throw new RuntimeException("Cannot edit a recalled message");
+        }
+
+        // Time limit check
+        if (message.getCreatedAt() != null
+                && message.getCreatedAt().plusMinutes(EDIT_TIME_LIMIT_MINUTES).isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Edit time limit exceeded (" + EDIT_TIME_LIMIT_MINUTES + " minutes)");
+        }
+
+        // Save edit history
+        Message.EditHistory history = Message.EditHistory.builder()
+                .previousContent(message.getContent())
+                .editedAt(LocalDateTime.now())
+                .build();
+        if (message.getEditHistory() == null) {
+            message.setEditHistory(new java.util.ArrayList<>());
+        }
+        message.getEditHistory().add(history);
+
         message.setContent(content);
         message.setIsEdited(true);
         message.setUpdatedAt(LocalDateTime.now());
 
         message = messageRepository.save(message);
-        log.info("Message updated: {}", messageId);
+        log.info("Message edited: {}", messageId);
 
-        return messageMapper.toResponse(message);
+        MessageResponse response = messageMapper.toResponse(message);
+
+        // Broadcast edit event via WebSocket
+        Map<String, Object> editEvent = new HashMap<>();
+        editEvent.put("type", "MESSAGE_EDIT");
+        editEvent.put("messageId", messageId);
+        editEvent.put("conversationId", message.getConversationId());
+        editEvent.put("content", content);
+        editEvent.put("isEdited", true);
+        editEvent.put("updatedAt", message.getUpdatedAt().toString());
+        messagingTemplate.convertAndSend("/topic/chat/" + message.getConversationId(), editEvent);
+
+        return response;
+    }
+
+    @Transactional
+    public MessageResponse recallMessage(String messageId, String userId) {
+        Message message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+
+        if (!message.getSenderId().equals(userId)) {
+            throw new RuntimeException("Not authorized to recall this message");
+        }
+
+        if (Boolean.TRUE.equals(message.getIsRecalled())) {
+            throw new RuntimeException("Message is already recalled");
+        }
+
+        // Time limit check
+        if (message.getCreatedAt() != null
+                && message.getCreatedAt().plusMinutes(RECALL_TIME_LIMIT_MINUTES).isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Recall time limit exceeded (" + RECALL_TIME_LIMIT_MINUTES + " minutes)");
+        }
+
+        message.setIsRecalled(true);
+        message.setUpdatedAt(LocalDateTime.now());
+        message = messageRepository.save(message);
+        log.info("Message recalled: {}", messageId);
+
+        MessageResponse response = messageMapper.toResponse(message);
+
+        // Broadcast recall event via WebSocket
+        Map<String, Object> recallEvent = new HashMap<>();
+        recallEvent.put("type", "MESSAGE_RECALL");
+        recallEvent.put("messageId", messageId);
+        recallEvent.put("conversationId", message.getConversationId());
+        recallEvent.put("senderId", userId);
+        messagingTemplate.convertAndSend("/topic/chat/" + message.getConversationId(), recallEvent);
+
+        return response;
     }
 
     @Transactional
@@ -337,6 +417,25 @@ public class MessageService {
         message.setIsDeleted(true);
         messageRepository.save(message);
         log.info("Message deleted: {}", messageId);
+    }
+
+    /**
+     * Delete message locally (only for the requesting user).
+     * The message remains visible to other participants.
+     */
+    @Transactional
+    public void deleteMessageLocal(String messageId, String userId) {
+        Message message = messageRepository.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+
+        if (message.getLocalDeletedBy() == null) {
+            message.setLocalDeletedBy(new java.util.ArrayList<>());
+        }
+        if (!message.getLocalDeletedBy().contains(userId)) {
+            message.getLocalDeletedBy().add(userId);
+        }
+        messageRepository.save(message);
+        log.info("Message locally deleted for user {}: {}", userId, messageId);
     }
 
     @Transactional

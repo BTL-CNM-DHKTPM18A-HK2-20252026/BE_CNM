@@ -1,6 +1,7 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
@@ -26,7 +27,7 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Message {
-    
+
     @Id
     @Builder.Default
     String messageId = UUID.randomUUID().toString();
@@ -41,11 +42,27 @@ public class Message {
     Boolean isDeleted;
     Boolean isRecalled; // User can recall/unsend message
     Boolean isEdited;
-    
+
+    // Edit history: stores previous content before each edit
+    List<EditHistory> editHistory;
+
+    // Local delete: list of userIds who deleted this message locally ("delete for
+    // me")
+    List<String> localDeletedBy;
+
     // Link Metadata
     String linkTitle;
     String linkThumbnail;
 
     // Voice Metadata
     Integer voiceDuration; // in seconds
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class EditHistory {
+        String previousContent;
+        LocalDateTime editedAt;
+    }
 }

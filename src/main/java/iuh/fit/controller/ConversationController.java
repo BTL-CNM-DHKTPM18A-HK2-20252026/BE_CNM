@@ -239,4 +239,54 @@ public class ConversationController {
         conversationService.declineMessageRequest(conversationId, userId);
         return ResponseEntity.ok(ApiResponse.success("Đã từ chối tin nhắn"));
     }
+
+    // ==================== NICKNAME MANAGEMENT ====================
+
+    @PatchMapping("/{conversationId}/nickname")
+    @Operation(summary = "Update nickname for the current user in a conversation")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> updateNickname(
+            @PathVariable String conversationId,
+            @RequestBody java.util.Map<String, String> body) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        String nickname = body.get("nickname");
+        String updated = conversationService.updateNickname(conversationId, userId, nickname);
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("conversationId", conversationId);
+        result.put("nickname", updated);
+        return ResponseEntity.ok(ApiResponse.success(result, "Cập nhật biệt danh thành công"));
+    }
+
+    // ==================== CONVERSATION TAG ====================
+
+    @PatchMapping("/{conversationId}/tag")
+    @Operation(summary = "Update conversation tag for the current user (customer, family, work, friends, reply_later, colleagues)")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> updateConversationTag(
+            @PathVariable String conversationId,
+            @RequestBody java.util.Map<String, String> body) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        String tag = body.get("tag");
+        String updated = conversationService.updateConversationTag(conversationId, userId, tag);
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("conversationId", conversationId);
+        result.put("tag", updated);
+        return ResponseEntity.ok(ApiResponse.success(result, "Cập nhật phân loại thành công"));
+    }
+
+    // ==================== READ STATUS ====================
+
+    @GetMapping("/{conversationId}/read-status")
+    @Operation(summary = "Get read status of all members in a conversation")
+    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> getReadStatus(
+            @PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.getReadStatus(conversationId, userId),
+                "Lấy trạng thái đã xem thành công"));
+    }
 }
