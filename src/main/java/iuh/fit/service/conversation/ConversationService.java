@@ -1,6 +1,7 @@
 package iuh.fit.service.conversation;
 
 import iuh.fit.dto.request.conversation.CreateConversationRequest;
+import iuh.fit.dto.request.conversation.UpdateConversationRequest;
 import iuh.fit.dto.response.conversation.ConversationResponse;
 import iuh.fit.entity.ConversationMember;
 import iuh.fit.entity.Conversations;
@@ -12,7 +13,9 @@ import iuh.fit.enums.FriendshipStatus;
 import iuh.fit.enums.MemberRole;
 import iuh.fit.enums.MessageType;
 import iuh.fit.exception.ErrorCode;
+import iuh.fit.exception.ForbiddenException;
 import iuh.fit.exception.InvalidInputException;
+import iuh.fit.exception.ResourceNotFoundException;
 import iuh.fit.mapper.ConversationMapper;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.ConversationRepository;
@@ -166,6 +169,59 @@ public class ConversationService {
             messagingTemplate.convertAndSend(
                     "/topic/group-events/" + memberId, response);
         }
+
+        return response;
+    }
+
+    /**
+     * Cập nhật thông tin nhóm (tên, avatar, mô tả). Chỉ ADMIN hoặc DEPUTY mới có
+     * quyền.
+     */
+    @Transactional
+    public ConversationResponse updateGroupInfo(String conversationId, String userId,
+            UpdateConversationRequest request) {
+        Conversations conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CONVERSATION_NOT_FOUND));
+
+        if (conv.getConversationType() != ConversationType.GROUP) {
+            throw new InvalidInputException(ErrorCode.INVALID_INPUT, "Chỉ có thể cập nhật thông tin nhóm chat");
+        }
+
+        ConversationMember requester = conversationMemberRepository
+                .findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
+
+        if (requester.getRole() != MemberRole.ADMIN && requester.getRole() != MemberRole.DEPUTY) {
+            throw new ForbiddenException(ErrorCode.FORBIDDEN,
+                    "Chỉ Admin hoặc Phó nhóm mới có quyền cập nhật thông tin nhóm");
+        }
+
+        if (request.getConversationName() != null) {
+            conv.setConversationName(request.getConversationName());
+        }
+        if (request.getConversationAvatarUrl() != null) {
+            conv.setAvatarUrl(request.getConversationAvatarUrl());
+        }
+        if (request.getGroupDescription() != null) {
+            conv.setGroupDescription(request.getGroupDescription());
+        }
+
+        conv.setUpdatedAt(LocalDateTime.now());
+        conv = conversationRepository.save(conv);
+
+        List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
+        enrichWithLastMessage(conv);
+        ConversationResponse response = conversationMapper.toResponse(conv, allMembers);
+
+        // Notify all members about group info update
+        for (ConversationMember member : allMembers) {
+            messagingTemplate.convertAndSend(
+                    "/topic/group-events/" + member.getUserId(), response);
+        }
+
+        log.info("Updated group info for conversation {}: name={}, avatar={}, description={}",
+                conversationId, request.getConversationName(), request.getConversationAvatarUrl(),
+                request.getGroupDescription());
 
         return response;
     }
@@ -685,6 +741,54 @@ public class ConversationService {
         messagingTemplate.convertAndSend("/topic/chat/" + conversationId, payload);
     }
 
+    // ==================== DISSOLVE GROUP ====================
+
+    /**
+     * Dissolve (disband) a group conversation. Admin only.
+     * Giải tán nhóm — chỉ Admin mới có quyền. Xóa tất cả thành viên và đánh dấu
+     * nhóm đã xóa.
+     */
+    @Transactional
+    public void dissolveGroup(String conversationId, String requesterId) {
+        Conversations conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CONVERSATION_NOT_FOUND));
+
+        if (conv.getConversationType() != ConversationType.GROUP) {
+            throw new InvalidInputException(ErrorCode.NOT_GROUP_CONVERSATION);
+        }
+
+        ConversationMember requester = conversationMemberRepository
+                .findByConversationIdAndUserId(conversationId, requesterId)
+                .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
+
+        if (requester.getRole() != MemberRole.ADMIN) {
+            throw new ForbiddenException(ErrorCode.NOT_GROUP_ADMIN);
+        }
+
+        // Broadcast system message before dissolving
+        broadcastSystemMessage(conversationId, "Nhóm đã bị giải tán bởi Trưởng nhóm");
+
+        // Notify all members via group-events
+        List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
+        for (ConversationMember m : allMembers) {
+            HashMap<String, Object> event = new HashMap<>();
+            event.put("type", "DISSOLVED");
+            event.put("conversationId", conversationId);
+            event.put("conversationName", conv.getConversationName());
+            messagingTemplate.convertAndSend("/topic/group-events/" + m.getUserId(), event);
+        }
+
+        // Delete all members
+        conversationMemberRepository.deleteAll(allMembers);
+
+        // Mark conversation as deleted
+        conv.setIsDeleted(true);
+        conv.setUpdatedAt(LocalDateTime.now());
+        conversationRepository.save(conv);
+
+        log.info("Group {} dissolved by admin {}", conversationId, requesterId);
+    }
+
     // ==================== MESSAGE REQUEST (STRANGER) MANAGEMENT
     // ====================
 
@@ -809,5 +913,174 @@ public class ConversationService {
         conversationRepository.save(conv);
 
         log.info("Message request declined in conversation {} by user {}", conversationId, currentUserId);
+    }
+
+    // ==================== MUTE CONVERSATION ====================
+
+    @Transactional
+    public java.util.Map<String, Object> muteConversation(String conversationId, String userId, String duration) {
+        ConversationMember member = conversationMemberRepository
+                .findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
+
+        LocalDateTime mutedUntil;
+        switch (duration) {
+            case "1h":
+                mutedUntil = LocalDateTime.now().plusHours(1);
+                break;
+            case "4h":
+                mutedUntil = LocalDateTime.now().plusHours(4);
+                break;
+            case "until_8am":
+                LocalDateTime now = LocalDateTime.now();
+                LocalDateTime next8am = now.toLocalDate().atTime(8, 0);
+                if (now.isAfter(next8am)) {
+                    next8am = next8am.plusDays(1);
+                }
+                mutedUntil = next8am;
+                break;
+            case "forever":
+                mutedUntil = LocalDateTime.of(9999, 12, 31, 23, 59, 59);
+                break;
+            case "off":
+                mutedUntil = null;
+                break;
+            default:
+                throw new InvalidInputException(ErrorCode.INVALID_MUTE_DURATION);
+        }
+
+        member.setMutedUntil(mutedUntil);
+        conversationMemberRepository.save(member);
+
+        log.info("User {} {} conversation {}", userId, mutedUntil != null ? "muted" : "unmuted", conversationId);
+
+        HashMap<String, Object> event = new HashMap<>();
+        event.put("type", "MUTED");
+        event.put("conversationId", conversationId);
+        event.put("mutedUntil", mutedUntil != null ? mutedUntil.toString() : null);
+        messagingTemplate.convertAndSend("/topic/conversation-events/" + userId, event);
+
+        return event;
+    }
+
+    // ==================== MARK AS UNREAD ====================
+
+    @Transactional
+    public java.util.Map<String, Object> toggleMarkUnread(String conversationId, String userId) {
+        ConversationMember member = conversationMemberRepository
+                .findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
+
+        boolean newMarked = !Boolean.TRUE.equals(member.getIsMarkedUnread());
+        member.setIsMarkedUnread(newMarked);
+        conversationMemberRepository.save(member);
+
+        log.info("User {} {} conversation {} as unread", userId, newMarked ? "marked" : "unmarked", conversationId);
+
+        HashMap<String, Object> event = new HashMap<>();
+        event.put("type", "MARK_UNREAD");
+        event.put("conversationId", conversationId);
+        event.put("isMarkedUnread", newMarked);
+        messagingTemplate.convertAndSend("/topic/conversation-events/" + userId, event);
+
+        return event;
+    }
+
+    // ==================== AUTO-DELETE MESSAGES ====================
+
+    @Transactional
+    public java.util.Map<String, Object> updateAutoDeleteDuration(String conversationId, String userId,
+            String duration) {
+        ConversationMember member = conversationMemberRepository
+                .findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
+
+        if (!List.of("off", "1d", "7d", "30d").contains(duration)) {
+            throw new InvalidInputException(ErrorCode.INVALID_AUTO_DELETE_DURATION);
+        }
+
+        Conversations conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CONVERSATION_NOT_FOUND));
+
+        // For group conversations, only ADMIN/DEPUTY can change auto-delete
+        if (conv.getConversationType() == ConversationType.GROUP) {
+            if (member.getRole() != MemberRole.ADMIN && member.getRole() != MemberRole.DEPUTY) {
+                throw new ForbiddenException(ErrorCode.NOT_GROUP_ADMIN);
+            }
+        }
+
+        String oldDuration = conv.getAutoDeleteDuration();
+        conv.setAutoDeleteDuration("off".equals(duration) ? null : duration);
+        conv.setUpdatedAt(LocalDateTime.now());
+        conversationRepository.save(conv);
+
+        log.info("User {} set auto-delete to {} for conversation {}", userId, duration, conversationId);
+
+        // Broadcast system message about the change
+        iuh.fit.entity.UserDetail userDetail = userDetailRepository.findByUserId(userId).orElse(null);
+        String displayName = userDetail != null ? userDetail.getDisplayName() : "Ai đó";
+        if ("off".equals(duration)) {
+            broadcastSystemMessage(conversationId, displayName + " đã tắt tin nhắn tự xóa");
+        } else {
+            String label = duration.equals("1d") ? "1 ngày" : duration.equals("7d") ? "7 ngày" : "30 ngày";
+            broadcastSystemMessage(conversationId, displayName + " đã bật tin nhắn tự xóa sau " + label);
+        }
+
+        // Notify all members about auto-delete change
+        HashMap<String, Object> event = new HashMap<>();
+        event.put("type", "AUTO_DELETE_UPDATED");
+        event.put("conversationId", conversationId);
+        event.put("autoDeleteDuration", conv.getAutoDeleteDuration());
+        List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
+        for (ConversationMember m : allMembers) {
+            messagingTemplate.convertAndSend("/topic/conversation-events/" + m.getUserId(), event);
+        }
+
+        return event;
+    }
+
+    // ==================== HIDE / UNHIDE CONVERSATION ====================
+
+    /**
+     * Get all hidden conversations for a user.
+     */
+    @Transactional(readOnly = true)
+    public List<ConversationResponse> getHiddenConversations(String userId) {
+        List<ConversationMember> memberships = conversationMemberRepository.findByUserId(userId);
+        return memberships.stream()
+                .filter(m -> Boolean.TRUE.equals(m.getIsHidden()))
+                .map(m -> {
+                    Conversations conv = conversationRepository.findById(m.getConversationId()).orElse(null);
+                    if (conv == null || Boolean.TRUE.equals(conv.getIsDeleted()))
+                        return null;
+                    enrichWithLastMessage(conv);
+                    List<ConversationMember> members = conversationMemberRepository
+                            .findByConversationId(conv.getConversationId());
+                    return conversationMapper.toResponse(conv, members, userId);
+                })
+                .filter(resp -> resp != null)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Unhide a previously hidden conversation for a user.
+     */
+    @Transactional
+    public java.util.Map<String, Object> unhideConversation(String conversationId, String userId) {
+        ConversationMember member = conversationMemberRepository
+                .findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
+
+        member.setIsHidden(false);
+        conversationMemberRepository.save(member);
+
+        log.info("User {} unhid conversation {}", userId, conversationId);
+
+        HashMap<String, Object> event = new HashMap<>();
+        event.put("type", "CONVERSATION_UNHIDDEN");
+        event.put("conversationId", conversationId);
+        messagingTemplate.convertAndSend("/topic/conversation-events/" + userId, event);
+
+        return event;
     }
 }

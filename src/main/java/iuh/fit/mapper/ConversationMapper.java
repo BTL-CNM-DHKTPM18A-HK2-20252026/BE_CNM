@@ -44,11 +44,18 @@ public class ConversationMapper {
                 }
 
                 String conversationTag = null;
+                LocalDateTime mutedUntil = null;
+                Boolean isMarkedUnread = null;
                 if (currentUserId != null) {
-                        Optional<ConversationMember> tagMember = members.stream()
+                        Optional<ConversationMember> currentMemberForExtras = members.stream()
                                         .filter(m -> m.getUserId().equals(currentUserId))
                                         .findFirst();
-                        conversationTag = tagMember.map(ConversationMember::getConversationTag).orElse(null);
+                        conversationTag = currentMemberForExtras.map(ConversationMember::getConversationTag)
+                                        .orElse(null);
+                        mutedUntil = currentMemberForExtras.map(ConversationMember::getMutedUntil).orElse(null);
+                        isMarkedUnread = currentMemberForExtras
+                                        .map(m -> Boolean.TRUE.equals(m.getIsMarkedUnread()))
+                                        .orElse(false);
                 }
 
                 return ConversationResponse.builder()
@@ -68,6 +75,10 @@ public class ConversationMapper {
                                                 ? conversation.getConversationStatus().name()
                                                 : "NORMAL")
                                 .conversationTag(conversationTag)
+                                .groupDescription(conversation.getGroupDescription())
+                                .mutedUntil(mutedUntil)
+                                .isMarkedUnread(isMarkedUnread)
+                                .autoDeleteDuration(conversation.getAutoDeleteDuration())
                                 .build();
         }
 

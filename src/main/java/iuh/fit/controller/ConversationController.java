@@ -3,6 +3,7 @@ package iuh.fit.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.conversation.CreateConversationRequest;
+import iuh.fit.dto.request.conversation.UpdateConversationRequest;
 import iuh.fit.dto.response.conversation.ConversationResponse;
 import iuh.fit.response.ApiResponse;
 import iuh.fit.service.conversation.ConversationService;
@@ -76,6 +77,20 @@ public class ConversationController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         ConversationResponse response = conversationService.getOrCreateSelfConversation(userId);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy hội thoại Cloud thành công"));
+    }
+
+    // ==================== GROUP INFO UPDATE ====================
+
+    @PatchMapping("/{conversationId}")
+    @Operation(summary = "Update group conversation info (name, avatar, description). Admin/Deputy only.")
+    public ResponseEntity<ApiResponse<ConversationResponse>> updateGroupInfo(
+            @PathVariable String conversationId,
+            @Valid @RequestBody UpdateConversationRequest request) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        ConversationResponse response = conversationService.updateGroupInfo(conversationId, userId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật thông tin nhóm thành công"));
     }
 
     // ==================== GROUP MEMBER MANAGEMENT ====================
@@ -167,6 +182,16 @@ public class ConversationController {
     }
 
     // ==================== PIN & SOFT DELETE ====================
+
+    @DeleteMapping("/{conversationId}/dissolve")
+    @Operation(summary = "Dissolve (disband) a group conversation. Admin only. Removes all members.")
+    public ResponseEntity<ApiResponse<Void>> dissolveGroup(@PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        conversationService.dissolveGroup(conversationId, userId);
+        return ResponseEntity.ok(ApiResponse.success("Đã giải tán nhóm"));
+    }
 
     @PostMapping("/{conversationId}/pin")
     @Operation(summary = "Toggle pin/unpin a conversation for the current user")
@@ -288,5 +313,76 @@ public class ConversationController {
         return ResponseEntity.ok(ApiResponse.success(
                 conversationService.getReadStatus(conversationId, userId),
                 "Lấy trạng thái đã xem thành công"));
+    }
+
+    // ==================== MUTE CONVERSATION ====================
+
+    @PostMapping("/{conversationId}/mute")
+    @Operation(summary = "Mute/unmute a conversation for the current user")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> muteConversation(
+            @PathVariable String conversationId,
+            @RequestBody java.util.Map<String, String> body) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        String duration = body.get("duration"); // 1h, 4h, until_8am, forever, off
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.muteConversation(conversationId, userId, duration),
+                "Cập nhật tắt thông báo thành công"));
+    }
+
+    // ==================== MARK AS UNREAD ====================
+
+    @PostMapping("/{conversationId}/mark-unread")
+    @Operation(summary = "Toggle mark/unmark a conversation as unread for the current user")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> toggleMarkUnread(
+            @PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.toggleMarkUnread(conversationId, userId),
+                "Cập nhật đánh dấu chưa đọc thành công"));
+    }
+
+    // ==================== AUTO-DELETE MESSAGES ====================
+
+    @PatchMapping("/{conversationId}/auto-delete")
+    @Operation(summary = "Set auto-delete duration for messages in a conversation")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> updateAutoDeleteDuration(
+            @PathVariable String conversationId,
+            @RequestBody java.util.Map<String, String> body) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        String duration = body.get("duration"); // off, 1d, 7d, 30d
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.updateAutoDeleteDuration(conversationId, userId, duration),
+                "Cập nhật tin nhắn tự xóa thành công"));
+    }
+
+    // ==================== HIDE / UNHIDE CONVERSATION ====================
+
+    @GetMapping("/hidden")
+    @Operation(summary = "Get all hidden conversations for the current user")
+    public ResponseEntity<ApiResponse<List<ConversationResponse>>> getHiddenConversations() {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.getHiddenConversations(userId),
+                "Lấy danh sách hội thoại đã ẩn thành công"));
+    }
+
+    @PostMapping("/{conversationId}/unhide")
+    @Operation(summary = "Unhide a previously hidden conversation for the current user")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> unhideConversation(
+            @PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.unhideConversation(conversationId, userId),
+                "Đã hiện lại hội thoại"));
     }
 }

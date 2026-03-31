@@ -26,6 +26,10 @@ public class ConversationResponse {
     private LocalDateTime createdAt;
     private String conversationStatus; // NORMAL, PENDING, BLOCKED
     private String conversationTag; // Per-user tag: customer, family, work, friends, reply_later, colleagues
+    private String groupDescription;
+    private LocalDateTime mutedUntil; // Null = not muted
+    private Boolean isMarkedUnread; // Per-user mark as unread
+    private String autoDeleteDuration; // off, 1d, 7d, 30d
 
     @Data
     @AllArgsConstructor

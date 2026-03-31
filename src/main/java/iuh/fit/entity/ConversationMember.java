@@ -48,4 +48,9 @@ public class ConversationMember {
     Boolean isHidden = false; // Per-user soft delete (hide conversation)
 
     String conversationTag; // Per-user tag: customer, family, work, friends, reply_later, colleagues
+
+    LocalDateTime mutedUntil; // Null = not muted, future date = muted until, max = forever
+
+    @Builder.Default
+    Boolean isMarkedUnread = false; // Per-user mark as unread
 }

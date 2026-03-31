@@ -48,4 +48,5 @@ public class Conversations {
     String groupDescription; // Group description
     LocalDateTime updatedAt;
     Boolean isDeleted; // Soft-delete flag
+    String autoDeleteDuration; // off, 1d, 7d, 30d
 }
