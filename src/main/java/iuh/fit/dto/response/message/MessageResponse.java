@@ -32,5 +32,10 @@ public class MessageResponse {
     private String linkTitle;
     private String linkThumbnail;
     private Integer voiceDuration;
+    private Integer videoDuration;
+    private String fileName;
+    private Long fileSize;
+    private String forwardedFromMessageId;
+    private String forwardedFromSenderName;
     private List<MessageReactionDto> reactions;
 }

@@ -57,6 +57,15 @@ public class Message {
     // Voice Metadata
     Integer voiceDuration; // in seconds
 
+    // Video Metadata
+    Integer videoDuration; // in seconds
+    String fileName;
+    Long fileSize;
+
+    // Forward Metadata
+    String forwardedFromMessageId; // Original message that was forwarded
+    String forwardedFromSenderId; // Original sender of the forwarded message
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

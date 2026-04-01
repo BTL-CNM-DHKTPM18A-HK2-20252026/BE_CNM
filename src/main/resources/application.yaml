@@ -17,6 +17,14 @@ spring:
 
   elasticsearch:
     uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+    username: ${ELASTICSEARCH_USERNAME:elastic}
+    password: ${ELASTICSEARCH_PASSWORD:changeme}
+    connection-timeout: ${ELASTICSEARCH_CONNECTION_TIMEOUT:5s}
+    socket-timeout: ${ELASTICSEARCH_SOCKET_TIMEOUT:30s}
+    restclient:
+      sniffer:
+        delay-after-failure: ${ELASTICSEARCH_SNIFFER_DELAY:60s}
+        interval: ${ELASTICSEARCH_SNIFFER_INTERVAL:5m}
 
   # Multipart File Upload Configuration
   servlet:
@@ -62,3 +70,17 @@ springdoc:
 
 dotenv:
   enabled: true
+
+# Actuator & Prometheus Monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    tags:
+      application: fruvia_backend

@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -19,6 +20,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtGra
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Value("${jwt.signer-key}")
@@ -33,25 +35,29 @@ public class SecurityConfig {
                         // === PUBLIC ENDPOINTS ===
                         .requestMatchers("/auth/**").permitAll() // Login, logout, refresh
                         .requestMatchers(HttpMethod.POST, "/users").permitAll() // Register account
-                        // .requestMatchers(HttpMethod.GET, "/users/**").permitAll()// View user info (temporary for testing) - Now protected
+                        // .requestMatchers(HttpMethod.GET, "/users/**").permitAll()// View user info
+                        // (temporary for testing) - Now protected
 
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // CORS preflight
 
                         // === Swagger/OpenAPI endpoints ===
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/webjars/**").permitAll()
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/webjars/**")
+                        .permitAll()
 
                         // === File endpoints (Temporarily public for testing) ===
-                        .requestMatchers("/files/**").permitAll() // Upload & view files (TODO: Add auth for POST/DELETE)
+                        .requestMatchers("/files/**").permitAll() // Upload & view files (TODO: Add auth for
+                                                                  // POST/DELETE)
 
                         // === WebSocket endpoints ===
                         .requestMatchers("/ws", "/ws/**", "/ws-native", "/ws-native/**").permitAll()
 
+                        // === Actuator / Prometheus endpoints ===
+                        .requestMatchers("/actuator/**").permitAll()
+
                         // === ALL OTHER ENDPOINTS REQUIRE AUTHENTICATION ===
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
-                );
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
 
         return http.build();
     }

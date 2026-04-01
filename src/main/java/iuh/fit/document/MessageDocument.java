@@ -28,10 +28,10 @@ public class MessageDocument {
     @Field(type = FieldType.Keyword)
     private String senderId;
 
-    @Field(type = FieldType.Text)
+    @Field(type = FieldType.Text, analyzer = "vietnamese_analyzer")
     private String senderName;
 
-    @Field(type = FieldType.Text, analyzer = "standard")
+    @Field(type = FieldType.Text, analyzer = "vietnamese_analyzer")
     private String content;
 
     @Field(type = FieldType.Keyword)

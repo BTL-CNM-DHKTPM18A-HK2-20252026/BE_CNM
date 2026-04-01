@@ -34,6 +34,13 @@ public class MessageMapper {
                 ? null
                 : message.getContent();
 
+        // Resolve forward sender name
+        String forwardedFromSenderName = null;
+        if (message.getForwardedFromSenderId() != null) {
+            forwardedFromSenderName = userDetailRepository.findByUserId(message.getForwardedFromSenderId())
+                    .map(UserDetail::getDisplayName).orElse("Unknown");
+        }
+
         return MessageResponse.builder()
                 .messageId(message.getMessageId())
                 .conversationId(message.getConversationId())
@@ -51,6 +58,11 @@ public class MessageMapper {
                 .linkTitle(message.getLinkTitle())
                 .linkThumbnail(message.getLinkThumbnail())
                 .voiceDuration(message.getVoiceDuration())
+                .videoDuration(message.getVideoDuration())
+                .fileName(message.getFileName())
+                .fileSize(message.getFileSize())
+                .forwardedFromMessageId(message.getForwardedFromMessageId())
+                .forwardedFromSenderName(forwardedFromSenderName)
                 .reactions(reactionDtos)
                 .build();
     }

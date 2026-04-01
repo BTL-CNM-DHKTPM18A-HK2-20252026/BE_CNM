@@ -184,6 +184,17 @@ public class MessageService {
         }
         // ─────────────────────────────────────────────────────────────────────────
 
+        // Handle forward metadata
+        String forwardedFromMessageId = null;
+        String forwardedFromSenderId = null;
+        if (request.getForwardedFromMessageId() != null && !request.getForwardedFromMessageId().isEmpty()) {
+            Message originalMsg = messageRepository.findById(request.getForwardedFromMessageId()).orElse(null);
+            if (originalMsg != null) {
+                forwardedFromMessageId = originalMsg.getMessageId();
+                forwardedFromSenderId = originalMsg.getSenderId();
+            }
+        }
+
         Message message = Message.builder()
                 .messageId(UUID.randomUUID().toString())
                 .conversationId(convId)
@@ -196,6 +207,11 @@ public class MessageService {
                 .createdAt(now)
                 .updatedAt(now)
                 .voiceDuration(request.getVoiceDuration())
+                .videoDuration(type == MessageType.VIDEO ? request.getVideoDuration() : null)
+                .fileName(request.getFileName())
+                .fileSize(request.getFileSize())
+                .forwardedFromMessageId(forwardedFromMessageId)
+                .forwardedFromSenderId(forwardedFromSenderId)
                 .build();
 
         // If it's a LINK, scrape metadata
@@ -234,6 +250,20 @@ public class MessageService {
 
         MessageResponse msgResponse = messageMapper.toResponse(message);
         List<ConversationMember> members = conversationMemberRepository.findByConversationId(convId);
+
+        // Auto-unhide conversation for members who hid it (new message should make it
+        // visible)
+        for (ConversationMember member : members) {
+            if (Boolean.TRUE.equals(member.getIsHidden())) {
+                member.setIsHidden(false);
+                conversationMemberRepository.save(member);
+                Map<String, Object> unhideEvent = new HashMap<>();
+                unhideEvent.put("type", "CONVERSATION_UNHIDDEN");
+                unhideEvent.put("conversationId", convId);
+                messagingTemplate.convertAndSend("/topic/conversation-events/" + member.getUserId(), unhideEvent);
+            }
+        }
+
         ConversationResponse convResponse = conversationMapper.toResponse(conv, members);
 
         MessageAndConversationResponse finalResponse = MessageAndConversationResponse.builder()
@@ -245,10 +275,12 @@ public class MessageService {
         messagingTemplate.convertAndSend("/topic/chat/" + convId, finalResponse);
 
         // Notify all members — for PENDING conversations send masked notification to
-        // receiver
+        // receiver. Include mute status so client can suppress sound/toast.
         boolean isPendingConv = conv.getConversationStatus() == ConversationStatus.PENDING;
         for (ConversationMember member : members) {
             if (!member.getUserId().equals(senderId)) {
+                boolean isMuted = member.getMutedUntil() != null
+                        && member.getMutedUntil().isAfter(LocalDateTime.now());
                 if (isPendingConv) {
                     // Privacy: don't reveal message content, only notify about pending request
                     java.util.Map<String, Object> maskedNotification = new java.util.HashMap<>();
@@ -256,10 +288,15 @@ public class MessageService {
                     maskedNotification.put("conversationId", convId);
                     maskedNotification.put("senderName", message.getSenderId()); // resolved on FE
                     maskedNotification.put("text", "Bạn có một tin nhắn chờ mới");
+                    maskedNotification.put("muted", isMuted);
                     messagingTemplate.convertAndSendToUser(member.getUserId(), "/queue/notifications",
                             maskedNotification);
                 } else {
-                    messagingTemplate.convertAndSendToUser(member.getUserId(), "/queue/notifications", finalResponse);
+                    java.util.Map<String, Object> notification = new java.util.HashMap<>();
+                    notification.put("message", msgResponse);
+                    notification.put("conversation", convResponse);
+                    notification.put("muted", isMuted);
+                    messagingTemplate.convertAndSendToUser(member.getUserId(), "/queue/notifications", notification);
                 }
             }
         }
