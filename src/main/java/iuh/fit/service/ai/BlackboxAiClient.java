@@ -32,7 +32,7 @@ public class BlackboxAiClient {
     @Value("${BLACKBOX_API_KEY:}")
     private String apiKey;
 
-    @Value("${BLACKBOX_MODEL:blackboxai/openai/gpt-4.1-mini}")
+    @Value("${BLACKBOX_MODEL:blackboxai/google/gemini-2.5-flash}")
     private String defaultModel;
 
     @Value("${ai.timeout-ms:30000}")

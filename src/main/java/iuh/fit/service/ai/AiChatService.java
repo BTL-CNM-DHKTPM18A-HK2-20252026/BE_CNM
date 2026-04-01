@@ -61,6 +61,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -70,6 +72,8 @@ public class AiChatService {
 
     private static final String AI_SENDER_ID = "FRUVIA_AI_ASSISTANT";
     private static final String AI_CONVERSATION_NAME = "Fruvia AI";
+    private static final Pattern DIRECT_IMAGE_COMMAND_PATTERN = Pattern
+            .compile("^\\s*[/／⁄∕](image|image_pro|sketch|wallpaper)\\b(.*)$", Pattern.CASE_INSENSITIVE);
 
     private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
@@ -98,7 +102,7 @@ public class AiChatService {
     @Value("${ai.max-retries:2}")
     private int maxRetries;
 
-    @Value("${BLACKBOX_MODEL:blackboxai/openai/gpt-4.1-mini}")
+    @Value("${BLACKBOX_MODEL:blackboxai/google/gemini-2.5-flash}")
     private String defaultModel;
 
     @Transactional
@@ -122,134 +126,157 @@ public class AiChatService {
                 .orElse("Unknown");
         searchService.indexMessage(userMessage, senderName);
 
-        QuickCommand imageCommand = parseImageGenerationCommand(request.getContent());
-        if (imageCommand != null) {
-            return handleImageGenerationRequest(userId, request, conversation, userMessage, imageCommand);
-        }
+        broadcastAiTyping(conversation.getConversationId(), true);
+        try {
+            QuickCommand imageCommand = parseImageGenerationCommand(request.getContent());
+            if (imageCommand != null) {
+                return handleImageGenerationRequest(userId, request, conversation, userMessage, imageCommand);
+            }
 
-        List<Message> recentMessages = messageRepository
-                .findByConversationIdOrderByCreatedAtDesc(conversation.getConversationId(), PageRequest.of(0, 30))
-                .getContent();
+            List<Message> recentMessages = messageRepository
+                    .findByConversationIdOrderByCreatedAtDesc(conversation.getConversationId(), PageRequest.of(0, 30))
+                    .getContent();
 
-        List<Message> slidingWindow = buildSlidingWindow(recentMessages);
-        String summary = updateSummaryIfNeeded(conversation, recentMessages, slidingWindow);
-        List<String> ragContexts = getRagContexts(conversation.getConversationId(), request);
-        boolean fullAccessGranted = Boolean.TRUE.equals(request.getFullAccessGranted());
-        String fullAccessContext = fullAccessGranted
-                ? buildFullAccessContext(userId, conversation.getConversationId(), request.getLanguage())
-                : null;
-        String userProfileContext = fullAccessGranted ? null : buildUserProfileContext(userId, request.getLanguage());
-        String storageContext = fullAccessGranted
-                ? null
-                : buildStorageContextIfRequested(userId, request.getContent(), request.getLanguage());
-        List<Map<String, String>> promptMessages = buildPrompt(summary, ragContexts, slidingWindow,
-                request.getLanguage(), request.getThemeType(), userProfileContext, storageContext, fullAccessContext);
+            List<Message> slidingWindow = buildSlidingWindow(recentMessages);
+            String summary = updateSummaryIfNeeded(conversation, recentMessages, slidingWindow);
+            List<String> ragContexts = getRagContexts(conversation.getConversationId(), request);
+            boolean fullAccessGranted = Boolean.TRUE.equals(request.getFullAccessGranted());
+            String fullAccessContext = fullAccessGranted
+                    ? buildFullAccessContext(userId, conversation.getConversationId(), request.getLanguage())
+                    : null;
+            String userProfileContext = fullAccessGranted ? null
+                    : buildUserProfileContext(userId, request.getLanguage());
+            String storageContext = fullAccessGranted
+                    ? null
+                    : buildStorageContextIfRequested(userId, request.getContent(), request.getLanguage());
+            List<Map<String, String>> promptMessages = buildPrompt(summary, ragContexts, slidingWindow,
+                    request.getLanguage(), request.getThemeType(), userProfileContext, storageContext,
+                    fullAccessContext);
 
-        AiCompletionResult completion = null;
-        boolean fallbackUsed = false;
-        String providerStatus = "COMPLETED";
-        String errorCode = null;
-        String errorMessage = null;
+            AiCompletionResult completion = null;
+            boolean fallbackUsed = false;
+            String providerStatus = "COMPLETED";
+            String errorCode = null;
+            String errorMessage = null;
 
-        long startedAt = System.currentTimeMillis();
-        for (int attempt = 1; attempt <= Math.max(1, maxRetries + 1); attempt++) {
-            try {
-                completion = blackboxAiClient.complete(promptMessages, defaultModel);
-                break;
-            } catch (Exception ex) {
-                boolean timeout = blackboxAiClient.isTimeout(ex);
-                boolean canRetry = attempt <= maxRetries;
-                log.warn("AI call failed attempt {}/{}: {}", attempt, maxRetries + 1, ex.getMessage());
-                if (!canRetry) {
-                    fallbackUsed = true;
-                    providerStatus = timeout ? "TIMEOUT" : "FAILED";
-                    errorCode = timeout ? "AI_TIMEOUT" : "AI_PROVIDER_ERROR";
-                    errorMessage = ex.getMessage();
+            long startedAt = System.currentTimeMillis();
+            for (int attempt = 1; attempt <= Math.max(1, maxRetries + 1); attempt++) {
+                try {
+                    completion = blackboxAiClient.complete(promptMessages, defaultModel);
+                    break;
+                } catch (Exception ex) {
+                    boolean timeout = blackboxAiClient.isTimeout(ex);
+                    boolean canRetry = attempt <= maxRetries;
+                    log.warn("AI call failed attempt {}/{}: {}", attempt, maxRetries + 1, ex.getMessage());
+                    if (!canRetry) {
+                        fallbackUsed = true;
+                        providerStatus = timeout ? "TIMEOUT" : "FAILED";
+                        errorCode = timeout ? "AI_TIMEOUT" : "AI_PROVIDER_ERROR";
+                        errorMessage = ex.getMessage();
+                    }
                 }
             }
+
+            long latency = System.currentTimeMillis() - startedAt;
+
+            String assistantContent;
+            AiMessageStatus aiStatus;
+            int promptTokens;
+            int completionTokens;
+            int totalTokens;
+            String requestId;
+
+            if (completion != null) {
+                assistantContent = completion.getContent();
+                aiStatus = AiMessageStatus.COMPLETED;
+                promptTokens = completion.getPromptTokens() > 0 ? completion.getPromptTokens()
+                        : estimatePromptTokenCount(promptMessages);
+                completionTokens = completion.getCompletionTokens() > 0 ? completion.getCompletionTokens()
+                        : estimateTokenCount(completion.getContent());
+                totalTokens = completion.getTotalTokens() > 0 ? completion.getTotalTokens()
+                        : promptTokens + completionTokens;
+                requestId = completion.getProviderRequestId();
+            } else {
+                assistantContent = "Xin lỗi, AI đang bận hoặc quá thời gian phản hồi. Bạn thử lại sau vài giây nhé.";
+                aiStatus = "TIMEOUT".equals(providerStatus) ? AiMessageStatus.TIMEOUT : AiMessageStatus.FAILED;
+                promptTokens = estimatePromptTokenCount(promptMessages);
+                completionTokens = estimateTokenCount(assistantContent);
+                totalTokens = promptTokens + completionTokens;
+                requestId = UUID.randomUUID().toString();
+            }
+
+            Message assistantMessage = Message.builder()
+                    .messageId(UUID.randomUUID().toString())
+                    .conversationId(conversation.getConversationId())
+                    .senderId(AI_SENDER_ID)
+                    .role(AiRole.ASSISTANT)
+                    .messageType(MessageType.TEXT)
+                    .content(assistantContent)
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .isDeleted(false)
+                    .isRecalled(false)
+                    .isEdited(false)
+                    .aiGenerated(true)
+                    .aiModel(defaultModel)
+                    .aiStatus(aiStatus)
+                    .promptTokens(promptTokens)
+                    .completionTokens(completionTokens)
+                    .totalTokens(totalTokens)
+                    .aiRequestId(requestId)
+                    .aiLatencyMs(latency)
+                    .aiErrorCode(errorCode)
+                    .aiErrorMessage(errorMessage)
+                    .build();
+
+            assistantMessage = messageRepository.save(assistantMessage);
+            if (completion != null) {
+                searchService.indexMessage(assistantMessage, "Fruvia AI");
+            }
+
+            updateConversationLastMessage(conversation, assistantMessage);
+
+            List<ConversationMember> members = conversationMemberRepository
+                    .findByConversationId(conversation.getConversationId());
+            ConversationResponse conversationResponse = conversationMapper.toResponse(conversation, members, userId);
+
+            MessageResponse userMessageResponse = messageMapper.toResponse(userMessage);
+            MessageResponse assistantMessageResponse = messageMapper.toResponse(assistantMessage);
+
+            messagingTemplate.convertAndSend(
+                    "/topic/chat/" + conversation.getConversationId(),
+                    MessageAndConversationResponse.builder()
+                            .message(assistantMessageResponse)
+                            .conversation(conversationResponse)
+                            .build());
+
+            return AiChatResponse.builder()
+                    .userMessage(userMessageResponse)
+                    .imageMessage(null)
+                    .assistantMessage(assistantMessageResponse)
+                    .conversation(conversationResponse)
+                    .fallbackUsed(fallbackUsed)
+                    .providerStatus(providerStatus)
+                    .build();
+        } finally {
+            broadcastAiTyping(conversation.getConversationId(), false);
+        }
+    }
+
+    private void broadcastAiTyping(String conversationId, boolean typing) {
+        if (!StringUtils.hasText(conversationId)) {
+            return;
         }
 
-        long latency = System.currentTimeMillis() - startedAt;
-
-        String assistantContent;
-        AiMessageStatus aiStatus;
-        int promptTokens;
-        int completionTokens;
-        int totalTokens;
-        String requestId;
-
-        if (completion != null) {
-            assistantContent = completion.getContent();
-            aiStatus = AiMessageStatus.COMPLETED;
-            promptTokens = completion.getPromptTokens() > 0 ? completion.getPromptTokens()
-                    : estimatePromptTokenCount(promptMessages);
-            completionTokens = completion.getCompletionTokens() > 0 ? completion.getCompletionTokens()
-                    : estimateTokenCount(completion.getContent());
-            totalTokens = completion.getTotalTokens() > 0 ? completion.getTotalTokens()
-                    : promptTokens + completionTokens;
-            requestId = completion.getProviderRequestId();
-        } else {
-            assistantContent = "Xin lỗi, AI đang bận hoặc quá thời gian phản hồi. Bạn thử lại sau vài giây nhé.";
-            aiStatus = "TIMEOUT".equals(providerStatus) ? AiMessageStatus.TIMEOUT : AiMessageStatus.FAILED;
-            promptTokens = estimatePromptTokenCount(promptMessages);
-            completionTokens = estimateTokenCount(assistantContent);
-            totalTokens = promptTokens + completionTokens;
-            requestId = UUID.randomUUID().toString();
-        }
-
-        Message assistantMessage = Message.builder()
-                .messageId(UUID.randomUUID().toString())
-                .conversationId(conversation.getConversationId())
-                .senderId(AI_SENDER_ID)
-                .role(AiRole.ASSISTANT)
-                .messageType(MessageType.TEXT)
-                .content(assistantContent)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                .isDeleted(false)
-                .isRecalled(false)
-                .isEdited(false)
-                .aiGenerated(true)
-                .aiModel(defaultModel)
-                .aiStatus(aiStatus)
-                .promptTokens(promptTokens)
-                .completionTokens(completionTokens)
-                .totalTokens(totalTokens)
-                .aiRequestId(requestId)
-                .aiLatencyMs(latency)
-                .aiErrorCode(errorCode)
-                .aiErrorMessage(errorMessage)
-                .build();
-
-        assistantMessage = messageRepository.save(assistantMessage);
-        if (completion != null) {
-            searchService.indexMessage(assistantMessage, "Fruvia AI");
-        }
-
-        updateConversationLastMessage(conversation, assistantMessage);
-
-        List<ConversationMember> members = conversationMemberRepository
-                .findByConversationId(conversation.getConversationId());
-        ConversationResponse conversationResponse = conversationMapper.toResponse(conversation, members, userId);
-
-        MessageResponse userMessageResponse = messageMapper.toResponse(userMessage);
-        MessageResponse assistantMessageResponse = messageMapper.toResponse(assistantMessage);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("userId", AI_SENDER_ID);
+        payload.put("displayName", AI_CONVERSATION_NAME);
+        payload.put("typing", typing);
+        payload.put("isAi", true);
 
         messagingTemplate.convertAndSend(
-                "/topic/chat/" + conversation.getConversationId(),
-                MessageAndConversationResponse.builder()
-                        .message(assistantMessageResponse)
-                        .conversation(conversationResponse)
-                        .build());
-
-        return AiChatResponse.builder()
-                .userMessage(userMessageResponse)
-                .imageMessage(null)
-                .assistantMessage(assistantMessageResponse)
-                .conversation(conversationResponse)
-                .fallbackUsed(fallbackUsed)
-                .providerStatus(providerStatus)
-                .build();
+                "/topic/chat/" + conversationId + "/typing",
+                payload);
     }
 
     private AiChatResponse handleImageGenerationRequest(
@@ -295,8 +322,8 @@ public class AiChatService {
             imageMessage = messageRepository.save(imageMessage);
 
             String confirmationText = "vi".equals(language)
-                    ? "Đã tạo xong ảnh theo mô tả của bạn. Đây là liên kết S3: " + result.imageUrl()
-                    : "Your image has been generated successfully. Here is your S3 link: " + result.imageUrl();
+                    ? "Mình đã tạo ảnh xong rồi, bạn xem ngay bên dưới nhé."
+                    : "Your image is ready. You can view it right below.";
 
             assistantMessage = Message.builder()
                     .messageId(UUID.randomUUID().toString())
@@ -358,15 +385,9 @@ public class AiChatService {
 
             providerStatus = "FAILED";
             fallbackUsed = true;
-            boolean providerMissing = ex.getMessage() != null
-                    && ex.getMessage().toLowerCase(Locale.ROOT).contains("not configured");
             String failedText = "vi".equals(language)
-                    ? (providerMissing
-                            ? "Chưa cấu hình dịch vụ tạo ảnh. Vui lòng cấu hình AI_IMAGE_PROVIDER_URL rồi thử lại."
-                            : "Mình chưa tạo được ảnh lúc này. Bạn thử lại sau ít phút nhé.")
-                    : (providerMissing
-                            ? "Image generation service is not configured yet. Please set AI_IMAGE_PROVIDER_URL and try again."
-                            : "I couldn't generate the image right now. Please try again in a moment.");
+                    ? "Mình chưa tạo được ảnh lúc này (dịch vụ đang tạm lỗi hoặc không truy cập được). Bạn thử lại sau ít phút nhé."
+                    : "I couldn't generate the image right now (service unavailable). Please try again in a moment.";
 
             assistantMessage = Message.builder()
                     .messageId(UUID.randomUUID().toString())
@@ -419,6 +440,9 @@ public class AiChatService {
 
     private QuickCommand parseImageGenerationCommand(String content) {
         QuickCommand command = parseQuickCommand(content);
+        if (command == null && StringUtils.hasText(content)) {
+            command = parseDirectImageCommand(content);
+        }
         if (command == null) {
             return null;
         }
@@ -657,7 +681,10 @@ public class AiChatService {
 
         for (Message message : windowMessages) {
             String role = resolveRole(message);
-            String content = message.getContent();
+            String content = sanitizeContentForPrompt(message.getContent());
+            if (!StringUtils.hasText(content)) {
+                continue;
+            }
             if ("user".equals(role)) {
                 content = normalizeAiShortcutCommand(content, language);
             }
@@ -684,7 +711,8 @@ public class AiChatService {
     private boolean isUsableForPrompt(Message message) {
         return !Boolean.TRUE.equals(message.getIsDeleted())
                 && !Boolean.TRUE.equals(message.getIsRecalled())
-                && StringUtils.hasText(message.getContent());
+                && StringUtils.hasText(message.getContent())
+                && (message.getMessageType() == null || MessageType.TEXT.equals(message.getMessageType()));
     }
 
     private int estimatePromptTokenCount(List<Map<String, String>> promptMessages) {
@@ -799,7 +827,7 @@ public class AiChatService {
             return null;
         }
 
-        String content = stripZeroWidthChars(rawContent).trim();
+        String content = normalizeWhitespace(normalizeLeadingSlash(stripZeroWidthChars(rawContent))).trim();
         if (!StringUtils.hasText(content)) {
             return null;
         }
@@ -821,11 +849,6 @@ public class AiChatService {
                 case "/wallpaper" -> new QuickCommand("image.wallpaper", argument);
                 default -> null;
             };
-        }
-
-        if (content.startsWith("／")) {
-            String patched = "/" + content.substring(1);
-            return parseQuickCommand(patched);
         }
 
         String normalized = normalizeForMatch(content);
@@ -853,11 +876,14 @@ public class AiChatService {
             return new QuickCommand("branch.delete", extractArgument(content, 2));
         }
 
-        if (normalized.startsWith("tao anh:") || normalized.startsWith("generate image:")) {
+        if (normalized.startsWith("tao anh:") || normalized.startsWith("tao hinh anh:")
+                || normalized.startsWith("generate image:")
+                || normalized.startsWith("create image:")) {
             return new QuickCommand("image.generate", extractAfterColon(content));
         }
 
-        if (normalized.startsWith("tao anh 4k:") || normalized.startsWith("image pro:")) {
+        if (normalized.startsWith("tao anh 4k:") || normalized.startsWith("tao hinh anh 4k:")
+                || normalized.startsWith("image pro:")) {
             return new QuickCommand("image.pro", extractAfterColon(content));
         }
 
@@ -869,7 +895,52 @@ public class AiChatService {
             return new QuickCommand("image.wallpaper", extractAfterColon(content));
         }
 
+        if (normalized.startsWith("tao anh ") || normalized.startsWith("tao hinh anh ")
+                || normalized.startsWith("generate image ")
+                || normalized.startsWith("create image ")) {
+            return new QuickCommand("image.generate",
+                    normalized.startsWith("tao hinh anh ") ? extractArgument(content, 3) : extractArgument(content, 2));
+        }
+
+        if (normalized.startsWith("tao anh 4k ") || normalized.startsWith("tao hinh anh 4k ")
+                || normalized.startsWith("image pro ")) {
+            return new QuickCommand("image.pro",
+                    (normalized.startsWith("tao anh 4k ") || normalized.startsWith("tao hinh anh 4k "))
+                            ? extractArgument(content, 4)
+                            : extractArgument(content, 2));
+        }
+
+        if (normalized.startsWith("ve phac thao ") || normalized.startsWith("sketch ")) {
+            return new QuickCommand("image.sketch",
+                    normalized.startsWith("ve phac thao ") ? extractArgument(content, 3) : extractArgument(content, 1));
+        }
+
+        if (normalized.startsWith("tao wallpaper ") || normalized.startsWith("wallpaper ")) {
+            return new QuickCommand("image.wallpaper",
+                    normalized.startsWith("tao wallpaper ") ? extractArgument(content, 2)
+                            : extractArgument(content, 1));
+        }
+
         return null;
+    }
+
+    private QuickCommand parseDirectImageCommand(String content) {
+        Matcher matcher = DIRECT_IMAGE_COMMAND_PATTERN.matcher(content);
+        if (!matcher.matches()) {
+            return null;
+        }
+
+        String rawKey = matcher.group(1) == null ? "" : matcher.group(1).toLowerCase(Locale.ROOT);
+        String argument = matcher.group(2) == null ? "" : matcher.group(2).trim();
+
+        String mappedKey = switch (rawKey) {
+            case "image_pro" -> "image.pro";
+            case "sketch" -> "image.sketch";
+            case "wallpaper" -> "image.wallpaper";
+            default -> "image.generate";
+        };
+
+        return new QuickCommand(mappedKey, argument);
     }
 
     private String buildFullAccessContext(String userId, String conversationId, String requestedLanguage) {
@@ -1172,7 +1243,8 @@ public class AiChatService {
                 .map(message -> {
                     Map<String, String> payload = new LinkedHashMap<>();
                     payload.put("role", resolveRole(message));
-                    payload.put("content", trimContent(redactSensitiveInfo(message.getContent()), 240));
+                    payload.put("content",
+                            trimContent(redactSensitiveInfo(sanitizeContentForPrompt(message.getContent())), 240));
                     payload.put("created_at",
                             message.getCreatedAt() != null ? message.getCreatedAt().toString() : null);
                     return payload;
@@ -1270,6 +1342,16 @@ public class AiChatService {
                 "(?i)(password|otp|token|secret|api[_-]?key)\\s*[:=]?\\s*[^\\s,;]+",
                 "$1=[redacted]");
         return redacted;
+    }
+
+    private String sanitizeContentForPrompt(String text) {
+        if (!StringUtils.hasText(text)) {
+            return text;
+        }
+
+        // Prevent the model from repeating giant presigned URLs in normal chat replies.
+        String sanitized = text.replaceAll("https?://\\S*X-Amz-Signature=\\S*", "[generated-image-link]");
+        return sanitized;
     }
 
     private String toJson(Object payload) {
@@ -1427,15 +1509,14 @@ public class AiChatService {
     }
 
     private String normalizeForMatch(String value) {
-        String ascii = Normalizer.normalize(value, Normalizer.Form.NFD)
+        String ascii = Normalizer.normalize(normalizeWhitespace(value), Normalizer.Form.NFD)
                 .replaceAll("\\p{M}+", "")
                 .toLowerCase(Locale.ROOT);
         return ascii.replaceAll("\\s+", " ").trim();
     }
 
     private String normalizeSlashCommandToken(String commandToken) {
-        String normalized = stripZeroWidthChars(commandToken)
-                .replace('／', '/')
+        String normalized = normalizeLeadingSlash(stripZeroWidthChars(commandToken))
                 .toLowerCase(Locale.ROOT)
                 .trim();
 
@@ -1443,11 +1524,32 @@ public class AiChatService {
             normalized = normalized.substring(0, normalized.length() - 1).trim();
         }
 
+        normalized = normalized.replaceAll("[,，。;；]+$", "");
+
         if (!normalized.startsWith("/") && normalized.startsWith("image")) {
             return "/" + normalized;
         }
 
         return normalized;
+    }
+
+    private String normalizeLeadingSlash(String text) {
+        if (!StringUtils.hasText(text)) {
+            return text;
+        }
+        return text
+                .replace('／', '/')
+                .replace('⁄', '/')
+                .replace('∕', '/');
+    }
+
+    private String normalizeWhitespace(String text) {
+        if (!StringUtils.hasText(text)) {
+            return text;
+        }
+        return text
+                .replace('\u00A0', ' ')
+                .replaceAll("\\p{Z}+", " ");
     }
 
     private String stripZeroWidthChars(String text) {
