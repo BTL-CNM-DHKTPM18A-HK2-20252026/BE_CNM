@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,15 +14,20 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import iuh.fit.utils.JwtUtils;
 import org.springframework.http.HttpStatus;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import iuh.fit.dto.request.message.ChatWithAiRequest;
 import iuh.fit.dto.request.message.SendMessageRequest;
 import iuh.fit.dto.request.message.ReactMessageRequest;
+import iuh.fit.dto.response.conversation.ConversationResponse;
+import iuh.fit.dto.response.message.AiChatResponse;
 import iuh.fit.dto.response.message.MessageResponse;
 import iuh.fit.dto.response.message.MessageAndConversationResponse;
+import iuh.fit.service.ai.AiChatService;
 import iuh.fit.service.message.MessageService;
 import iuh.fit.service.s3.S3Service;
 import iuh.fit.response.ApiResponse;
@@ -37,6 +43,7 @@ import java.util.List;
 public class MessageController {
 
     private final MessageService messageService;
+    private final AiChatService aiChatService;
     private final S3Service s3Service;
 
     @PostMapping
@@ -47,6 +54,40 @@ public class MessageController {
         if (userId == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(messageService.sendMessage(userId, request));
+    }
+
+    @PostMapping("/ai")
+    @Operation(summary = "Send a message to Fruvia AI and persist both user/assistant messages")
+    public ResponseEntity<ApiResponse<AiChatResponse>> chatWithAi(
+            @Valid @RequestBody ChatWithAiRequest request) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        AiChatResponse response = aiChatService.chatWithAi(userId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "Gửi tin nhắn AI thành công"));
+    }
+
+    @GetMapping("/ai/conversation")
+    @Operation(summary = "Get or create AI conversation for current user")
+    public ResponseEntity<ApiResponse<ConversationResponse>> ensureAiConversation() {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        ConversationResponse response = aiChatService.ensureAiConversation(userId);
+        return ResponseEntity.ok(ApiResponse.success(response, "Lấy cuộc hội thoại AI thành công"));
+    }
+
+    @PostMapping(value = "/ai/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "Stream AI response via Server-Sent Events")
+    public ResponseEntity<SseEmitter> chatWithAiStream(
+            @Valid @RequestBody ChatWithAiRequest request) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        return ResponseEntity.ok(aiChatService.chatWithAiStream(userId, request));
     }
 
     @GetMapping("/conversation/{conversationId}")

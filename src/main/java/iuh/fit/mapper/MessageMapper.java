@@ -16,6 +16,9 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class MessageMapper {
 
+    private static final String AI_SENDER_ID = "FRUVIA_AI_ASSISTANT";
+    private static final String AI_SENDER_NAME = "Fruvia AI";
+
     private final UserDetailRepository userDetailRepository;
     private final MessageReactionRepository messageReactionRepository;
 
@@ -25,6 +28,8 @@ public class MessageMapper {
         }
 
         UserDetail detail = userDetailRepository.findByUserId(message.getSenderId()).orElse(null);
+        String senderName = detail != null ? detail.getDisplayName()
+                : (AI_SENDER_ID.equals(message.getSenderId()) ? AI_SENDER_NAME : "Unknown");
 
         List<MessageReactionDto> reactionDtos = messageReactionRepository
                 .findReactionsWithUserByMessageId(message.getMessageId());
@@ -45,14 +50,22 @@ public class MessageMapper {
                 .messageId(message.getMessageId())
                 .conversationId(message.getConversationId())
                 .senderId(message.getSenderId())
-                .senderName(detail != null ? detail.getDisplayName() : "Unknown")
+                .senderName(senderName)
                 .senderAvatarUrl(detail != null ? detail.getAvatarUrl() : null)
+                .role(message.getRole() != null ? message.getRole().name() : null)
                 .content(displayContent)
                 .messageType(message.getMessageType() != null ? message.getMessageType().toString() : null)
                 .replyToMessageId(message.getReplyToMessageId())
                 .isEdited(message.getIsEdited())
                 .isDeleted(message.getIsDeleted())
                 .isRecalled(message.getIsRecalled())
+                .aiGenerated(message.getAiGenerated())
+                .aiModel(message.getAiModel())
+                .aiStatus(message.getAiStatus() != null ? message.getAiStatus().name() : null)
+                .promptTokens(message.getPromptTokens())
+                .completionTokens(message.getCompletionTokens())
+                .totalTokens(message.getTotalTokens())
+                .aiLatencyMs(message.getAiLatencyMs())
                 .createdAt(message.getCreatedAt())
                 .updatedAt(message.getUpdatedAt())
                 .linkTitle(message.getLinkTitle())

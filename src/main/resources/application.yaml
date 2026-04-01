@@ -71,6 +71,20 @@ springdoc:
 dotenv:
   enabled: true
 
+ai:
+  timeout-ms: ${AI_TIMEOUT_MS:30000}
+  max-retries: ${AI_MAX_RETRIES:2}
+  max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:1000}
+  image:
+    provider-url: ${AI_IMAGE_PROVIDER_URL:}
+    timeout-ms: ${AI_IMAGE_TIMEOUT_MS:45000}
+    read-url-expiry-minutes: ${AI_IMAGE_READ_URL_EXPIRY_MINUTES:10080}
+  sliding-window:
+    size: ${AI_SLIDING_WINDOW_SIZE:10}
+  window-token-budget: ${AI_WINDOW_TOKEN_BUDGET:2000}
+  blackbox:
+    url: ${BLACKBOX_API_URL:https://api.blackbox.ai/v1/chat/completions}
+
 # Actuator & Prometheus Monitoring
 management:
   endpoints:

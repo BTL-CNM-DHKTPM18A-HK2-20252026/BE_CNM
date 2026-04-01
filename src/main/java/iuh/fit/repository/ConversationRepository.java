@@ -27,6 +27,16 @@ public interface ConversationRepository extends MongoRepository<Conversations, S
     // Find active conversations
     List<Conversations> findByIsDeletedFalse();
 
+    // Find private conversations that include the given user
+    @Query("{ 'conversationType': 'PRIVATE', 'participants': ?0, 'isDeleted': false }")
+    List<Conversations> findPrivateConversationsByParticipant(String userId);
+
+    // Find existing AI self-conversation for a user
+    Optional<Conversations> findFirstByCreatorIdAndConversationTypeAndConversationNameAndIsDeletedFalse(
+            String creatorId,
+            ConversationType conversationType,
+            String conversationName);
+
     // Find conversations with auto-delete enabled
     List<Conversations> findByAutoDeleteDurationNotNull();
 }

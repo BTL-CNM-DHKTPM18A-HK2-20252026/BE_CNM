@@ -5,8 +5,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -44,12 +48,17 @@ public class PresenceService {
     private static final String REDIS_PREFIX = "presence:";
     /** TTL dài hơn heartbeat interval (30s) để tránh flicker */
     private static final long PRESENCE_TTL_SECONDS = 60;
+    private static final long LOCAL_PRESENCE_TTL_MILLIS = PRESENCE_TTL_SECONDS * 1000;
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final SimpMessagingTemplate messagingTemplate;
     private final FriendshipRepository friendshipRepository;
     private final UserAuthRepository userAuthRepository;
     private final UserSettingRepository userSettingRepository;
+
+    // Fallback cache when Redis is down: userId -> expiresAtEpochMillis
+    private final ConcurrentMap<String, Long> localPresenceCache = new ConcurrentHashMap<>();
+    private final AtomicBoolean redisHealthy = new AtomicBoolean(true);
 
     // ────────────────────────────────────────────────────────────
     // Core lifecycle
@@ -59,8 +68,7 @@ public class PresenceService {
      * Đánh dấu user online trong Redis và broadcast tới bạn bè.
      */
     public void userConnected(String userId) {
-        redisTemplate.opsForValue().set(
-                REDIS_PREFIX + userId, "online", PRESENCE_TTL_SECONDS, TimeUnit.SECONDS);
+        markOnline(userId);
         log.info("[Presence] User {} connected", userId);
 
         broadcastStatus(userId, true);
@@ -70,7 +78,7 @@ public class PresenceService {
      * Xóa trạng thái online, cập nhật lastSeen, broadcast offline.
      */
     public void userDisconnected(String userId) {
-        redisTemplate.delete(REDIS_PREFIX + userId);
+        markOffline(userId);
 
         // Persist lastSeen vào MongoDB
         LocalDateTime now = LocalDateTime.now();
@@ -89,8 +97,7 @@ public class PresenceService {
      * Nếu client "chết" mà không disconnect, key sẽ tự expire → offline.
      */
     public void heartbeat(String userId) {
-        redisTemplate.opsForValue().set(
-                REDIS_PREFIX + userId, "online", PRESENCE_TTL_SECONDS, TimeUnit.SECONDS);
+        markOnline(userId);
     }
 
     // ────────────────────────────────────────────────────────────
@@ -101,7 +108,7 @@ public class PresenceService {
      * Kiểm tra một user có đang online không (từ Redis — O(1)).
      */
     public boolean isOnline(String userId) {
-        return Boolean.TRUE.equals(redisTemplate.hasKey(REDIS_PREFIX + userId));
+        return isOnlineInternal(userId);
     }
 
     /**
@@ -112,6 +119,71 @@ public class PresenceService {
         return userIds.stream().collect(Collectors.toMap(
                 id -> id,
                 this::isOnline));
+    }
+
+    private void markOnline(String userId) {
+        // Always keep local fallback alive so presence still works in local dev without
+        // Redis.
+        localPresenceCache.put(userId, System.currentTimeMillis() + LOCAL_PRESENCE_TTL_MILLIS);
+        try {
+            redisTemplate.opsForValue().set(
+                    REDIS_PREFIX + userId, "online", PRESENCE_TTL_SECONDS, TimeUnit.SECONDS);
+            if (!redisHealthy.getAndSet(true)) {
+                log.info("[Presence] Redis recovered, presence writes restored.");
+            }
+        } catch (RedisConnectionFailureException ex) {
+            onRedisFailure(ex);
+        } catch (RuntimeException ex) {
+            onRedisFailure(ex);
+        }
+    }
+
+    private void markOffline(String userId) {
+        localPresenceCache.remove(userId);
+        try {
+            redisTemplate.delete(REDIS_PREFIX + userId);
+            if (!redisHealthy.getAndSet(true)) {
+                log.info("[Presence] Redis recovered, presence delete restored.");
+            }
+        } catch (RedisConnectionFailureException ex) {
+            onRedisFailure(ex);
+        } catch (RuntimeException ex) {
+            onRedisFailure(ex);
+        }
+    }
+
+    private boolean isOnlineInternal(String userId) {
+        try {
+            boolean online = Boolean.TRUE.equals(redisTemplate.hasKey(REDIS_PREFIX + userId));
+            if (!redisHealthy.getAndSet(true)) {
+                log.info("[Presence] Redis recovered, presence reads restored.");
+            }
+            return online;
+        } catch (RedisConnectionFailureException ex) {
+            onRedisFailure(ex);
+            return isOnlineFromLocalCache(userId);
+        } catch (RuntimeException ex) {
+            onRedisFailure(ex);
+            return isOnlineFromLocalCache(userId);
+        }
+    }
+
+    private boolean isOnlineFromLocalCache(String userId) {
+        Long expiresAt = localPresenceCache.get(userId);
+        if (expiresAt == null) {
+            return false;
+        }
+        if (expiresAt < System.currentTimeMillis()) {
+            localPresenceCache.remove(userId);
+            return false;
+        }
+        return true;
+    }
+
+    private void onRedisFailure(Exception ex) {
+        if (redisHealthy.getAndSet(false)) {
+            log.warn("[Presence] Redis unavailable, switching to in-memory presence fallback: {}", ex.getMessage());
+        }
     }
 
     /**

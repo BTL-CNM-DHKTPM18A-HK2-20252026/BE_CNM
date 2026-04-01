@@ -1,5 +1,6 @@
 package iuh.fit.service.s3;
 
+import java.io.ByteArrayInputStream;
 import java.util.Date;
 import java.util.UUID;
 
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Service;
 import com.amazonaws.HttpMethod;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -72,6 +74,35 @@ public class S3Service {
 
         GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucketName, objectKey)
                 .withMethod(HttpMethod.PUT)
+                .withExpiration(expiration);
+
+        return s3Client.generatePresignedUrl(req).toString();
+    }
+
+    /**
+     * Uploads bytes directly to S3 and keeps the object key stable.
+     */
+    public void uploadBytes(String objectKey, byte[] data, String contentType) {
+        ObjectMetadata metadata = new ObjectMetadata();
+        metadata.setContentLength(data.length);
+        metadata.setContentType(contentType);
+
+        try (ByteArrayInputStream inputStream = new ByteArrayInputStream(data)) {
+            s3Client.putObject(bucketName, objectKey, inputStream, metadata);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to upload generated image to S3", ex);
+        }
+    }
+
+    /**
+     * Generates a pre-signed GET URL for reading a private S3 object.
+     */
+    public String generatePresignedReadUrl(String objectKey, long expiryMinutes) {
+        Date expiration = new Date();
+        expiration.setTime(expiration.getTime() + (Math.max(1, expiryMinutes) * 60_000L));
+
+        GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucketName, objectKey)
+                .withMethod(HttpMethod.GET)
                 .withExpiration(expiration);
 
         return s3Client.generatePresignedUrl(req).toString();

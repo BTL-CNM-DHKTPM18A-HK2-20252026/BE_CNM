@@ -7,6 +7,8 @@ import java.util.UUID;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import iuh.fit.enums.AiMessageStatus;
+import iuh.fit.enums.AiRole;
 import iuh.fit.enums.MessageType;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -34,6 +36,7 @@ public class Message {
 
     String conversationId; // Reference to Conversations
     String senderId; // Reference to UserAuth (who sent the message)
+    AiRole role; // USER, ASSISTANT, SYSTEM for AI context building
     MessageType messageType;
     String content; // Text content or file URL
     String replyToMessageId; // Reference to another Message (for replies)
@@ -65,6 +68,20 @@ public class Message {
     // Forward Metadata
     String forwardedFromMessageId; // Original message that was forwarded
     String forwardedFromSenderId; // Original sender of the forwarded message
+
+    // AI metadata
+    Integer promptTokens;
+    Integer completionTokens;
+    Integer totalTokens;
+    String aiModel;
+    AiMessageStatus aiStatus;
+    String aiRequestId;
+    Long aiLatencyMs;
+    String aiErrorCode;
+    String aiErrorMessage;
+
+    @Builder.Default
+    Boolean aiGenerated = false;
 
     @Data
     @NoArgsConstructor

@@ -19,12 +19,20 @@ public class MessageResponse {
     private String senderId;
     private String senderName;
     private String senderAvatarUrl;
+    private String role;
     private String content;
     private String messageType;
     private String replyToMessageId;
     private Boolean isEdited;
     private Boolean isDeleted;
     private Boolean isRecalled;
+    private Boolean aiGenerated;
+    private String aiModel;
+    private String aiStatus;
+    private Integer promptTokens;
+    private Integer completionTokens;
+    private Integer totalTokens;
+    private Long aiLatencyMs;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
     private LocalDateTime createdAt;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", timezone = "UTC")
