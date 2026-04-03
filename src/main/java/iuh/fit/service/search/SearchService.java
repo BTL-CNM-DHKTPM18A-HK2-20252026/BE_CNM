@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -22,6 +24,7 @@ import org.springframework.data.elasticsearch.core.query.highlight.HighlightFiel
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import iuh.fit.document.DocumentDocument;
 import iuh.fit.document.MessageDocument;
 import iuh.fit.document.UserDocument;
 import iuh.fit.entity.Message;
@@ -32,6 +35,7 @@ import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.SearchHistoryRepository;
 import iuh.fit.repository.UserAuthRepository;
 import iuh.fit.repository.UserDetailRepository;
+import iuh.fit.repository.elasticsearch.DocumentSearchRepository;
 import iuh.fit.repository.elasticsearch.MessageSearchRepository;
 import iuh.fit.response.SearchResult;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +47,7 @@ import lombok.extern.slf4j.Slf4j;
 public class SearchService {
 
     private final MessageSearchRepository messageSearchRepository;
+    private final DocumentSearchRepository documentSearchRepository;
     private final MessageRepository messageRepository;
     private final UserDetailRepository userDetailRepository;
     private final UserAuthRepository userAuthRepository;
@@ -140,29 +145,153 @@ public class SearchService {
     public Page<SearchResult<MessageDocument>> searchMessages(String query, String conversationId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        Highlight highlight = new Highlight(List.of(
-                new HighlightField("content"),
-                new HighlightField("senderName")));
+        // Try Elasticsearch first
+        if (isElasticsearchAvailable()) {
+            try {
+                Highlight highlight = new Highlight(List.of(
+                        new HighlightField("content"),
+                        new HighlightField("senderName")));
 
-        NativeQuery nativeQuery = NativeQuery.builder()
-                .withQuery(q -> q
-                        .bool(b -> b
-                                .must(m -> m.match(mt -> mt.field("content").query(query)))
-                                .filter(f -> f.term(t -> t.field("conversationId").value(conversationId)))))
-                .withHighlightQuery(new HighlightQuery(highlight, MessageDocument.class))
-                .withPageable(pageable)
-                .build();
+                NativeQuery nativeQuery = NativeQuery.builder()
+                        .withQuery(q -> q
+                                .bool(b -> b
+                                        .must(m -> m.multiMatch(mt -> mt
+                                                .fields("content", "senderName")
+                                                .query(query)
+                                                .fuzziness("AUTO")))
+                                        .filter(f -> f.term(t -> t.field("conversationId").value(conversationId)))))
+                        .withHighlightQuery(new HighlightQuery(highlight, MessageDocument.class))
+                        .withPageable(pageable)
+                        .build();
 
-        SearchHits<MessageDocument> searchHits = elasticsearchOperations.search(nativeQuery, MessageDocument.class);
+                SearchHits<MessageDocument> searchHits = elasticsearchOperations.search(nativeQuery,
+                        MessageDocument.class);
 
-        List<SearchResult<MessageDocument>> results = searchHits.getSearchHits().stream()
-                .map(hit -> SearchResult.<MessageDocument>builder()
-                        .document(hit.getContent())
-                        .highlights(hit.getHighlightFields())
-                        .build())
+                if (searchHits.getTotalHits() > 0) {
+                    List<SearchResult<MessageDocument>> results = searchHits.getSearchHits().stream()
+                            .map(hit -> SearchResult.<MessageDocument>builder()
+                                    .document(hit.getContent())
+                                    .highlights(hit.getHighlightFields())
+                                    .build())
+                            .toList();
+                    return new PageImpl<>(results, pageable, searchHits.getTotalHits());
+                }
+            } catch (Exception e) {
+                markElasticsearchDown(e);
+                log.warn("ES searchMessages failed, falling back to MongoDB: {}", e.getMessage());
+            }
+        }
+
+        // MongoDB fallback — regex search (case-insensitive)
+        log.debug("searchMessages MongoDB fallback for query='{}' conversationId='{}'", query, conversationId);
+        String escapedQuery = java.util.regex.Pattern.quote(query);
+        Page<iuh.fit.entity.Message> mongoResults = messageRepository.searchByConversationIdAndContent(
+                conversationId, escapedQuery, pageable);
+
+        List<SearchResult<MessageDocument>> results = mongoResults.getContent().stream()
+                .map(msg -> {
+                    String senderName = userDetailRepository.findByUserId(msg.getSenderId())
+                            .map(u -> u.getDisplayName())
+                            .orElse("Unknown");
+                    MessageDocument doc = MessageDocument.builder()
+                            .messageId(msg.getMessageId())
+                            .conversationId(msg.getConversationId())
+                            .senderId(msg.getSenderId())
+                            .senderName(senderName)
+                            .content(msg.getContent())
+                            .messageType(msg.getMessageType() != null ? msg.getMessageType().name() : null)
+                            .createdAt(msg.getCreatedAt())
+                            .build();
+                    return SearchResult.<MessageDocument>builder()
+                            .document(doc)
+                            .build();
+                })
                 .toList();
 
-        return new PageImpl<>(results, pageable, searchHits.getTotalHits());
+        return new PageImpl<>(results, pageable, mongoResults.getTotalElements());
+    }
+
+    // ── Search messages across all conversations of a user ────────────────────
+
+    public Page<SearchResult<MessageDocument>> searchMessagesByUserId(String query, List<String> conversationIds,
+            int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        if (conversationIds == null || conversationIds.isEmpty()) {
+            return new PageImpl<>(List.of(), pageable, 0);
+        }
+
+        // Try Elasticsearch first
+        if (isElasticsearchAvailable()) {
+            try {
+                Highlight highlight = new Highlight(List.of(
+                        new HighlightField("content"),
+                        new HighlightField("senderName")));
+
+                List<co.elastic.clients.elasticsearch._types.FieldValue> fieldValues = conversationIds.stream()
+                        .map(co.elastic.clients.elasticsearch._types.FieldValue::of)
+                        .toList();
+
+                NativeQuery nativeQuery = NativeQuery.builder()
+                        .withQuery(q -> q
+                                .bool(b -> b
+                                        .must(m -> m.multiMatch(mm -> mm
+                                                .fields(List.of("content", "senderName"))
+                                                .query(query)
+                                                .fuzziness("AUTO")))
+                                        .filter(f -> f.terms(t -> t
+                                                .field("conversationId")
+                                                .terms(tv -> tv.value(fieldValues))))))
+                        .withHighlightQuery(new HighlightQuery(highlight, MessageDocument.class))
+                        .withPageable(pageable)
+                        .build();
+
+                SearchHits<MessageDocument> searchHits = elasticsearchOperations.search(nativeQuery,
+                        MessageDocument.class);
+
+                if (searchHits.getTotalHits() > 0) {
+                    List<SearchResult<MessageDocument>> results = searchHits.getSearchHits().stream()
+                            .map(hit -> SearchResult.<MessageDocument>builder()
+                                    .document(hit.getContent())
+                                    .highlights(hit.getHighlightFields())
+                                    .build())
+                            .toList();
+                    return new PageImpl<>(results, pageable, searchHits.getTotalHits());
+                }
+            } catch (Exception e) {
+                markElasticsearchDown(e);
+                log.warn("ES searchMessagesByUserId failed, falling back to MongoDB: {}", e.getMessage());
+            }
+        }
+
+        // MongoDB fallback — regex search across all user conversations
+        log.debug("searchMessagesByUserId MongoDB fallback for query='{}' across {} conversations", query,
+                conversationIds.size());
+        String escapedQuery = java.util.regex.Pattern.quote(query);
+        Page<Message> mongoResults = messageRepository.searchByConversationIdsAndContent(
+                conversationIds, escapedQuery, pageable);
+
+        List<SearchResult<MessageDocument>> results = mongoResults.getContent().stream()
+                .map(msg -> {
+                    String senderName = userDetailRepository.findByUserId(msg.getSenderId())
+                            .map(u -> u.getDisplayName())
+                            .orElse("Unknown");
+                    MessageDocument doc = MessageDocument.builder()
+                            .messageId(msg.getMessageId())
+                            .conversationId(msg.getConversationId())
+                            .senderId(msg.getSenderId())
+                            .senderName(senderName)
+                            .content(msg.getContent())
+                            .messageType(msg.getMessageType() != null ? msg.getMessageType().name() : null)
+                            .createdAt(msg.getCreatedAt())
+                            .build();
+                    return SearchResult.<MessageDocument>builder()
+                            .document(doc)
+                            .build();
+                })
+                .toList();
+
+        return new PageImpl<>(results, pageable, mongoResults.getTotalElements());
     }
 
     // ── Search users (with highlighting + edge_ngram phone) ───────────────────
@@ -170,32 +299,111 @@ public class SearchService {
     public Page<SearchResult<UserDocument>> searchUsers(String query, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
 
-        Highlight highlight = new Highlight(List.of(
-                new HighlightField("displayName"),
-                new HighlightField("phoneNumber"),
-                new HighlightField("email")));
+        // Try Elasticsearch first
+        if (isElasticsearchAvailable()) {
+            try {
+                Highlight highlight = new Highlight(List.of(
+                        new HighlightField("displayName"),
+                        new HighlightField("phoneNumber"),
+                        new HighlightField("email")));
 
-        NativeQuery nativeQuery = NativeQuery.builder()
-                .withQuery(q -> q
-                        .bool(b -> b
-                                .should(s -> s.match(m -> m.field("displayName").query(query).fuzziness("AUTO")))
-                                .should(s -> s.match(m -> m.field("phoneNumber").query(query)))
-                                .should(s -> s.match(m -> m.field("email").query(query).fuzziness("AUTO")))
-                                .minimumShouldMatch("1")))
-                .withHighlightQuery(new HighlightQuery(highlight, UserDocument.class))
-                .withPageable(pageable)
-                .build();
+                NativeQuery nativeQuery = NativeQuery.builder()
+                        .withQuery(q -> q
+                                .bool(b -> b
+                                        .should(s -> s
+                                                .match(m -> m.field("displayName").query(query).fuzziness("AUTO")))
+                                        .should(s -> s.match(m -> m.field("phoneNumber").query(query)))
+                                        .should(s -> s.match(m -> m.field("email").query(query).fuzziness("AUTO")))
+                                        .minimumShouldMatch("1")))
+                        .withHighlightQuery(new HighlightQuery(highlight, UserDocument.class))
+                        .withPageable(pageable)
+                        .build();
 
-        SearchHits<UserDocument> searchHits = elasticsearchOperations.search(nativeQuery, UserDocument.class);
+                SearchHits<UserDocument> searchHits = elasticsearchOperations.search(nativeQuery, UserDocument.class);
 
-        List<SearchResult<UserDocument>> results = searchHits.getSearchHits().stream()
-                .map(hit -> SearchResult.<UserDocument>builder()
-                        .document(hit.getContent())
-                        .highlights(hit.getHighlightFields())
-                        .build())
+                if (searchHits.getTotalHits() > 0) {
+                    List<SearchResult<UserDocument>> results = searchHits.getSearchHits().stream()
+                            .map(hit -> SearchResult.<UserDocument>builder()
+                                    .document(hit.getContent())
+                                    .highlights(hit.getHighlightFields())
+                                    .build())
+                            .toList();
+                    return new PageImpl<>(results, pageable, searchHits.getTotalHits());
+                }
+            } catch (Exception e) {
+                markElasticsearchDown(e);
+                log.warn("ES searchUsers failed, falling back to MongoDB: {}", e.getMessage());
+            }
+        }
+
+        // MongoDB fallback — search by displayName, then union with phone/email matches
+        log.debug("searchUsers MongoDB fallback for query='{}'", query);
+        String escapedQuery = java.util.regex.Pattern.quote(query);
+
+        // Search by displayName
+        Page<UserDetail> byName = userDetailRepository.searchByDisplayName(escapedQuery, pageable);
+        java.util.LinkedHashMap<String, UserDetail> userMap = new java.util.LinkedHashMap<>();
+        byName.getContent().forEach(u -> userMap.put(u.getUserId(), u));
+
+        // Search by phone/email — collect user IDs and fetch UserDetail
+        List<UserAuth> byPhoneEmail = userAuthRepository.searchByPhoneOrEmail(escapedQuery);
+        if (!byPhoneEmail.isEmpty()) {
+            List<String> extraIds = byPhoneEmail.stream()
+                    .map(UserAuth::getUserId)
+                    .filter(id -> !userMap.containsKey(id))
+                    .toList();
+            if (!extraIds.isEmpty()) {
+                userDetailRepository.findByUserIdIn(extraIds).forEach(u -> userMap.put(u.getUserId(), u));
+            }
+        }
+
+        List<SearchResult<UserDocument>> results = userMap.values().stream()
+                .limit(size)
+                .map(user -> {
+                    UserAuth auth = userAuthRepository.findById(user.getUserId()).orElse(null);
+                    UserDocument doc = UserDocument.builder()
+                            .userId(user.getUserId())
+                            .displayName(user.getDisplayName())
+                            .phoneNumber(auth != null ? auth.getPhoneNumber() : null)
+                            .email(auth != null ? auth.getEmail() : null)
+                            .avatarUrl(user.getAvatarUrl())
+                            .build();
+                    return SearchResult.<UserDocument>builder().document(doc).build();
+                })
                 .toList();
 
-        return new PageImpl<>(results, pageable, searchHits.getTotalHits());
+        return new PageImpl<>(results, pageable, results.size());
+    }
+
+    // ── Auto-reindex on startup ───────────────────────────────────────────────
+
+    @Async
+    @EventListener(ApplicationReadyEvent.class)
+    public void autoReindexOnStartup() {
+        if (!isElasticsearchAvailable()) {
+            log.warn("Elasticsearch unavailable at startup — skipping auto-reindex");
+            return;
+        }
+        try {
+            // Check users index — reindex if empty
+            NativeQuery countUsersQuery = NativeQuery.builder()
+                    .withQuery(q -> q.matchAll(m -> m))
+                    .withMaxResults(0)
+                    .build();
+            SearchHits<UserDocument> userHits = elasticsearchOperations.search(countUsersQuery, UserDocument.class);
+            if (userHits.getTotalHits() == 0) {
+                log.info("Users index is empty — starting auto-reindex of users...");
+                reindexAllUsers();
+            } else {
+                log.info("Users index has {} documents — skipping user reindex", userHits.getTotalHits());
+            }
+
+            // Always reindex messages on startup to fix potential encoding issues
+            log.info("Auto-reindexing messages on startup to ensure data integrity...");
+            reindexAllMessages();
+        } catch (Exception e) {
+            log.warn("Auto-reindex on startup failed: {}", e.getMessage());
+        }
     }
 
     // ── Bulk reindex using Elasticsearch Bulk API ───────────────────────────
@@ -296,6 +504,96 @@ public class SearchService {
         } while (page.hasNext());
 
         log.info("Reindex completed: {} users indexed", totalCount);
+    }
+
+    // ── Document indexing (My Documents / file messages) ─────────────────────
+
+    @Async
+    public void indexDocument(String fileId, String ownerId, String conversationId,
+            String fileName, String fileType, String fileUrl,
+            Long fileSize, String extractedText) {
+        if (!isElasticsearchAvailable())
+            return;
+        DocumentDocument doc = DocumentDocument.builder()
+                .fileId(fileId)
+                .ownerId(ownerId)
+                .conversationId(conversationId)
+                .fileName(fileName)
+                .fileType(fileType)
+                .fileUrl(fileUrl)
+                .fileSize(fileSize)
+                .extractedText(extractedText)
+                .uploadedAt(java.time.LocalDateTime.now())
+                .build();
+        try {
+            documentSearchRepository.save(doc);
+        } catch (Exception e) {
+            markElasticsearchDown(e);
+        }
+    }
+
+    @Async
+    public void deleteDocumentIndex(String fileId) {
+        if (!isElasticsearchAvailable())
+            return;
+        try {
+            documentSearchRepository.deleteById(fileId);
+        } catch (Exception e) {
+            markElasticsearchDown(e);
+        }
+    }
+
+    // ── Search documents (My Documents) ───────────────────────────────────────
+
+    public Page<SearchResult<DocumentDocument>> searchDocuments(String query, String ownerId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "uploadedAt"));
+
+        Highlight highlight = new Highlight(List.of(
+                new HighlightField("fileName"),
+                new HighlightField("extractedText")));
+
+        NativeQuery nativeQuery = NativeQuery.builder()
+                .withQuery(q -> q
+                        .bool(b -> b
+                                .must(m -> m.multiMatch(mm -> mm
+                                        .fields(List.of("fileName^3", "extractedText"))
+                                        .query(query)
+                                        .fuzziness("AUTO")))
+                                .filter(f -> f.term(t -> t.field("ownerId").value(ownerId)))))
+                .withHighlightQuery(new HighlightQuery(highlight, DocumentDocument.class))
+                .withPageable(pageable)
+                .build();
+
+        SearchHits<DocumentDocument> searchHits = elasticsearchOperations.search(nativeQuery, DocumentDocument.class);
+
+        List<SearchResult<DocumentDocument>> results = searchHits.getSearchHits().stream()
+                .map(hit -> SearchResult.<DocumentDocument>builder()
+                        .document(hit.getContent())
+                        .highlights(hit.getHighlightFields())
+                        .build())
+                .toList();
+
+        return new PageImpl<>(results, pageable, searchHits.getTotalHits());
+    }
+
+    // ── Global search: messages + users + documents ───────────────────────────
+
+    public iuh.fit.response.GlobalSearchResult globalSearch(
+            String query, String userId, List<String> conversationIds, int page, int size) {
+
+        Page<SearchResult<MessageDocument>> messages = conversationIds != null && !conversationIds.isEmpty()
+                ? searchMessagesByUserId(query, conversationIds, page, size)
+                : Page.empty();
+
+        Page<SearchResult<UserDocument>> users = searchUsers(query, page, size);
+
+        Page<SearchResult<DocumentDocument>> documents = searchDocuments(query, userId, page, size);
+
+        return iuh.fit.response.GlobalSearchResult.builder()
+                .messages(messages)
+                .users(users)
+                .documents(documents)
+                .build();
     }
 
     // ── Health check ──────────────────────────────────────────────────────────

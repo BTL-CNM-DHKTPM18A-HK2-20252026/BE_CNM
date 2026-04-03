@@ -46,16 +46,22 @@ import javax.imageio.ImageIO;
 public class AiImageWorkflowService {
 
     private static final String FALLBACK_IMAGE_PROVIDER_BASE = "https://image.pollinations.ai/prompt/";
+    private static final String OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations";
+    private static final String BLACKBOX_IMAGE_URL = "https://api.blackbox.ai/v1/images/generations";
+    private static final String GEMINI_IMAGE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent";
 
     private final ObjectMapper objectMapper;
     private final S3Service s3Service;
     private final FileUploadRepository fileUploadRepository;
 
-    @Value("${ai.image.provider-url:}")
-    private String imageProviderUrl;
+    @Value("${OPENAI_API_KEY:}")
+    private String openaiApiKey;
 
-    @Value("${AI_IMAGE_API_KEY:}")
-    private String imageApiKey;
+    @Value("${BLACKBOX_API_KEY:}")
+    private String blackboxApiKey;
+
+    @Value("${GEMINI_API_KEY:}")
+    private String geminiApiKey;
 
     @Value("${ai.image.timeout-ms:45000}")
     private int timeoutMs;
@@ -85,31 +91,46 @@ public class AiImageWorkflowService {
         ImagePreset preset = resolvePreset(commandKey);
         byte[] imageBytes = generateImageBytes(description, preset);
 
+        // Detect actual image format from magic bytes
+        String mimeType = detectImageMime(imageBytes);
+        String ext = mimeType.contains("webp") ? "webp" : "png";
+
         String safeName = buildSafeFileName(description);
-        String storedFileName = UUID.randomUUID() + "_" + safeName + ".png";
+        String storedFileName = UUID.randomUUID() + "_" + safeName + "." + ext;
         String objectKey = "users/" + userId + "/documents/generated_images/" + storedFileName;
 
-        s3Service.uploadBytes(objectKey, imageBytes, "image/png");
-        String readUrl = s3Service.generatePresignedReadUrl(objectKey, readUrlExpiryMinutes);
+        String readUrl;
+        try {
+            s3Service.uploadBytes(objectKey, imageBytes, mimeType);
+            readUrl = s3Service.generatePresignedReadUrl(objectKey, readUrlExpiryMinutes);
+        } catch (Exception ex) {
+            log.warn("S3 upload failed for generated image, encoding as data URI: {}", ex.getMessage());
+            String base64 = Base64.getEncoder().encodeToString(imageBytes);
+            readUrl = "data:" + mimeType + ";base64," + base64;
+        }
 
-        fileUploadRepository.save(FileUpload.builder()
-                .originalFileName(safeName + ".png")
-                .storedFileName(storedFileName)
-                .fileType(FileType.IMAGE)
-                .mimeType("image/png")
-                .fileSize((long) imageBytes.length)
-                .fileUrl(readUrl)
-                .thumbnailUrl(readUrl)
-                .storageProvider(StorageProvider.AWS_S3)
-                .resourceId(objectKey)
-                .folderPath("documents/generated_images")
-                .uploadedBy(userId)
-                .uploadedAt(LocalDateTime.now())
-                .description("AI generated image")
-                .status("ACTIVE")
-                .metadata("{\"classification\":\"PERSONAL_DOCUMENT\",\"folder\":\"Generated Images\",\"preset\":\""
-                        + preset.key + "\",\"style\":\"" + preset.style + "\"}")
-                .build());
+        try {
+            fileUploadRepository.save(FileUpload.builder()
+                    .originalFileName(safeName + "." + ext)
+                    .storedFileName(storedFileName)
+                    .fileType(FileType.IMAGE)
+                    .mimeType(mimeType)
+                    .fileSize((long) imageBytes.length)
+                    .fileUrl(readUrl)
+                    .thumbnailUrl(readUrl)
+                    .storageProvider(StorageProvider.AWS_S3)
+                    .resourceId(objectKey)
+                    .folderPath("documents/generated_images")
+                    .uploadedBy(userId)
+                    .uploadedAt(LocalDateTime.now())
+                    .description("AI generated image")
+                    .status("ACTIVE")
+                    .metadata("{\"classification\":\"PERSONAL_DOCUMENT\",\"folder\":\"Generated Images\",\"preset\":\""
+                            + preset.key + "\",\"style\":\"" + preset.style + "\"}")
+                    .build());
+        } catch (Exception ex) {
+            log.warn("Failed to save file upload record: {}", ex.getMessage());
+        }
 
         return new GeneratedImageResult(readUrl, storedFileName, imageBytes.length, preset.style);
     }
@@ -118,25 +139,161 @@ public class AiImageWorkflowService {
         PreparedPrompt preparedPrompt = preparePrompt(description, preset);
         RestTemplate restTemplate = buildRestTemplate();
 
-        if (!StringUtils.hasText(imageProviderUrl)) {
-            return generateByFallbackProvider(preparedPrompt.prompt(), preset, restTemplate);
+        // 1) OpenAI DALL-E
+        if (StringUtils.hasText(openaiApiKey)) {
+            try {
+                byte[] result = generateByOpenAi(preparedPrompt.prompt(), preset);
+                if (result != null && result.length > 0)
+                    return result;
+            } catch (Exception ex) {
+                log.warn("[IMAGE_GEN] OpenAI FAILED: {}", ex.getMessage());
+            }
         }
+
+        // 2) Blackbox AI
+        if (StringUtils.hasText(blackboxApiKey)) {
+            try {
+                byte[] result = generateByBlackbox(preparedPrompt.prompt(), preset);
+                if (result != null && result.length > 0)
+                    return result;
+            } catch (Exception ex) {
+                log.warn("[IMAGE_GEN] Blackbox FAILED: {}", ex.getMessage());
+            }
+        }
+
+        // 3) Gemini
+        if (StringUtils.hasText(geminiApiKey)) {
+            try {
+                byte[] result = generateByGemini(preparedPrompt.prompt());
+                if (result != null && result.length > 0)
+                    return result;
+            } catch (Exception ex) {
+                log.warn("[IMAGE_GEN] Gemini FAILED: {}", ex.getMessage());
+            }
+        }
+
+        // 4) Fallback: pollinations.ai
+        return generateByFallbackProvider(preparedPrompt.prompt(), preset, restTemplate);
+    }
+
+    private byte[] generateByOpenAi(String prompt, ImagePreset preset) throws Exception {
+        RestTemplate restTemplate = buildRestTemplate(12000, 60000);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        if (StringUtils.hasText(imageApiKey)) {
-            headers.setBearerAuth(imageApiKey);
-        }
+        headers.setBearerAuth(openaiApiKey);
+
+        String size = resolveOpenAiSize(preset.size);
+        String trimmedPrompt = prompt.length() > 4000 ? prompt.substring(0, 4000) : prompt;
 
         Map<String, Object> payload = new HashMap<>();
-        payload.put("prompt", preparedPrompt.prompt());
-        payload.put("style", preset.style);
-        payload.put("size", preset.size);
+        payload.put("model", "dall-e-3");
+        payload.put("prompt", trimmedPrompt);
+        payload.put("n", 1);
+        payload.put("size", size);
+        payload.put("response_format", "b64_json");
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-        ResponseEntity<String> response = restTemplate.postForEntity(imageProviderUrl, request, String.class);
+        ResponseEntity<String> response = restTemplate.postForEntity(OPENAI_IMAGE_URL, request, String.class);
 
-        return extractImageBytes(response.getBody(), restTemplate);
+        JsonNode root = objectMapper.readTree(response.getBody());
+        String b64 = pickFirstText(root, "/data/0/b64_json");
+        if (StringUtils.hasText(b64)) {
+            return Base64.getDecoder().decode(b64);
+        }
+
+        String url = pickFirstText(root, "/data/0/url");
+        if (StringUtils.hasText(url)) {
+            RestTemplate dlTemplate = buildRestTemplate(8000, 30000);
+            ResponseEntity<byte[]> imgResp = dlTemplate.getForEntity(url, byte[].class);
+            byte[] data = imgResp.getBody();
+            if (data != null && data.length > 0) {
+                return data;
+            }
+        }
+
+        throw new IllegalStateException("OpenAI returned no image data");
+    }
+
+    private byte[] generateByBlackbox(String prompt, ImagePreset preset) throws Exception {
+        RestTemplate restTemplate = buildRestTemplate(12000, 60000);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(blackboxApiKey);
+
+        String trimmedPrompt = prompt.length() > 500 ? prompt.substring(0, 500) : prompt;
+        String size = resolveOpenAiSize(preset.size);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("model", "flux-pro");
+        payload.put("prompt", trimmedPrompt);
+        payload.put("n", 1);
+        payload.put("size", size);
+        payload.put("response_format", "b64_json");
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+        ResponseEntity<String> response = restTemplate.postForEntity(BLACKBOX_IMAGE_URL, request, String.class);
+
+        JsonNode root = objectMapper.readTree(response.getBody());
+        String b64 = pickFirstText(root, "/data/0/b64_json");
+        if (StringUtils.hasText(b64))
+            return Base64.getDecoder().decode(b64);
+
+        String url = pickFirstText(root, "/data/0/url");
+        if (StringUtils.hasText(url)) {
+            ResponseEntity<byte[]> imgResp = buildRestTemplate(8000, 30000).getForEntity(url, byte[].class);
+            if (imgResp.getBody() != null && imgResp.getBody().length > 0)
+                return imgResp.getBody();
+        }
+
+        throw new IllegalStateException("Blackbox returned no image data");
+    }
+
+    private byte[] generateByGemini(String prompt) throws Exception {
+        RestTemplate restTemplate = buildRestTemplate(12000, 60000);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        Map<String, Object> textPart = new HashMap<>();
+        textPart.put("text", prompt.length() > 500 ? prompt.substring(0, 500) : prompt);
+
+        Map<String, Object> content = new HashMap<>();
+        content.put("parts", List.of(textPart));
+
+        Map<String, Object> generationConfig = new HashMap<>();
+        generationConfig.put("responseModalities", List.of("IMAGE", "TEXT"));
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("contents", List.of(content));
+        payload.put("generationConfig", generationConfig);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+        ResponseEntity<String> response = restTemplate.postForEntity(
+                GEMINI_IMAGE_URL + "?key=" + geminiApiKey, request, String.class);
+
+        JsonNode partsNode = objectMapper.readTree(response.getBody()).at("/candidates/0/content/parts");
+        if (partsNode.isArray()) {
+            for (JsonNode part : partsNode) {
+                String b64 = part.at("/inlineData/data").asText(null);
+                if (StringUtils.hasText(b64))
+                    return Base64.getDecoder().decode(b64);
+            }
+        }
+
+        throw new IllegalStateException("Gemini returned no image data");
+    }
+
+    private String resolveOpenAiSize(String presetSize) {
+        if (!StringUtils.hasText(presetSize))
+            return "1024x1024";
+        int w = parseDimension(presetSize, 0, 1024);
+        int h = parseDimension(presetSize, 1, 1024);
+        // Map to nearest supported DALL-E 3 size
+        if (w > h)
+            return "1792x1024";
+        if (h > w)
+            return "1024x1792";
+        return "1024x1024";
     }
 
     private PreparedPrompt preparePrompt(String originalDescription, ImagePreset preset) {
@@ -441,16 +598,18 @@ public class AiImageWorkflowService {
     }
 
     private List<String> buildFallbackCandidateUrls(String safePrompt, int width, int height, long seed) {
+        // Keep parameters minimal to avoid 502 errors from pollinations.ai
         String base = FALLBACK_IMAGE_PROVIDER_BASE + safePrompt
                 + "?width=" + width
                 + "&height=" + height
-                + "&enhance=true"
-                + "&safe=true"
                 + "&nologo=true"
                 + "&seed=" + seed;
 
         List<String> urls = new ArrayList<>();
+        // Try without model first (most reliable), then with specific models
+        urls.add(base);
         urls.add(base + "&model=flux");
+        urls.add(base + "&model=turbo");
         urls.add(base);
         urls.add(base + "&model=turbo");
         return urls;
@@ -556,6 +715,21 @@ public class AiImageWorkflowService {
             case "image.wallpaper" -> new ImagePreset("image.wallpaper", "wallpaper", "1536x1024");
             default -> new ImagePreset("image.generate", "photorealistic", "1024x1024");
         };
+    }
+
+    private String detectImageMime(byte[] data) {
+        if (data != null && data.length >= 12) {
+            // WebP: starts with RIFF....WEBP
+            if (data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F'
+                    && data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P') {
+                return "image/webp";
+            }
+            // JPEG: starts with FF D8 FF
+            if ((data[0] & 0xFF) == 0xFF && (data[1] & 0xFF) == 0xD8 && (data[2] & 0xFF) == 0xFF) {
+                return "image/jpeg";
+            }
+        }
+        return "image/png";
     }
 
     private String buildSafeFileName(String description) {

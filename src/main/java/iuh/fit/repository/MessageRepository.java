@@ -7,6 +7,7 @@ import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.mongodb.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import iuh.fit.entity.Message;
@@ -26,6 +27,14 @@ public interface MessageRepository extends MongoRepository<Message, String> {
                         String conversationId, LocalDateTime createdAt, Pageable pageable); // Changed back to
                                                                                             // LocalDateTime
 
+        // Search messages by content (case-insensitive regex) in a conversation
+        @Query("{ 'conversationId': ?0, 'content': { $regex: ?1, $options: 'i' }, 'isDeleted': { $ne: true } }")
+        Page<Message> searchByConversationIdAndContent(String conversationId, String query, Pageable pageable);
+
+        // Search messages by content across multiple conversations (MongoDB fallback)
+        @Query("{ 'conversationId': { $in: ?0 }, 'content': { $regex: ?1, $options: 'i' }, 'isDeleted': { $ne: true } }")
+        Page<Message> searchByConversationIdsAndContent(List<String> conversationIds, String query, Pageable pageable);
+
         // Find messages by sender
         List<Message> findBySenderId(String senderId);
 
@@ -41,4 +50,11 @@ public interface MessageRepository extends MongoRepository<Message, String> {
 
         // Delete old messages for auto-delete feature
         long deleteByConversationIdAndCreatedAtBefore(String conversationId, LocalDateTime cutoff);
+
+        // Find all messages in a conversation (no pagination — used for bulk
+        // operations)
+        List<Message> findByConversationId(String conversationId);
+
+        // Hard-delete all messages in a conversation (used by clearConversationAll)
+        void deleteByConversationId(String conversationId);
 }

@@ -75,10 +75,25 @@ ai:
   timeout-ms: ${AI_TIMEOUT_MS:30000}
   max-retries: ${AI_MAX_RETRIES:2}
   max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:1000}
+  router:
+    model: ${AI_ROUTER_MODEL:blackboxai/google/gemini-2.5-flash}
+  model:
+    chat: ${AI_MODEL_CHAT:claude-sonnet-4-20250514}
+    reasoning: ${AI_MODEL_REASONING:o3-pro}
+    knowledge: ${AI_MODEL_KNOWLEDGE:gemini-2.5-pro-preview-05-06}
+    image: ${AI_MODEL_IMAGE:imagen-4-ultra}
   image:
     provider-url: ${AI_IMAGE_PROVIDER_URL:}
     timeout-ms: ${AI_IMAGE_TIMEOUT_MS:45000}
     read-url-expiry-minutes: ${AI_IMAGE_READ_URL_EXPIRY_MINUTES:10080}
+    allow-local-placeholder: ${AI_IMAGE_ALLOW_LOCAL_PLACEHOLDER:true}
+    hf-model: ${AI_IMAGE_HF_MODEL:black-forest-labs/FLUX.1-schnell}
+    fallback:
+      connect-timeout-ms: ${AI_IMAGE_FALLBACK_CONNECT_TIMEOUT_MS:8000}
+      read-timeout-ms: ${AI_IMAGE_FALLBACK_READ_TIMEOUT_MS:30000}
+      retries: ${AI_IMAGE_FALLBACK_RETRIES:2}
+      max-dimension: ${AI_IMAGE_FALLBACK_MAX_DIMENSION:768}
+      backoff-ms: ${AI_IMAGE_FALLBACK_BACKOFF_MS:800}
   sliding-window:
     size: ${AI_SLIDING_WINDOW_SIZE:10}
   window-token-budget: ${AI_WINDOW_TOKEN_BUDGET:2000}

@@ -51,6 +51,9 @@ public class SecurityConfig {
                         // === WebSocket endpoints ===
                         .requestMatchers("/ws", "/ws/**", "/ws-native", "/ws-native/**").permitAll()
 
+                        // === Debug endpoints (TODO: Remove before production) ===
+                        .requestMatchers("/debug/**").permitAll()
+
                         // === Actuator / Prometheus endpoints ===
                         .requestMatchers("/actuator/**").permitAll()
 

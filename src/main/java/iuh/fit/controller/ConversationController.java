@@ -3,6 +3,7 @@ package iuh.fit.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.conversation.CreateConversationRequest;
+import iuh.fit.dto.request.conversation.HideConversationRequest;
 import iuh.fit.dto.request.conversation.UpdateConversationRequest;
 import iuh.fit.dto.response.conversation.ConversationResponse;
 import iuh.fit.response.ApiResponse;
@@ -375,14 +376,42 @@ public class ConversationController {
     }
 
     @PostMapping("/{conversationId}/unhide")
-    @Operation(summary = "Unhide a previously hidden conversation for the current user")
+    @Operation(summary = "Unhide a previously hidden conversation for the current user (requires PIN)")
     public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> unhideConversation(
-            @PathVariable String conversationId) {
+            @PathVariable String conversationId,
+            @Valid @RequestBody HideConversationRequest request) {
         String userId = JwtUtils.getCurrentUserId();
         if (userId == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         return ResponseEntity.ok(ApiResponse.success(
-                conversationService.unhideConversation(conversationId, userId),
+                conversationService.unhideConversation(conversationId, userId, request.getPinCode()),
                 "Đã hiện lại hội thoại"));
+    }
+
+    // ==================== PIN-PROTECTED HIDE ====================
+
+    @PostMapping("/{conversationId}/hide")
+    @Operation(summary = "Hide conversation with PIN verification")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> hideConversationWithPin(
+            @PathVariable String conversationId,
+            @Valid @RequestBody HideConversationRequest request) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.hideConversationWithPin(conversationId, userId, request.getPinCode()),
+                "Đã ẩn hội thoại"));
+    }
+
+    @GetMapping("/hidden/search")
+    @Operation(summary = "Search hidden conversations (requires PIN)")
+    public ResponseEntity<ApiResponse<List<ConversationResponse>>> searchHiddenConversations(
+            @RequestParam(required = false, defaultValue = "") String q,
+            @RequestParam String pinCode) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        List<ConversationResponse> results = conversationService.searchHiddenConversations(userId, q, pinCode);
+        return ResponseEntity.ok(ApiResponse.success(results, "OK"));
     }
 }

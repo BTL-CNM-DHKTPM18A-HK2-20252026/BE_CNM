@@ -9,6 +9,7 @@ import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.MessageAttachmentRepository;
 import iuh.fit.repository.MessageRepository;
+import iuh.fit.service.s3.S3Service;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class StorageService {
     private final ConversationRepository conversationRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final AmazonS3 s3Client;
+    private final S3Service s3Service;
 
     @Value("${AWS_S3_BUCKET_NAME}")
     private String bucketName;
@@ -137,6 +139,7 @@ public class StorageService {
     }
 
     /** Find the SELF conversation ID for a user, returns null if not found. */
+    /** Find the SELF conversation ID for a user, returns null if not found. */
     private String findSelfConversationId(String userId) {
         List<ConversationMember> memberships = conversationMemberRepository.findByUserId(userId);
         for (ConversationMember membership : memberships) {
@@ -193,5 +196,15 @@ public class StorageService {
         final String[] units = new String[] { "B", "KB", "MB", "GB", "TB" };
         int digitGroups = (int) (Math.log10(bytes) / Math.log10(1024));
         return String.format("%.1f %s", bytes / Math.pow(1024, digitGroups), units[digitGroups]);
+    }
+
+    /**
+     * Delegates parallel S3 deletion to S3Service.
+     * Called by MessageService.clearConversationAll to clean up media files.
+     *
+     * @param urls full S3 URLs of objects to delete
+     */
+    public void deleteObjectsByUrls(List<String> urls) {
+        s3Service.deleteObjectsParallel(urls);
     }
 }

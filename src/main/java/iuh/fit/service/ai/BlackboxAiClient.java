@@ -42,6 +42,14 @@ public class BlackboxAiClient {
     private int maxOutputTokens;
 
     public AiCompletionResult complete(List<Map<String, String>> messages, String model) {
+        return complete(messages, model, maxOutputTokens);
+    }
+
+    /**
+     * Call the AI completion API with a custom max_tokens limit.
+     * Used by the router (small budget) and the main call (full budget).
+     */
+    public AiCompletionResult complete(List<Map<String, String>> messages, String model, int maxTokens) {
         if (!StringUtils.hasText(apiKey)) {
             throw new IllegalStateException("BLACKBOX_API_KEY is missing");
         }
@@ -55,7 +63,7 @@ public class BlackboxAiClient {
         Map<String, Object> payload = new HashMap<>();
         payload.put("model", finalModel);
         payload.put("messages", messages);
-        payload.put("max_tokens", maxOutputTokens);
+        payload.put("max_tokens", Math.max(1, maxTokens));
         payload.put("stream", false);
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);

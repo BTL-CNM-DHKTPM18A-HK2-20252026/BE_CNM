@@ -1,6 +1,7 @@
 package iuh.fit.service.user;
 
 import iuh.fit.dto.request.user.RegisterRequest;
+import iuh.fit.dto.request.user.SetPinRequest;
 import iuh.fit.dto.request.user.UpdateAvatarRequest;
 import iuh.fit.dto.request.user.UpdateCoverPhotoRequest;
 import iuh.fit.dto.request.user.UpdateProfileRequest;
@@ -68,4 +69,30 @@ public interface UserService {
      * @return UserResponse
      */
     UserResponse getUserByPhoneNumber(String phoneNumber, String currentUserId);
+
+    /**
+     * Set or change the 6-digit PIN for hidden conversations.
+     * If a PIN already exists, currentPin must be provided and correct.
+     *
+     * @param userId  authenticated user ID
+     * @param request SetPinRequest containing new PIN and optional current PIN
+     */
+    void setupPin(String userId, SetPinRequest request);
+
+    /**
+     * Check whether the user has already configured a PIN.
+     *
+     * @param userId authenticated user ID
+     * @return true if pinCode is set
+     */
+    boolean hasPinConfigured(String userId);
+
+    /**
+     * Verify a raw PIN against the stored bcrypt hash.
+     *
+     * @param userId authenticated user ID
+     * @param rawPin plain-text 6-digit PIN
+     * @return true if matches
+     */
+    boolean verifyPin(String userId, String rawPin);
 }

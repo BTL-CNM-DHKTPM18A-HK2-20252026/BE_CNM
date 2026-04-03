@@ -18,4 +18,8 @@ public interface PinnedMessageRepository extends MongoRepository<PinnedMessage, 
     void deleteByMessageIdAndConversationId(String messageId, String conversationId);
 
     long countByConversationId(String conversationId);
+
+    // Hard-delete all pinned entries for a conversation (used by
+    // clearConversationAll)
+    void deleteByConversationId(String conversationId);
 }

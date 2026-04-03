@@ -91,6 +91,7 @@ public class AiChatService {
     private final BlackboxAiClient blackboxAiClient;
     private final AiImageWorkflowService aiImageWorkflowService;
     private final AiSystemPromptLibrary systemPromptLibrary;
+    private final AiRouterService aiRouterService;
     private final ObjectMapper objectMapper;
 
     @Value("${ai.sliding-window.size:10}")
@@ -128,10 +129,25 @@ public class AiChatService {
 
         broadcastAiTyping(conversation.getConversationId(), true);
         try {
+            // --- Fast-path: explicit /image commands bypass router ---
             QuickCommand imageCommand = parseImageGenerationCommand(request.getContent());
             if (imageCommand != null) {
                 return handleImageGenerationRequest(userId, request, conversation, userMessage, imageCommand);
             }
+
+            // --- Step 1: AI Router – classify intent and select model ---
+            String language = resolveResponseLanguage(request.getLanguage());
+            AiRouterResult routerResult = aiRouterService.route(request.getContent(), language);
+
+            // If router detected IMAGE_GEN task, redirect to image workflow
+            if (routerResult != null && AiRouterResult.TASK_IMAGE_GEN.equals(routerResult.getTaskType())) {
+                QuickCommand routerImageCommand = new QuickCommand("image.generate",
+                        routerResult.getRefinedPrompt());
+                return handleImageGenerationRequest(userId, request, conversation, userMessage, routerImageCommand);
+            }
+
+            // --- Step 2: Build context & call the routed model ---
+            String selectedModel = (routerResult != null) ? routerResult.getSelectedModel() : defaultModel;
 
             List<Message> recentMessages = messageRepository
                     .findByConversationIdOrderByCreatedAtDesc(conversation.getConversationId(), PageRequest.of(0, 30))
@@ -153,6 +169,13 @@ public class AiChatService {
                     request.getLanguage(), request.getThemeType(), userProfileContext, storageContext,
                     fullAccessContext);
 
+            // If router provided a refined prompt, replace the last user message in the
+            // prompt
+            if (routerResult != null && StringUtils.hasText(routerResult.getRefinedPrompt())
+                    && !AiRouterResult.TASK_CORE_CHAT.equals(routerResult.getTaskType())) {
+                replaceLastUserMessage(promptMessages, routerResult.getRefinedPrompt());
+            }
+
             AiCompletionResult completion = null;
             boolean fallbackUsed = false;
             String providerStatus = "COMPLETED";
@@ -162,12 +185,28 @@ public class AiChatService {
             long startedAt = System.currentTimeMillis();
             for (int attempt = 1; attempt <= Math.max(1, maxRetries + 1); attempt++) {
                 try {
-                    completion = blackboxAiClient.complete(promptMessages, defaultModel);
+                    completion = blackboxAiClient.complete(promptMessages, selectedModel);
                     break;
                 } catch (Exception ex) {
                     boolean timeout = blackboxAiClient.isTimeout(ex);
                     boolean canRetry = attempt <= maxRetries;
-                    log.warn("AI call failed attempt {}/{}: {}", attempt, maxRetries + 1, ex.getMessage());
+                    log.warn("AI call failed attempt {}/{} (model={}): {}", attempt, maxRetries + 1, selectedModel,
+                            ex.getMessage());
+
+                    // On last attempt with a routed model, fallback to default model
+                    if (!canRetry && routerResult != null && !selectedModel.equals(defaultModel)) {
+                        log.info("[AI Router] Routed model {} failed, falling back to default {}", selectedModel,
+                                defaultModel);
+                        try {
+                            completion = blackboxAiClient.complete(promptMessages, defaultModel);
+                            fallbackUsed = true;
+                            selectedModel = defaultModel;
+                            break;
+                        } catch (Exception fallbackEx) {
+                            log.warn("Default model fallback also failed: {}", fallbackEx.getMessage());
+                        }
+                    }
+
                     if (!canRetry) {
                         fallbackUsed = true;
                         providerStatus = timeout ? "TIMEOUT" : "FAILED";
@@ -205,6 +244,10 @@ public class AiChatService {
                 requestId = UUID.randomUUID().toString();
             }
 
+            String routerInfo = routerResult != null
+                    ? String.format("[%s] %s", routerResult.getTaskType(), routerResult.getReason())
+                    : null;
+
             Message assistantMessage = Message.builder()
                     .messageId(UUID.randomUUID().toString())
                     .conversationId(conversation.getConversationId())
@@ -218,7 +261,7 @@ public class AiChatService {
                     .isRecalled(false)
                     .isEdited(false)
                     .aiGenerated(true)
-                    .aiModel(defaultModel)
+                    .aiModel(selectedModel)
                     .aiStatus(aiStatus)
                     .promptTokens(promptTokens)
                     .completionTokens(completionTokens)
@@ -260,6 +303,19 @@ public class AiChatService {
                     .build();
         } finally {
             broadcastAiTyping(conversation.getConversationId(), false);
+        }
+    }
+
+    /**
+     * Replace the last user message in the prompt list with the router's refined
+     * prompt.
+     */
+    private void replaceLastUserMessage(List<Map<String, String>> promptMessages, String refinedPrompt) {
+        for (int i = promptMessages.size() - 1; i >= 0; i--) {
+            if ("user".equals(promptMessages.get(i).get("role"))) {
+                promptMessages.set(i, createPromptMessage("user", refinedPrompt));
+                return;
+            }
         }
     }
 
@@ -381,38 +437,100 @@ public class AiChatService {
                     .providerStatus(providerStatus)
                     .build();
         } catch (Exception ex) {
-            log.warn("Image workflow failed: {}", ex.getMessage());
+            log.warn("Image workflow failed, falling back to text AI response: {}", ex.getMessage());
 
-            providerStatus = "FAILED";
-            fallbackUsed = true;
-            String failedText = "vi".equals(language)
-                    ? "Mình chưa tạo được ảnh lúc này (dịch vụ đang tạm lỗi hoặc không truy cập được). Bạn thử lại sau ít phút nhé."
-                    : "I couldn't generate the image right now (service unavailable). Please try again in a moment.";
+            // Fall back to text AI response so the user still gets something useful
+            try {
+                List<Message> recentMessages = messageRepository
+                        .findByConversationIdOrderByCreatedAtDesc(conversation.getConversationId(),
+                                PageRequest.of(0, 30))
+                        .getContent();
+                List<Message> slidingWindow = buildSlidingWindow(recentMessages);
+                String summary = updateSummaryIfNeeded(conversation, recentMessages, slidingWindow);
+                List<String> ragContexts = getRagContexts(conversation.getConversationId(), request);
 
-            assistantMessage = Message.builder()
-                    .messageId(UUID.randomUUID().toString())
-                    .conversationId(conversation.getConversationId())
-                    .senderId(AI_SENDER_ID)
-                    .role(AiRole.ASSISTANT)
-                    .messageType(MessageType.TEXT)
-                    .content(failedText)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .isDeleted(false)
-                    .isRecalled(false)
-                    .isEdited(false)
-                    .aiGenerated(true)
-                    .aiModel("image")
-                    .aiStatus(AiMessageStatus.FAILED)
-                    .promptTokens(estimateTokenCount(userMessage.getContent()))
-                    .completionTokens(estimateTokenCount(failedText))
-                    .totalTokens(estimateTokenCount(userMessage.getContent()) + estimateTokenCount(failedText))
-                    .aiRequestId(UUID.randomUUID().toString())
-                    .aiErrorCode("IMAGE_WORKFLOW_FAILED")
-                    .aiErrorMessage(ex.getMessage())
-                    .build();
+                String fallbackInstruction = "vi".equals(language)
+                        ? "Dịch vụ tạo ảnh hiện không khả dụng. Hãy thông báo người dùng rằng không thể tạo ảnh lúc này, đề xuất thử lại sau, và nếu có thể hãy mô tả bằng lời những gì họ yêu cầu."
+                        : "Image generation service is currently unavailable. Inform the user that the image cannot be created right now, suggest retrying later, and if possible describe in words what they requested.";
+
+                List<Map<String, String>> promptMessages = buildPrompt(summary, ragContexts, slidingWindow,
+                        request.getLanguage(), request.getThemeType(), null, null, null);
+                promptMessages.add(createPromptMessage("system", fallbackInstruction));
+
+                AiCompletionResult fallbackCompletion = null;
+                try {
+                    fallbackCompletion = blackboxAiClient.complete(promptMessages, defaultModel);
+                } catch (Exception aiEx) {
+                    log.warn("Text AI fallback also failed: {}", aiEx.getMessage());
+                }
+
+                String assistantContent;
+                AiMessageStatus aiStatus;
+                if (fallbackCompletion != null && StringUtils.hasText(fallbackCompletion.getContent())) {
+                    assistantContent = fallbackCompletion.getContent();
+                    aiStatus = AiMessageStatus.COMPLETED;
+                } else {
+                    assistantContent = "vi".equals(language)
+                            ? "Mình chưa tạo được ảnh lúc này (dịch vụ đang tạm lỗi hoặc không truy cập được). Bạn thử lại sau ít phút nhé."
+                            : "I couldn't generate the image right now (service unavailable). Please try again in a moment.";
+                    aiStatus = AiMessageStatus.FAILED;
+                }
+
+                assistantMessage = Message.builder()
+                        .messageId(UUID.randomUUID().toString())
+                        .conversationId(conversation.getConversationId())
+                        .senderId(AI_SENDER_ID)
+                        .role(AiRole.ASSISTANT)
+                        .messageType(MessageType.TEXT)
+                        .content(assistantContent)
+                        .createdAt(LocalDateTime.now())
+                        .updatedAt(LocalDateTime.now())
+                        .isDeleted(false)
+                        .isRecalled(false)
+                        .isEdited(false)
+                        .aiGenerated(true)
+                        .aiModel(fallbackCompletion != null ? defaultModel : "image")
+                        .aiStatus(aiStatus)
+                        .promptTokens(estimateTokenCount(userMessage.getContent()))
+                        .completionTokens(estimateTokenCount(assistantContent))
+                        .totalTokens(
+                                estimateTokenCount(userMessage.getContent())
+                                        + estimateTokenCount(assistantContent))
+                        .aiRequestId(UUID.randomUUID().toString())
+                        .aiErrorCode("IMAGE_WORKFLOW_FAILED")
+                        .aiErrorMessage(ex.getMessage())
+                        .build();
+            } catch (Exception fallbackEx) {
+                log.error("Image fallback to text AI also failed: {}", fallbackEx.getMessage());
+                String failedText = "vi".equals(language)
+                        ? "Mình chưa tạo được ảnh lúc này (dịch vụ đang tạm lỗi hoặc không truy cập được). Bạn thử lại sau ít phút nhé."
+                        : "I couldn't generate the image right now (service unavailable). Please try again in a moment.";
+                assistantMessage = Message.builder()
+                        .messageId(UUID.randomUUID().toString())
+                        .conversationId(conversation.getConversationId())
+                        .senderId(AI_SENDER_ID)
+                        .role(AiRole.ASSISTANT)
+                        .messageType(MessageType.TEXT)
+                        .content(failedText)
+                        .createdAt(LocalDateTime.now())
+                        .updatedAt(LocalDateTime.now())
+                        .isDeleted(false)
+                        .isRecalled(false)
+                        .isEdited(false)
+                        .aiGenerated(true)
+                        .aiModel("image")
+                        .aiStatus(AiMessageStatus.FAILED)
+                        .promptTokens(estimateTokenCount(userMessage.getContent()))
+                        .completionTokens(estimateTokenCount(failedText))
+                        .totalTokens(
+                                estimateTokenCount(userMessage.getContent()) + estimateTokenCount(failedText))
+                        .aiRequestId(UUID.randomUUID().toString())
+                        .aiErrorCode("IMAGE_WORKFLOW_FAILED")
+                        .aiErrorMessage(ex.getMessage())
+                        .build();
+            }
+
             assistantMessage = messageRepository.save(assistantMessage);
-
             updateConversationLastMessage(conversation, assistantMessage);
 
             List<ConversationMember> members = conversationMemberRepository
@@ -432,8 +550,8 @@ public class AiChatService {
                     .imageMessage(null)
                     .assistantMessage(assistantMessageResponse)
                     .conversation(conversationResponse)
-                    .fallbackUsed(fallbackUsed)
-                    .providerStatus(providerStatus)
+                    .fallbackUsed(true)
+                    .providerStatus("FAILED")
                     .build();
         }
     }

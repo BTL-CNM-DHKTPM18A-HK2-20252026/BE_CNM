@@ -196,4 +196,18 @@ public class MessageController {
         String url = s3Service.generatePresignedUrl(fileName, fileType);
         return ResponseEntity.ok(ApiResponse.success(url, "Lấy URL upload thành công"));
     }
+
+    @DeleteMapping("/conversations/{conversationId}/all")
+    @Operation(summary = "Clear all messages in a personal conversation (AI or My Documents)", description = "Hard-deletes every message, reaction, attachment and pinned entry in a "
+            +
+            "SELF-type conversation, and removes the corresponding S3 media objects in parallel. " +
+            "Only the conversation owner may call this endpoint.")
+    public ResponseEntity<ApiResponse<Void>> clearConversationAll(
+            @PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        messageService.clearConversationAll(conversationId, userId);
+        return ResponseEntity.ok(ApiResponse.success(null, "Xóa toàn bộ tin nhắn thành công"));
+    }
 }

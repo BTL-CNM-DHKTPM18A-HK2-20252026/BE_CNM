@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import iuh.fit.dto.request.user.RegisterRequest;
+import iuh.fit.dto.request.user.SetPinRequest;
 import iuh.fit.dto.request.user.UpdateAvatarRequest;
 import iuh.fit.dto.request.user.UpdateCoverPhotoRequest;
 import iuh.fit.dto.request.user.UpdateProfileRequest;
@@ -380,5 +381,43 @@ public class UserServiceImpl implements UserService {
                 .orElse(null);
 
         return userMapper.toUserResponse(userAuth, userDetail, currentUserId);
+    }
+
+    // ==================== PIN MANAGEMENT ====================
+
+    @Override
+    @Transactional
+    public void setupPin(String userId, SetPinRequest request) {
+        UserAuth userAuth = userAuthRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        boolean alreadyHasPin = userAuth.getPinCode() != null;
+
+        if (alreadyHasPin) {
+            if (request.getCurrentPin() == null || request.getCurrentPin().isBlank()) {
+                throw new RuntimeException("Vui lòng nhập mã PIN hiện tại để thay đổi");
+            }
+            if (!passwordEncoder.matches(request.getCurrentPin(), userAuth.getPinCode())) {
+                throw new RuntimeException("Mã PIN hiện tại không đúng");
+            }
+        }
+
+        userAuth.setPinCode(passwordEncoder.encode(request.getPin()));
+        userAuthRepository.save(userAuth);
+        log.info("User {} {} PIN", userId, alreadyHasPin ? "changed" : "set");
+    }
+
+    @Override
+    public boolean hasPinConfigured(String userId) {
+        return userAuthRepository.findById(userId)
+                .map(u -> u.getPinCode() != null)
+                .orElse(false);
+    }
+
+    @Override
+    public boolean verifyPin(String userId, String rawPin) {
+        return userAuthRepository.findById(userId)
+                .map(u -> u.getPinCode() != null && passwordEncoder.matches(rawPin, u.getPinCode()))
+                .orElse(false);
     }
 }

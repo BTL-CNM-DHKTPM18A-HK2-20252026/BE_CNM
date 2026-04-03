@@ -15,6 +15,9 @@ public interface MessageReactionRepository extends MongoRepository<MessageReacti
     List<MessageReaction> findByMessageId(String messageId);
     void deleteByMessageIdAndUserId(String messageId, String userId);
 
+    // Hard-delete all reactions for a list of messages (used by clearConversationAll)
+    void deleteByMessageIdIn(List<String> messageIds);
+
     @org.springframework.data.mongodb.repository.Aggregation({
         "{ $match: { messageId: ?0 } }",
         "{ $lookup: { from: 'user_detail', localField: 'userId', foreignField: '_id', as: 'user' } }",

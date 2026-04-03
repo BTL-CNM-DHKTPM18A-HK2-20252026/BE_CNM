@@ -26,22 +26,28 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserAuth {
-    
+
     @Id
     @Builder.Default
     String userId = UUID.randomUUID().toString(); // Primary key and reference to other user collections
-    
+
     @Indexed(unique = true)
     String phoneNumber;
-    
+
     @Indexed(unique = true)
     String email;
     String passwordHash;
     String salt;
-    
+
     AccountStatus accountStatus;
     Boolean isTwoFactorEnabled;
-    
+
+    /**
+     * Bcrypt-hashed 6-digit PIN used to protect hidden conversations. Null if not
+     * set.
+     */
+    String pinCode;
+
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
     LocalDateTime lastLoginAt;

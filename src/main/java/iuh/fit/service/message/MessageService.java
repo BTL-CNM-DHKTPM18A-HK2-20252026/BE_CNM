@@ -9,23 +9,27 @@ import iuh.fit.entity.MessageAttachment;
 import iuh.fit.entity.MessageReaction;
 import iuh.fit.entity.UserSetting;
 import iuh.fit.enums.ConversationStatus;
+import iuh.fit.enums.ConversationType;
 import iuh.fit.enums.FriendshipStatus;
 import iuh.fit.enums.MessageType;
 import iuh.fit.enums.PrivacyLevel;
 import iuh.fit.enums.ReactionType;
+import iuh.fit.exception.ErrorCode;
+import iuh.fit.exception.ForbiddenException;
+import iuh.fit.exception.ResourceNotFoundException;
 import iuh.fit.mapper.MessageMapper;
 import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.MessageAttachmentRepository;
 import iuh.fit.repository.MessageReactionRepository;
 import iuh.fit.repository.MessageRepository;
+import iuh.fit.repository.PinnedMessageRepository;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserSettingRepository;
 import iuh.fit.entity.UserDetail;
 import iuh.fit.mapper.ConversationMapper;
 import iuh.fit.dto.response.conversation.ConversationResponse;
 import iuh.fit.entity.ConversationMember;
-import iuh.fit.enums.ConversationType;
 import iuh.fit.enums.MemberRole;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.dto.response.message.MessageAndConversationResponse;
@@ -70,6 +74,7 @@ public class MessageService {
     private final FriendshipRepository friendshipRepository;
     private final UserSettingRepository userSettingRepository;
     private final SearchService searchService;
+    private final PinnedMessageRepository pinnedMessageRepository;
 
     @Transactional
     public MessageAndConversationResponse sendMessage(String senderId, SendMessageRequest request) {
@@ -511,5 +516,89 @@ public class MessageService {
         reactionEvent.put("reactionType", reactionType);
 
         messagingTemplate.convertAndSend("/topic/chat/" + message.getConversationId(), reactionEvent);
+    }
+
+    /**
+     * Clear ALL messages in a SELF (AI or My Documents) conversation.
+     *
+     * <p>
+     * Ownership check: the caller must be a recorded member of the conversation.
+     * Scope restriction: only SELF-type conversations may be cleared to avoid
+     * accidental wipes of shared group / private chats.
+     *
+     * <p>
+     * Operation order (best-effort S3 then atomic DB deletions):
+     * <ol>
+     * <li>Verify conversation exists and caller is a member.</li>
+     * <li>Collect all messages and S3 media URLs.</li>
+     * <li>Delete S3 objects in parallel (non-blocking, failures are logged).</li>
+     * <li>Hard-delete reactions, attachments, pinned refs, then messages.</li>
+     * <li>Reset conversation last-message metadata.</li>
+     * </ol>
+     *
+     * @param conversationId target conversation
+     * @param userId         authenticated user performing the action
+     */
+    @Transactional
+    public void clearConversationAll(String conversationId, String userId) {
+        // 1. Verify conversation exists
+        Conversations conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        ErrorCode.CONVERSATION_NOT_FOUND,
+                        "Kh\u00f4ng t\u00ecm th\u1ea5y h\u1ed9i tho\u1ea1i: " + conversationId));
+
+        // 2. Ownership check: caller must be a registered member
+        conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(ForbiddenException::notConversationMember);
+
+        // 3. Restrict to personal (SELF) conversations only
+        if (conv.getConversationType() != ConversationType.SELF) {
+            throw new ForbiddenException(ErrorCode.FORBIDDEN,
+                    "Ch\u1ec9 c\u00f3 th\u1ec3 x\u00f3a to\u00e0n b\u1ed9 h\u1ed9i tho\u1ea1i c\u00e1 nh\u00e2n ho\u1eb7c AI");
+        }
+
+        // 4. Fetch all messages in the conversation
+        List<Message> messages = messageRepository.findByConversationId(conversationId);
+        if (messages.isEmpty()) {
+            log.info("clearConversationAll: no messages found in conversation {}", conversationId);
+            return;
+        }
+
+        List<String> messageIds = messages.stream()
+                .map(Message::getMessageId)
+                .collect(Collectors.toList());
+
+        // 5. Collect S3 media URLs from messages (IMAGE, VIDEO, MEDIA, VOICE types)
+        List<String> s3Urls = messages.stream()
+                .filter(m -> m.getContent() != null
+                        && m.getContent().contains(".amazonaws.com/")
+                        && m.getMessageType() != null
+                        && m.getMessageType() != MessageType.TEXT
+                        && m.getMessageType() != MessageType.LINK)
+                .map(Message::getContent)
+                .collect(Collectors.toList());
+
+        // 6. Delete S3 files in parallel — best-effort, failures are logged but do not
+        // abort the DB cleanup so the conversation is still usable afterwards.
+        if (!s3Urls.isEmpty()) {
+            storageService.deleteObjectsByUrls(s3Urls);
+            log.info("clearConversationAll: queued {} S3 objects for deletion", s3Urls.size());
+        }
+
+        // 7. Remove all child documents before the parent messages
+        // (MongoDB has no FK cascade, so order matters)
+        messageReactionRepository.deleteByMessageIdIn(messageIds);
+        messageAttachmentRepository.deleteByMessageIdIn(messageIds);
+        pinnedMessageRepository.deleteByConversationId(conversationId);
+        messageRepository.deleteByConversationId(conversationId);
+
+        // 8. Reset conversation last-message metadata so the UI shows empty state
+        conv.setLastMessageId(null);
+        conv.setLastMessageContent(null);
+        conv.setLastMessageTime(null);
+        conversationRepository.save(conv);
+
+        log.info("clearConversationAll: deleted {} messages from conversation {} by user {}",
+                messages.size(), conversationId, userId);
     }
 }

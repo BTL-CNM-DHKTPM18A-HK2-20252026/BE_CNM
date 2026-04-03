@@ -21,10 +21,12 @@ import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.MessageRepository;
+import iuh.fit.repository.UserAuthRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessageSendingOperations;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +51,8 @@ public class ConversationService {
     private final SimpMessageSendingOperations messagingTemplate;
     private final FriendshipRepository friendshipRepository;
     private final iuh.fit.repository.UserDetailRepository userDetailRepository;
+    private final UserAuthRepository userAuthRepository;
+    private final PasswordEncoder passwordEncoder;
 
     /**
      * Tìm cuộc hội thoại P2P giữa 2 người. Trả về null nếu chưa có (Lazy Creation).
@@ -1066,7 +1070,14 @@ public class ConversationService {
      * Unhide a previously hidden conversation for a user.
      */
     @Transactional
-    public java.util.Map<String, Object> unhideConversation(String conversationId, String userId) {
+    public java.util.Map<String, Object> unhideConversation(String conversationId, String userId, String rawPin) {
+        iuh.fit.entity.UserAuth userAuth = userAuthRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND));
+        if (userAuth.getPinCode() == null)
+            throw new RuntimeException("Bạn chưa thiết lập mã PIN.");
+        if (!passwordEncoder.matches(rawPin, userAuth.getPinCode()))
+            throw new RuntimeException("Mã PIN không chính xác");
+
         ConversationMember member = conversationMemberRepository
                 .findByConversationIdAndUserId(conversationId, userId)
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
@@ -1082,5 +1093,50 @@ public class ConversationService {
         messagingTemplate.convertAndSend("/topic/conversation-events/" + userId, event);
 
         return event;
+    }
+
+    // ==================== PIN-PROTECTED HIDE ====================
+
+    /**
+     * Hide a conversation only after verifying the user's PIN.
+     */
+    @Transactional
+    public java.util.Map<String, Object> hideConversationWithPin(String conversationId, String userId, String rawPin) {
+        iuh.fit.entity.UserAuth userAuth = userAuthRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND));
+
+        if (userAuth.getPinCode() == null) {
+            throw new RuntimeException("Bạn chưa thiết lập mã PIN. Vui lòng thiết lập PIN trước.");
+        }
+        if (!passwordEncoder.matches(rawPin, userAuth.getPinCode())) {
+            throw new RuntimeException("Mã PIN không chính xác");
+        }
+
+        return softDeleteConversation(conversationId, userId);
+    }
+
+    /**
+     * Search hidden conversations by keyword (case-insensitive name match).
+     * Returns hidden results only if PIN is correct, else returns empty list.
+     */
+    public List<ConversationResponse> searchHiddenConversations(String userId, String keyword, String rawPin) {
+        iuh.fit.entity.UserAuth userAuth = userAuthRepository.findById(userId).orElse(null);
+        if (userAuth == null || userAuth.getPinCode() == null)
+            return List.of();
+        if (!passwordEncoder.matches(rawPin, userAuth.getPinCode()))
+            return List.of();
+
+        String lowerKeyword = (keyword == null) ? "" : keyword.trim().toLowerCase();
+
+        return getHiddenConversations(userId).stream()
+                .filter(conv -> {
+                    if (lowerKeyword.isEmpty())
+                        return true;
+                    String name = conv.getConversationName() != null ? conv.getConversationName().toLowerCase() : "";
+                    String lastMsg = conv.getLastMessageContent() != null ? conv.getLastMessageContent().toLowerCase()
+                            : "";
+                    return name.contains(lowerKeyword) || lastMsg.contains(lowerKeyword);
+                })
+                .collect(Collectors.toList());
     }
 }

@@ -13,11 +13,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import iuh.fit.document.DocumentDocument;
 import iuh.fit.document.MessageDocument;
 import iuh.fit.document.UserDocument;
 import iuh.fit.entity.SearchHistory;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.response.ApiResponse;
+import iuh.fit.response.GlobalSearchResult;
 import iuh.fit.response.SearchResult;
 import iuh.fit.service.search.SearchService;
 import iuh.fit.utils.JwtUtils;
@@ -210,5 +212,90 @@ public class SearchController {
             return "Search query contains invalid characters";
         }
         return null;
+    }
+
+    // ── Search across all my conversations (Private + Group) ─────────────────
+
+    @GetMapping("/my-messages")
+    @Operation(summary = "Search messages across all conversations the current user belongs to")
+    public ResponseEntity<ApiResponse<Page<SearchResult<MessageDocument>>>> searchMyMessages(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        String err = validateQuery(q);
+        if (err != null)
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.<Page<SearchResult<MessageDocument>>>builder().success(false).message(err)
+                            .build());
+
+        List<String> conversationIds = conversationMemberRepository.findByUserId(userId)
+                .stream().map(m -> m.getConversationId()).toList();
+
+        Page<SearchResult<MessageDocument>> results = searchService.searchMessagesByUserId(q.trim(), conversationIds,
+                page, size);
+        searchService.trackSearch(userId, q.trim(), "my-messages", null, (int) results.getTotalElements());
+        return ResponseEntity.ok(ApiResponse.<Page<SearchResult<MessageDocument>>>builder()
+                .success(true).message("Search my messages successful").data(results).build());
+    }
+
+    // ── Search My Documents ───────────────────────────────────────────────────
+
+    @GetMapping("/documents")
+    @Operation(summary = "Search files/documents owned by the current user")
+    public ResponseEntity<ApiResponse<Page<SearchResult<DocumentDocument>>>> searchDocuments(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        String err = validateQuery(q);
+        if (err != null)
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.<Page<SearchResult<DocumentDocument>>>builder().success(false).message(err)
+                            .build());
+
+        Page<SearchResult<DocumentDocument>> results = searchService.searchDocuments(q.trim(), userId, page, size);
+        searchService.trackSearch(userId, q.trim(), "documents", null, (int) results.getTotalElements());
+        return ResponseEntity.ok(ApiResponse.<Page<SearchResult<DocumentDocument>>>builder()
+                .success(true).message("Search documents successful").data(results).build());
+    }
+
+    // ── Global search: messages + users + documents in one call ──────────────
+
+    @GetMapping("/global")
+    @Operation(summary = "Global search across messages, users, and documents")
+    public ResponseEntity<ApiResponse<GlobalSearchResult>> globalSearch(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        String err = validateQuery(q);
+        if (err != null)
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.<GlobalSearchResult>builder().success(false).message(err).build());
+
+        List<String> conversationIds = conversationMemberRepository.findByUserId(userId)
+                .stream().map(m -> m.getConversationId()).toList();
+
+        GlobalSearchResult result = searchService.globalSearch(q.trim(), userId, conversationIds, page, size);
+        searchService.trackSearch(userId, q.trim(), "global", null,
+                (int) (result.getMessages().getTotalElements()
+                        + result.getUsers().getTotalElements()
+                        + result.getDocuments().getTotalElements()));
+
+        return ResponseEntity.ok(ApiResponse.<GlobalSearchResult>builder()
+                .success(true).message("Global search successful").data(result).build());
     }
 }
