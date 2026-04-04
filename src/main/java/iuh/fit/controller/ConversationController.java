@@ -316,6 +316,18 @@ public class ConversationController {
                 "Lấy trạng thái đã xem thành công"));
     }
 
+    // ==================== MARK AS READ ====================
+
+    @PatchMapping("/{conversationId}/mark-as-read")
+    @Operation(summary = "Mark all messages in a conversation as read for the current user")
+    public ResponseEntity<ApiResponse<Void>> markAsRead(@PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        conversationService.markAsRead(conversationId, userId);
+        return ResponseEntity.ok(ApiResponse.success(null, "Đã đánh dấu đã đọc"));
+    }
+
     // ==================== MUTE CONVERSATION ====================
 
     @PostMapping("/{conversationId}/mute")

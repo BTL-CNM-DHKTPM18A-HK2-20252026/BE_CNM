@@ -717,6 +717,20 @@ public class ConversationService {
     }
 
     /**
+     * Mark all messages in a conversation as read for a user.
+     * Đặt lastReadAt = now và xóa cờ isMarkedUnread.
+     */
+    @Transactional
+    public void markAsRead(String conversationId, String userId) {
+        conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                .ifPresent(member -> {
+                    member.setLastReadAt(LocalDateTime.now());
+                    member.setIsMarkedUnread(false);
+                    conversationMemberRepository.save(member);
+                });
+    }
+
+    /**
      * Broadcast a system message to all members in a conversation via WebSocket.
      * Gửi thông báo hệ thống cho tất cả thành viên trong nhóm qua WebSocket.
      */

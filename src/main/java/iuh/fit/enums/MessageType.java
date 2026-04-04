@@ -10,5 +10,6 @@ public enum MessageType {
     MEDIA, // Other media types
     VOICE, // Voice message
     LINK, // Shared Link message
-    SYSTEM // System notification message (e.g. role changes)
+    SYSTEM, // System notification message (e.g. role changes)
+    SHARE_CONTACT // Shared contact card message
 }

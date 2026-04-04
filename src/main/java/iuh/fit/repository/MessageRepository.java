@@ -48,6 +48,16 @@ public interface MessageRepository extends MongoRepository<Message, String> {
         long countByConversationIdAndIsDeletedFalseAndCreatedAtGreaterThan(
                         String conversationId, LocalDateTime lastSeenAt); // Changed back to LocalDateTime
 
+        // Count unread messages after lastReadAt, excluding messages sent by the user
+        // themselves
+        long countByConversationIdAndIsDeletedFalseAndCreatedAtGreaterThanAndSenderIdNot(
+                        String conversationId, LocalDateTime afterDate, String excludeSenderId);
+
+        // Count all messages in a conversation, excluding messages sent by the user
+        // (for never-read case)
+        long countByConversationIdAndIsDeletedFalseAndSenderIdNot(
+                        String conversationId, String excludeSenderId);
+
         // Delete old messages for auto-delete feature
         long deleteByConversationIdAndCreatedAtBefore(String conversationId, LocalDateTime cutoff);
 

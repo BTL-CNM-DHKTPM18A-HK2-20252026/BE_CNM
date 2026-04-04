@@ -32,7 +32,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Authentication Controller
- * Handles all authentication-related endpoints including login, logout, and token validation
+ * Handles all authentication-related endpoints including login, logout, and
+ * token validation
  */
 @RestController
 @RequestMapping("/auth")
@@ -50,18 +51,17 @@ public class AuthenticationController {
      * 
      * @param request Authentication request containing username and password
      * @return Authentication response with access token
-     */    
+     */
     @Operation(summary = "Login", description = "Authenticate user and return JWT token")
     @ApiResponses(value = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Login successful",
-                    content = @Content(schema = @Schema(implementation = AuthenticationResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid credentials",
-                    content = @Content)
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Login successful", content = @Content(schema = @Schema(implementation = AuthenticationResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid credentials", content = @Content)
     })
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<AuthenticationResponse>> authenticate(@RequestBody AuthenticationRequest request) 
+    public ResponseEntity<ApiResponse<AuthenticationResponse>> authenticate(@RequestBody AuthenticationRequest request)
             throws JOSEException {
         log.info("Login attempt for user: {}", request.getUsername());
+        log.info("Login attempt for user: {}", request);
         AuthenticationResponse response = authenticationService.authenticate(request);
         return ResponseEntity.ok(ApiResponse.success(response, "Đăng nhập thành công"));
     }
@@ -75,13 +75,11 @@ public class AuthenticationController {
      */
     @Operation(summary = "Introspect token", description = "Verify the validity of a JWT token")
     @ApiResponses(value = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Valid token",
-                    content = @Content(schema = @Schema(implementation = IntrospectResponse.class))),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid token",
-                    content = @Content)
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Valid token", content = @Content(schema = @Schema(implementation = IntrospectResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid token", content = @Content)
     })
     @PostMapping("/introspect")
-    public ResponseEntity<ApiResponse<IntrospectResponse>> introspect(@RequestBody IntrospectRequest request) 
+    public ResponseEntity<ApiResponse<IntrospectResponse>> introspect(@RequestBody IntrospectRequest request)
             throws JOSEException, ParseException {
         IntrospectResponse response = authenticationService.introspect(request);
         return ResponseEntity.ok(ApiResponse.success(response, "Kiểm tra token thành công"));
@@ -97,8 +95,7 @@ public class AuthenticationController {
     @Operation(summary = "Logout", description = "Invalidate the current JWT token")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Logout successful"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid token",
-                    content = @Content)
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid token", content = @Content)
     })
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout(@RequestBody LogoutRequest request) {
@@ -141,7 +138,7 @@ public class AuthenticationController {
      */
     @Operation(summary = "Confirm QR Login", description = "Called by Mobile App to authorize a QR login session")
     @PostMapping("/qr-confirm")
-    public ResponseEntity<ApiResponse<Void>> confirmQr(@RequestBody QrConfirmRequest request) 
+    public ResponseEntity<ApiResponse<Void>> confirmQr(@RequestBody QrConfirmRequest request)
             throws JOSEException {
         log.info("Mobile app confirmed QR login for session: {}", request.getUuid());
         authenticationService.qrConfirm(request.getUuid(), request.getUserId());
@@ -150,7 +147,7 @@ public class AuthenticationController {
 
     @Operation(summary = "Notify QR Scanned", description = "Called by Mobile App when a QR code is first scanned")
     @PostMapping("/qr-scan")
-    public ResponseEntity<ApiResponse<Void>> scanQr(@RequestBody QrConfirmRequest request) 
+    public ResponseEntity<ApiResponse<Void>> scanQr(@RequestBody QrConfirmRequest request)
             throws JOSEException {
         log.info("Mobile app scanned QR login for session: {}", request.getUuid());
         authenticationService.qrScanned(request.getUuid(), request.getUserId());
