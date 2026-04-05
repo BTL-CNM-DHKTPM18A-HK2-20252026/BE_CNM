@@ -31,5 +31,9 @@ public class ImageUploadMetadata {
 
     String s3Url;
 
+    int width;
+
+    int height;
+
     LocalDateTime uploadTime;
 }

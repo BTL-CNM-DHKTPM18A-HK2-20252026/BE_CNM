@@ -9,4 +9,6 @@ import iuh.fit.entity.ImageUploadMetadata;
 public interface ImageUploadMetadataRepository extends MongoRepository<ImageUploadMetadata, String> {
 
     Optional<ImageUploadMetadata> findByS3Key(String s3Key);
+
+    Optional<ImageUploadMetadata> findByS3Url(String s3Url);
 }

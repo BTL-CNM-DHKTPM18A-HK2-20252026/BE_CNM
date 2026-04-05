@@ -26,5 +26,9 @@ public class ImageUploadMetadataResponse {
 
     String s3Url;
 
+    int width;
+
+    int height;
+
     LocalDateTime uploadTime;
 }

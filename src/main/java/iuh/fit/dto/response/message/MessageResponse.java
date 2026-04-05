@@ -43,6 +43,9 @@ public class MessageResponse {
     private Integer videoDuration;
     private String fileName;
     private Long fileSize;
+    private String s3Url;
+    private Integer width;
+    private Integer height;
     private String forwardedFromMessageId;
     private String forwardedFromSenderName;
     private List<MessageReactionDto> reactions;

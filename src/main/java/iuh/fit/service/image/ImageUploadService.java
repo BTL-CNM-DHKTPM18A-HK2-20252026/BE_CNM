@@ -34,7 +34,7 @@ public class ImageUploadService {
     S3Presigner s3Presigner;
     ImageUploadMetadataRepository imageUploadMetadataRepository;
 
-        @NonFinal
+    @NonFinal
     @Value("${aws.s3.bucket-name}")
     String bucketName;
 
@@ -79,6 +79,8 @@ public class ImageUploadService {
                 .originalName(request.getOriginalName())
                 .s3Key(request.getS3Key())
                 .s3Url(resolvedUrl)
+                .width(request.getWidth())
+                .height(request.getHeight())
                 .uploadTime(LocalDateTime.now())
                 .build();
 
@@ -89,6 +91,8 @@ public class ImageUploadService {
                 .originalName(saved.getOriginalName())
                 .s3Key(saved.getS3Key())
                 .s3Url(saved.getS3Url())
+                .width(saved.getWidth())
+                .height(saved.getHeight())
                 .uploadTime(saved.getUploadTime())
                 .build();
     }

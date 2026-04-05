@@ -1,6 +1,7 @@
 package iuh.fit.dto.request.image;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -24,4 +25,10 @@ public class ImageUploadCompleteRequest {
     String s3Key;
 
     String s3Url;
+
+    @Positive(message = "width must be greater than 0")
+    int width;
+
+    @Positive(message = "height must be greater than 0")
+    int height;
 }

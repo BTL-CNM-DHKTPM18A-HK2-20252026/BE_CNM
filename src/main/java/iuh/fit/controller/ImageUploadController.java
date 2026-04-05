@@ -40,13 +40,20 @@ public class ImageUploadController {
         return ResponseEntity.ok(ApiResponse.success(response, "Tạo pre-signed URL thành công"));
     }
 
-    @PostMapping("/complete")
+    @PostMapping("/save")
     @Operation(summary = "Save image metadata after upload success")
-    public ResponseEntity<ApiResponse<ImageUploadMetadataResponse>> completeUpload(
+    public ResponseEntity<ApiResponse<ImageUploadMetadataResponse>> saveUpload(
             @Valid @RequestBody ImageUploadCompleteRequest request) {
 
         ImageUploadMetadataResponse response = imageUploadService.saveUploadedImageMetadata(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(response, "Lưu metadata ảnh thành công"));
+    }
+
+    @PostMapping("/complete")
+    @Operation(summary = "Backward-compatible alias for /images/save")
+    public ResponseEntity<ApiResponse<ImageUploadMetadataResponse>> completeUpload(
+            @Valid @RequestBody ImageUploadCompleteRequest request) {
+        return saveUpload(request);
     }
 }
