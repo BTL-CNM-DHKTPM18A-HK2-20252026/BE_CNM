@@ -42,6 +42,9 @@ public class UserAuth {
     AccountStatus accountStatus;
     Boolean isTwoFactorEnabled;
 
+    @Builder.Default
+    Boolean isVerified = true;
+
     /**
      * Bcrypt-hashed 6-digit PIN used to protect hidden conversations. Null if not
      * set.

@@ -13,20 +13,20 @@ import lombok.RequiredArgsConstructor;
 @Component
 @RequiredArgsConstructor
 public class UserMapper {
-    
+
     private final FriendshipRepository friendshipRepository;
-    
+
     public UserProfileResponse toProfileResponse(UserAuth userAuth, UserDetail userDetail, String currentUserId) {
         if (userAuth == null) {
             return null;
         }
-        
+
         UserProfileResponse.UserProfileResponseBuilder builder = UserProfileResponse.builder()
                 .userId(userAuth.getUserId())
                 .email(userAuth.getEmail())
                 .phoneNumber(userAuth.getPhoneNumber())
                 .createdAt(userAuth.getCreatedAt());
-        
+
         if (userDetail != null) {
             builder.displayName(userDetail.getDisplayName())
                     .firstName(userDetail.getFirstName())
@@ -35,28 +35,34 @@ public class UserMapper {
                     .coverPhotoUrl(userDetail.getCoverPhotoUrl())
                     .bio(userDetail.getBio());
         }
-        
+
         // Calculate friend count
         long friendCount = friendshipRepository.countAcceptedFriends(userAuth.getUserId());
         builder.friendCount((int) friendCount);
-        
+
         // Check if current user is friend
         if (currentUserId != null && !currentUserId.equals(userAuth.getUserId())) {
-            boolean isFriend = friendshipRepository.findByRequesterIdAndReceiverIdAndStatus(currentUserId, userAuth.getUserId(), FriendshipStatus.ACCEPTED).isPresent() ||
-                    friendshipRepository.findByRequesterIdAndReceiverIdAndStatus(userAuth.getUserId(), currentUserId, FriendshipStatus.ACCEPTED).isPresent();
+            boolean isFriend = friendshipRepository
+                    .findByRequesterIdAndReceiverIdAndStatus(currentUserId, userAuth.getUserId(),
+                            FriendshipStatus.ACCEPTED)
+                    .isPresent() ||
+                    friendshipRepository.findByRequesterIdAndReceiverIdAndStatus(userAuth.getUserId(), currentUserId,
+                            FriendshipStatus.ACCEPTED).isPresent();
             builder.isFriend(isFriend);
         }
-        
+
         return builder.build();
     }
 
     public UserResponse toUserResponse(UserAuth userAuth, UserDetail userDetail, String currentUserId) {
-        if (userAuth == null) return null;
+        if (userAuth == null)
+            return null;
 
         UserResponse.UserResponseBuilder builder = UserResponse.builder()
                 .userId(userAuth.getUserId())
                 .phoneNumber(userAuth.getPhoneNumber())
                 .email(userAuth.getEmail())
+                .isVerified(userAuth.getIsVerified())
                 .accountStatus(userAuth.getAccountStatus() != null ? userAuth.getAccountStatus().name() : null);
 
         if (userDetail != null) {

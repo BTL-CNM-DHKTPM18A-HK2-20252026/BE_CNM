@@ -1,6 +1,7 @@
 package iuh.fit.service.user;
 
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,7 +26,9 @@ import iuh.fit.mapper.UserMapper;
 import iuh.fit.repository.UserAuthRepository;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserSettingRepository;
+import iuh.fit.repository.UserVerificationRepository;
 import iuh.fit.service.conversation.ConversationService;
+import iuh.fit.service.auth.EmailVerificationService;
 import iuh.fit.service.search.SearchService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -45,14 +48,17 @@ public class UserServiceImpl implements UserService {
     UserMapper userMapper;
     ConversationService conversationService;
     SearchService searchService;
+    EmailVerificationService emailVerificationService;
+    UserVerificationRepository userVerificationRepository;
 
     @Override
     @Transactional
     public UserResponse register(RegisterRequest request) {
-        log.info("Registering new user with email: {}", request.getEmail());
+        String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
+        log.info("Registering new user with email: {}", normalizedEmail);
 
         // Validate email and phone uniqueness
-        if (userAuthRepository.existsByEmail(request.getEmail())) {
+        if (userAuthRepository.existsByEmail(normalizedEmail)) {
             throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
         }
 
@@ -68,11 +74,12 @@ public class UserServiceImpl implements UserService {
         UserAuth userAuth = UserAuth.builder()
                 .userId(userId)
                 .phoneNumber(request.getPhoneNumber())
-                .email(request.getEmail())
+                .email(normalizedEmail)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .salt(salt)
                 .accountStatus(AccountStatus.ACTIVE)
                 .isTwoFactorEnabled(false)
+                .isVerified(false)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .isDeleted(false)
@@ -109,9 +116,6 @@ public class UserServiceImpl implements UserService {
         userDetailRepository.save(userDetail);
         log.info("UserDetail created for userId: {}", userId);
 
-        // Index user in Elasticsearch
-        searchService.indexUser(userDetail, userAuth.getPhoneNumber(), userAuth.getEmail());
-
         // Create UserSetting with default values
         UserSetting userSetting = UserSetting.builder()
                 .userId(userId)
@@ -127,8 +131,12 @@ public class UserServiceImpl implements UserService {
         userSettingRepository.save(userSetting);
         log.info("UserSetting created for userId: {}", userId);
 
-        // Tạo sẵn hội thoại Cloud của tôi
-        conversationService.getOrCreateSelfConversation(userId);
+        // Send OTP for registration first. If email sending fails, rollback the user
+        // artifacts because Mongo transactions may not be active in local standalone
+        // mode.
+        sendRegistrationOtpOrRollback(userId, normalizedEmail);
+
+        initializePostRegistrationResources(userAuth, userDetail);
 
         // --- CÁCH 1: KHÔNG XÀI MAPPER (Thủ công) ---
         return UserResponse.builder()
@@ -140,6 +148,7 @@ public class UserServiceImpl implements UserService {
                 .lastName(userDetail.getLastName())
                 .avatarUrl(userDetail.getAvatarUrl())
                 .accountStatus(userAuth.getAccountStatus().name())
+                .isVerified(userAuth.getIsVerified())
                 .gender(userDetail.getGender())
                 .dob(userDetail.getDob())
                 .build();
@@ -150,10 +159,11 @@ public class UserServiceImpl implements UserService {
      */
     @Transactional
     public UserResponse registerWithMapper(RegisterRequest request) {
-        log.info("Registering (with Mapper) for email: {}", request.getEmail());
+        String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
+        log.info("Registering (with Mapper) for email: {}", normalizedEmail);
 
         // 1. Kiểm tra duy nhất
-        if (userAuthRepository.existsByEmail(request.getEmail())) {
+        if (userAuthRepository.existsByEmail(normalizedEmail)) {
             throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
         }
         if (userAuthRepository.existsByPhoneNumber(request.getPhoneNumber())) {
@@ -168,9 +178,10 @@ public class UserServiceImpl implements UserService {
         UserAuth userAuth = UserAuth.builder()
                 .userId(userId)
                 .phoneNumber(request.getPhoneNumber())
-                .email(request.getEmail())
+                .email(normalizedEmail)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .accountStatus(AccountStatus.ACTIVE)
+                .isVerified(false)
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -191,8 +202,9 @@ public class UserServiceImpl implements UserService {
         userDetailRepository.save(userDetail);
         userSettingRepository.save(userSetting);
 
-        // Tạo sẵn hội thoại Cloud của tôi
-        conversationService.getOrCreateSelfConversation(userId);
+        sendRegistrationOtpOrRollback(userId, normalizedEmail);
+
+        initializePostRegistrationResources(userAuth, userDetail);
 
         // --- CÁCH 2: XÀI MAPPER ---
         return userMapper.toUserResponse(userAuth, userDetail, null);
@@ -217,6 +229,7 @@ public class UserServiceImpl implements UserService {
                 .lastName(userDetail != null ? userDetail.getLastName() : null)
                 .avatarUrl(userDetail != null ? userDetail.getAvatarUrl() : null)
                 .accountStatus(userAuth.getAccountStatus().name())
+                .isVerified(userAuth.getIsVerified())
                 .gender(userDetail != null ? userDetail.getGender() : null)
                 .dob(userDetail != null ? userDetail.getDob() : null)
                 .build();
@@ -419,5 +432,40 @@ public class UserServiceImpl implements UserService {
         return userAuthRepository.findById(userId)
                 .map(u -> u.getPinCode() != null && passwordEncoder.matches(rawPin, u.getPinCode()))
                 .orElse(false);
+    }
+
+    private void sendRegistrationOtpOrRollback(String userId, String normalizedEmail) {
+        try {
+            emailVerificationService.sendVerificationOtp(normalizedEmail);
+        } catch (RuntimeException ex) {
+            rollbackRegistrationArtifacts(userId);
+            throw ex;
+        }
+    }
+
+    private void initializePostRegistrationResources(UserAuth userAuth, UserDetail userDetail) {
+        try {
+            searchService.indexUser(userDetail, userAuth.getPhoneNumber(), userAuth.getEmail());
+        } catch (Exception ex) {
+            log.warn("Failed to index user {} after registration: {}", userAuth.getUserId(), ex.getMessage());
+        }
+
+        try {
+            conversationService.getOrCreateSelfConversation(userAuth.getUserId());
+        } catch (Exception ex) {
+            log.warn("Failed to create self conversation for user {}: {}", userAuth.getUserId(), ex.getMessage());
+        }
+    }
+
+    private void rollbackRegistrationArtifacts(String userId) {
+        try {
+            userVerificationRepository.deleteByUserId(userId);
+            userSettingRepository.deleteById(userId);
+            userDetailRepository.deleteById(userId);
+            userAuthRepository.deleteById(userId);
+            log.warn("Rolled back registration artifacts for userId: {} due to OTP send failure", userId);
+        } catch (Exception cleanupEx) {
+            log.error("Failed to rollback registration artifacts for userId: {}", userId, cleanupEx);
+        }
     }
 }

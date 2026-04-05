@@ -18,13 +18,18 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.auth.AuthenticationRequest;
 import iuh.fit.dto.request.auth.CheckPhoneNumberRequest;
+import iuh.fit.dto.request.auth.ForgotPasswordRequest;
 import iuh.fit.dto.request.auth.IntrospectRequest;
 import iuh.fit.dto.request.auth.LogoutRequest;
 import iuh.fit.dto.request.auth.QrConfirmRequest;
+import iuh.fit.dto.request.auth.ResendOtpRequest;
+import iuh.fit.dto.request.auth.ResetPasswordRequest;
+import iuh.fit.dto.request.auth.VerifyOtpRequest;
 import iuh.fit.dto.response.auth.AuthenticationResponse;
 import iuh.fit.dto.response.auth.IntrospectResponse;
 import iuh.fit.response.ApiResponse;
 import iuh.fit.service.auth.AuthenticationService;
+import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
@@ -114,6 +119,34 @@ public class AuthenticationController {
     public ResponseEntity<ApiResponse<Boolean>> checkPhoneNumber(@RequestBody CheckPhoneNumberRequest request) {
         boolean exists = authenticationService.checkPhoneNumberExists(request.getPhoneNumber());
         return ResponseEntity.ok(ApiResponse.success(exists, "Kiểm tra số điện thoại thành công"));
+    }
+
+    @Operation(summary = "Verify email OTP", description = "Verify a 6-digit OTP for email verification")
+    @PostMapping("/verify-otp")
+    public ResponseEntity<ApiResponse<Void>> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
+        authenticationService.verifyEmailOtp(request);
+        return ResponseEntity.ok(ApiResponse.success("Xác thực email thành công"));
+    }
+
+    @Operation(summary = "Resend email OTP", description = "Resend a new 6-digit OTP code to the target email")
+    @PostMapping("/resend-otp")
+    public ResponseEntity<ApiResponse<Void>> resendOtp(@Valid @RequestBody ResendOtpRequest request) {
+        authenticationService.resendEmailOtp(request.getEmail());
+        return ResponseEntity.ok(ApiResponse.success("Đã gửi lại mã OTP"));
+    }
+
+    @Operation(summary = "Send forgot-password OTP", description = "Send a 6-digit OTP code for password reset")
+    @PostMapping("/forgot-password/send-otp")
+    public ResponseEntity<ApiResponse<Void>> sendForgotPasswordOtp(@Valid @RequestBody ForgotPasswordRequest request) {
+        authenticationService.sendPasswordResetOtp(request.getEmail());
+        return ResponseEntity.ok(ApiResponse.success("Đã gửi mã OTP đặt lại mật khẩu"));
+    }
+
+    @Operation(summary = "Reset password", description = "Reset account password using email + OTP")
+    @PostMapping("/forgot-password/reset")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authenticationService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.success("Đặt lại mật khẩu thành công"));
     }
 
     /**

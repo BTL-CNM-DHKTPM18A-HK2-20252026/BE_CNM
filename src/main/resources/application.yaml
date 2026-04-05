@@ -2,13 +2,29 @@ spring:
   application:
     name: fruvia_backend
 
+  mail:
+    host: ${EMAIL_HOST:smtp.gmail.com}
+    port: ${EMAIL_PORT:587}
+    username: ${EMAIL_USERNAME:}
+    password: ${EMAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            trust: ${EMAIL_SSL_TRUST:smtp.gmail.com}
+            protocols: ${EMAIL_SSL_PROTOCOLS:TLSv1.2}
+
   data:
     mongodb:
       host: ${MONGODB_HOST:localhost}
       port: ${MONGODB_PORT:27017}
       database: ${MONGODB_DATABASE:fruvia_db}
       auto-index-creation: true
-      ddl-auto: update
+      ddl-auto: create-drop
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
@@ -121,3 +137,9 @@ management:
   metrics:
     tags:
       application: fruvia_backend
+
+app:
+  email:
+    from: ${EMAIL_FROM:${EMAIL_USERNAME:}}
+  otp:
+    ttl-minutes: ${OTP_TTL_MINUTES:5}

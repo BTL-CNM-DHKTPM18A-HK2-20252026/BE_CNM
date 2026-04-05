@@ -62,6 +62,11 @@ public enum ErrorCode {
     INVALID_PHONE(HttpStatus.BAD_REQUEST, "Số điện thoại không hợp lệ"),
     INVALID_PASSWORD(HttpStatus.BAD_REQUEST, "Mật khẩu phải có ít nhất 8 ký tự, bao gồm chữ và số"),
     MISSING_REQUIRED_FIELD(HttpStatus.BAD_REQUEST, "Thiếu trường bắt buộc"),
+    INVALID_OTP(HttpStatus.BAD_REQUEST, "Mã OTP không hợp lệ"),
+    OTP_EXPIRED(HttpStatus.BAD_REQUEST, "Mã OTP đã hết hạn"),
+    OTP_NOT_FOUND(HttpStatus.NOT_FOUND, "Không tìm thấy mã OTP, vui lòng yêu cầu gửi lại"),
+    EMAIL_ALREADY_VERIFIED(HttpStatus.BAD_REQUEST, "Email đã được xác thực"),
+    EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN, "Email chưa được xác thực"),
 
     // Server - 500
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi server, vui lòng thử lại sau"),
