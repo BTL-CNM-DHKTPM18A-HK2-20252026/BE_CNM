@@ -26,18 +26,25 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Story {
-    
+
     @Id
     @Builder.Default
     String storyId = UUID.randomUUID().toString();
 
-    String authorId; // Reference to UserAuth (who created the story)
-    String mediaUrl; // Story image/video URL
-    String mediaType; // IMAGE, VIDEO, TEXT
-    Integer duration; // Duration in seconds
-    LocalDateTime expiresAt; // When story expires (24 hours)
-    PrivacyLevel privacy; // Who can see this story
-    String caption; // Text caption for story
-    Boolean isDeleted;
+    String authorId;
+    String mediaUrl;
+    String mediaType; // IMAGE | VIDEO | TEXT
+
+    Integer duration; // only for VIDEO
+
+    String caption;
+
+    @Builder.Default
+    PrivacyLevel privacy = PrivacyLevel.FRIEND_ONLY;
+
+    @Builder.Default
+    Boolean isDeleted = false;
+
     LocalDateTime createdAt;
+    LocalDateTime expiresAt; // now + 24h
 }

@@ -57,6 +57,9 @@ public class SecurityConfig {
                         // === Actuator / Prometheus endpoints ===
                         .requestMatchers("/actuator/**").permitAll()
 
+                        // Story Endpoints
+                        .requestMatchers("/stories/**").permitAll()
+
                         // === ALL OTHER ENDPOINTS REQUIRE AUTHENTICATION ===
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2

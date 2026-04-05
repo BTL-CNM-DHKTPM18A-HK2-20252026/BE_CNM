@@ -21,4 +21,7 @@ public interface StoryRepository extends MongoRepository<Story, String> {
     
     // Find expired stories to clean up
     List<Story> findByExpiresAtBeforeAndIsDeletedFalse(LocalDateTime currentTime);
+
+    // Dùng cho kho khoảnh khắc
+    List<Story> findByAuthorIdAndIsDeletedFalse(String authorId);
 }

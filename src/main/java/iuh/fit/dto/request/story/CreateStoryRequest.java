@@ -1,5 +1,6 @@
 package iuh.fit.dto.request.story;
 
+import iuh.fit.enums.PrivacyLevel;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -9,12 +10,16 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateStoryRequest {
-    
-    @NotBlank(message = "Media URL is required")
+
+    @NotBlank
     private String mediaUrl;
-    
+
+    @NotBlank
+    private String mediaType; // IMAGE, VIDEO, TEXT
+
     private String caption;
-    
-    @NotBlank(message = "Media type is required")
-    private String mediaType; // IMAGE or VIDEO
+
+    private Integer duration; // nullable for IMAGE/TEXT
+
+    private PrivacyLevel privacy; // PUBLIC / FRIEND_ONLY / ADMIN
 }

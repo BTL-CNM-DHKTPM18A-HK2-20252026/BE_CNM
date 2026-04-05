@@ -26,48 +26,55 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @Tag(name = "Story", description = "Story management APIs")
 public class StoryController {
-    
-    private final StoryService storyService;
-    
+
+    private final StoryService service;
+
     @PostMapping
-    @Operation(summary = "Create a new story")
-    public ResponseEntity<StoryResponse> createStory(
+    public ResponseEntity<StoryResponse> create(
             @RequestHeader("X-User-Id") String userId,
-            @Valid @RequestBody CreateStoryRequest request) {
-        return ResponseEntity.ok(storyService.createStory(userId, request));
+            @Valid @RequestBody CreateStoryRequest req
+    ) {
+        return ResponseEntity.ok(service.createStory(userId, req));
     }
-    
+
     @GetMapping("/active")
-    @Operation(summary = "Get active stories from friends")
-    public ResponseEntity<List<StoryResponse>> getActiveStories(
+    public ResponseEntity<List<StoryResponse>> getActive(
             @RequestHeader("X-User-Id") String userId,
-            @RequestParam List<String> friendIds) {
-        return ResponseEntity.ok(storyService.getActiveStories(userId, friendIds));
+            @RequestParam List<String> friendIds
+    ) {
+        return ResponseEntity.ok(service.getActiveStories(userId, friendIds));
     }
-    
+
     @GetMapping("/user/{userId}")
-    @Operation(summary = "Get user's active stories")
     public ResponseEntity<List<StoryResponse>> getUserStories(
             @PathVariable String userId,
-            @RequestHeader("X-User-Id") String currentUserId) {
-        return ResponseEntity.ok(storyService.getUserStories(userId, currentUserId));
+            @RequestHeader("X-User-Id") String currentUserId
+    ) {
+        return ResponseEntity.ok(service.getUserStories(userId, currentUserId));
     }
-    
+
+    @GetMapping("/archive")
+    public ResponseEntity<List<StoryResponse>> getArchivedStories(
+            @RequestHeader("X-User-Id") String userId
+    ) {
+        return ResponseEntity.ok(service.getArchivedStories(userId));
+    }
+
     @PostMapping("/{storyId}/view")
-    @Operation(summary = "Mark story as viewed")
-    public ResponseEntity<Void> viewStory(
+    public ResponseEntity<Void> view(
             @PathVariable String storyId,
-            @RequestHeader("X-User-Id") String userId) {
-        storyService.viewStory(storyId, userId);
+            @RequestHeader("X-User-Id") String viewerId
+    ) {
+        service.viewStory(storyId, viewerId);
         return ResponseEntity.ok().build();
     }
-    
+
     @DeleteMapping("/{storyId}")
-    @Operation(summary = "Delete a story")
-    public ResponseEntity<Void> deleteStory(
+    public ResponseEntity<Void> delete(
             @PathVariable String storyId,
-            @RequestHeader("X-User-Id") String userId) {
-        storyService.deleteStory(storyId, userId);
+            @RequestHeader("X-User-Id") String userId
+    ) {
+        service.deleteStory(storyId, userId);
         return ResponseEntity.noContent().build();
     }
 }
