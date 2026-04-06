@@ -100,12 +100,12 @@ ai:
   max-retries: ${AI_MAX_RETRIES:2}
   max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:1000}
   router:
-    model: ${AI_ROUTER_MODEL:blackboxai/google/gemini-2.5-flash}
+    model: ${AI_ROUTER_MODEL:blackboxai/minimax-free}
   model:
-    chat: ${AI_MODEL_CHAT:claude-sonnet-4-20250514}
-    reasoning: ${AI_MODEL_REASONING:o3-pro}
-    knowledge: ${AI_MODEL_KNOWLEDGE:gemini-2.5-pro-preview-05-06}
-    image: ${AI_MODEL_IMAGE:imagen-4-ultra}
+    chat: ${AI_MODEL_CHAT:blackboxai/blackbox-pro}
+    reasoning: ${AI_MODEL_REASONING:blackboxai/openai/gpt-5.3-codex}
+    knowledge: ${AI_MODEL_KNOWLEDGE:blackboxai/google/gemini-3.1-pro-preview}
+    image: ${AI_MODEL_IMAGE:blackboxai/google/imagen-4-ultra}
   image:
     provider-url: ${AI_IMAGE_PROVIDER_URL:}
     timeout-ms: ${AI_IMAGE_TIMEOUT_MS:45000}

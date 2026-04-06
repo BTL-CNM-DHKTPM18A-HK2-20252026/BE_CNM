@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
@@ -32,8 +33,11 @@ public class BlackboxAiClient {
     @Value("${BLACKBOX_API_KEY:}")
     private String apiKey;
 
-    @Value("${BLACKBOX_MODEL:blackboxai/google/gemini-2.5-flash}")
+    @Value("${BLACKBOX_MODEL:blackboxai/blackbox-pro}")
     private String defaultModel;
+
+    @Value("${ai.model.chat:blackboxai/blackbox-pro}")
+    private String fallbackModel;
 
     @Value("${ai.timeout-ms:30000}")
     private int timeoutMs;
@@ -56,12 +60,32 @@ public class BlackboxAiClient {
 
         String finalModel = StringUtils.hasText(model) ? model : defaultModel;
 
+        try {
+            return doComplete(messages, finalModel, maxTokens);
+        } catch (HttpClientErrorException.BadRequest ex) {
+            boolean invalidModel = ex.getResponseBodyAsString() != null
+                    && ex.getResponseBodyAsString().toLowerCase().contains("invalid model name");
+            boolean canFallback = invalidModel && StringUtils.hasText(fallbackModel)
+                    && !fallbackModel.equals(finalModel);
+
+            if (!canFallback) {
+                throw ex;
+            }
+
+            log.warn("Model '{}' is invalid for Blackbox API. Retrying with fallback model '{}'.",
+                    finalModel, fallbackModel);
+            return doComplete(messages, fallbackModel, maxTokens);
+        }
+    }
+
+    private AiCompletionResult doComplete(List<Map<String, String>> messages, String model, int maxTokens) {
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiKey);
 
         Map<String, Object> payload = new HashMap<>();
-        payload.put("model", finalModel);
+        payload.put("model", model);
         payload.put("messages", messages);
         payload.put("max_tokens", Math.max(1, maxTokens));
         payload.put("stream", false);
@@ -69,7 +93,7 @@ public class BlackboxAiClient {
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
         ResponseEntity<String> response = getRestTemplate().postForEntity(blackboxUrl, request, String.class);
 
-        return parseResponse(response.getBody(), finalModel);
+        return parseResponse(response.getBody(), model);
     }
 
     private RestTemplate getRestTemplate() {

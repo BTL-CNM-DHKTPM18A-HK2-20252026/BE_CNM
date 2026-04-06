@@ -28,19 +28,19 @@ public class AiRouterService {
     private final BlackboxAiClient blackboxAiClient;
     private final ObjectMapper objectMapper;
 
-    @Value("${ai.router.model:blackboxai/google/gemini-2.5-flash}")
+    @Value("${ai.router.model:blackboxai/minimax-free}")
     private String routerModel;
 
-    @Value("${ai.model.chat:claude-sonnet-4-20250514}")
+    @Value("${ai.model.chat:blackboxai/blackbox-pro}")
     private String modelChat;
 
-    @Value("${ai.model.reasoning:o3-pro}")
+    @Value("${ai.model.reasoning:blackboxai/openai/gpt-5.3-codex}")
     private String modelReasoning;
 
-    @Value("${ai.model.knowledge:gemini-2.5-pro-preview-05-06}")
+    @Value("${ai.model.knowledge:blackboxai/google/gemini-3.1-pro-preview}")
     private String modelKnowledge;
 
-    @Value("${ai.model.image:imagen-4-ultra}")
+    @Value("${ai.model.image:blackboxai/google/imagen-4-ultra}")
     private String modelImage;
 
     private static final String ROUTER_SYSTEM_PROMPT = """

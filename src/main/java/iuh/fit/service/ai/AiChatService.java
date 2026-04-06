@@ -103,7 +103,7 @@ public class AiChatService {
     @Value("${ai.max-retries:2}")
     private int maxRetries;
 
-    @Value("${BLACKBOX_MODEL:blackboxai/google/gemini-2.5-flash}")
+    @Value("${BLACKBOX_MODEL:blackboxai/blackbox-pro}")
     private String defaultModel;
 
     @Transactional
