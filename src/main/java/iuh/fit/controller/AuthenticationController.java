@@ -1,8 +1,12 @@
 package iuh.fit.controller;
 
 import java.text.ParseException;
+import java.time.Duration;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,10 +33,13 @@ import iuh.fit.dto.response.auth.AuthenticationResponse;
 import iuh.fit.dto.response.auth.IntrospectResponse;
 import iuh.fit.response.ApiResponse;
 import iuh.fit.service.auth.AuthenticationService;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -49,6 +56,22 @@ import lombok.extern.slf4j.Slf4j;
 public class AuthenticationController {
 
     AuthenticationService authenticationService;
+
+    @NonFinal
+    @Value("${jwt.refresh-token.cookie-name}")
+    String refreshTokenCookieName;
+
+    @NonFinal
+    @Value("${jwt.refresh-token.cookie-secure}")
+    boolean refreshTokenCookieSecure;
+
+    @NonFinal
+    @Value("${jwt.refresh-token.cookie-same-site}")
+    String refreshTokenCookieSameSite;
+
+    @NonFinal
+    @Value("${jwt.refresh-token.expiration}")
+    long refreshTokenExpiration;
 
     /**
      * Login endpoint
@@ -68,7 +91,26 @@ public class AuthenticationController {
         log.info("Login attempt for user: {}", request.getUsername());
         log.info("Login attempt for user: {}", request);
         AuthenticationResponse response = authenticationService.authenticate(request);
-        return ResponseEntity.ok(ApiResponse.success(response, "Đăng nhập thành công"));
+
+        ResponseCookie refreshTokenCookie = buildRefreshTokenCookie(response.getRefreshToken());
+        response.setRefreshToken(null);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString())
+                .body(ApiResponse.success(response, "Đăng nhập thành công"));
+    }
+
+    @Operation(summary = "Refresh access token", description = "Issue a new access token from refresh token cookie")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Refresh successful", content = @Content(schema = @Schema(implementation = AuthenticationResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid refresh token", content = @Content)
+    })
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<AuthenticationResponse>> refreshToken(HttpServletRequest request)
+            throws JOSEException, ParseException {
+        String refreshToken = extractRefreshTokenFromCookies(request);
+        AuthenticationResponse response = authenticationService.refreshAccessToken(refreshToken);
+        return ResponseEntity.ok(ApiResponse.success(response, "Làm mới access token thành công"));
     }
 
     /**
@@ -185,5 +227,30 @@ public class AuthenticationController {
         log.info("Mobile app scanned QR login for session: {}", request.getUuid());
         authenticationService.qrScanned(request.getUuid(), request.getUserId());
         return ResponseEntity.ok(ApiResponse.success("Thông báo quét mã thành công"));
+    }
+
+    private ResponseCookie buildRefreshTokenCookie(String refreshToken) {
+        return ResponseCookie.from(refreshTokenCookieName, refreshToken)
+                .httpOnly(true)
+                .secure(refreshTokenCookieSecure)
+                .path("/")
+                .maxAge(Duration.ofSeconds(refreshTokenExpiration))
+                .sameSite(refreshTokenCookieSameSite)
+                .build();
+    }
+
+    private String extractRefreshTokenFromCookies(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+
+        for (Cookie cookie : cookies) {
+            if (refreshTokenCookieName.equals(cookie.getName())) {
+                return cookie.getValue();
+            }
+        }
+
+        return null;
     }
 }

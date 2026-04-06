@@ -55,8 +55,15 @@ server:
     context-path: ${SERVER_CONTEXT_PATH:/api/v1}
 
 jwt:
-  signer-key: "${JWT_SIGNER_KEY:wDhbSSpxZfV5HKciZOEUlvBExqAuzHmHhLDAuO6PALLAqTP163lNPxLYsUxs3UUI}"
-  expiration: ${JWT_EXPIRATION:2592000} # default: 30 days in seconds
+  access-token:
+    secret: "${ACCESS_TOKEN_SECRET:wDhbSSpxZfV5HKciZOEUlvBExqAuzHmHhLDAuO6PALLAqTP163lNPxLYsUxs3UUI}"
+    expiration: ${ACCESS_TOKEN_EXPIRATION:900} # default: 15 minutes in seconds
+  refresh-token:
+    secret: "${REFRESH_TOKEN_SECRET:6J5vDRY6W5gMQQE7GfFZfEHGxMv88NwKK0QBo2a2DfJf0YPfWa1b7QTHg9YyPW1Q}"
+    expiration: ${REFRESH_TOKEN_EXPIRATION:604800} # default: 7 days in seconds
+    cookie-name: ${REFRESH_TOKEN_COOKIE_NAME:refreshToken}
+    cookie-secure: ${REFRESH_TOKEN_COOKIE_SECURE:false}
+    cookie-same-site: ${REFRESH_TOKEN_COOKIE_SAME_SITE:Lax}
 
 # Cloudinary Configuration
 cloudinary:

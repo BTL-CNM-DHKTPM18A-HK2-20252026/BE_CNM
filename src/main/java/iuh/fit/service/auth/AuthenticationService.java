@@ -23,6 +23,16 @@ public interface AuthenticationService {
     AuthenticationResponse authenticate(AuthenticationRequest request) throws JOSEException;
 
     /**
+     * Create a new access token from a valid refresh token.
+     *
+     * @param refreshToken refresh token from HttpOnly cookie
+     * @return authentication response containing a new access token
+     * @throws JOSEException  if JWT verification/signing fails
+     * @throws ParseException if JWT parsing fails
+     */
+    AuthenticationResponse refreshAccessToken(String refreshToken) throws JOSEException, ParseException;
+
+    /**
      * Introspect token to check if it's valid
      * 
      * @param request Introspect request containing token

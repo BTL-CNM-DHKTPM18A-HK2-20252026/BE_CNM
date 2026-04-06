@@ -45,6 +45,10 @@ import java.util.UUID;
 @FieldDefaults(makeFinal = true, level = AccessLevel.PRIVATE)
 public class AuthenticationServiceImpl implements AuthenticationService {
 
+    private static final String ACCESS_TOKEN_TYPE = "access";
+    private static final String REFRESH_TOKEN_TYPE = "refresh";
+    private static final String DEFAULT_ROLE = "ROLE_USER";
+
     UserAuthRepository userAuthRepository;
     UserDetailRepository userDetailRepository;
     PasswordEncoder passwordEncoder;
@@ -53,12 +57,20 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     EmailVerificationService emailVerificationService;
 
     @NonFinal
-    @Value("${jwt.signer-key}")
-    protected String SIGNER_KEY;
+    @Value("${jwt.access-token.secret}")
+    protected String accessTokenSecret;
 
     @NonFinal
-    @Value("${jwt.expiration}")
-    protected long JWT_EXPIRATION;
+    @Value("${jwt.refresh-token.secret}")
+    protected String refreshTokenSecret;
+
+    @NonFinal
+    @Value("${jwt.access-token.expiration}")
+    protected long accessTokenExpiration;
+
+    @NonFinal
+    @Value("${jwt.refresh-token.expiration}")
+    protected long refreshTokenExpiration;
 
     @Override
     public AuthenticationResponse authenticate(AuthenticationRequest request) throws JOSEException {
@@ -83,11 +95,53 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 : user.getPhoneNumber();
 
         // Generate token with name as "username" claim
-        String accessToken = generateToken(user.getUserId(), nameToInToken, "ROLE_USER", JWT_EXPIRATION);
+        String accessToken = generateToken(
+                user.getUserId(),
+                nameToInToken,
+                DEFAULT_ROLE,
+                accessTokenExpiration,
+                ACCESS_TOKEN_TYPE,
+                accessTokenSecret);
+
+        String refreshToken = generateToken(
+                user.getUserId(),
+                nameToInToken,
+                DEFAULT_ROLE,
+                refreshTokenExpiration,
+                REFRESH_TOKEN_TYPE,
+                refreshTokenSecret);
 
         return AuthenticationResponse.builder()
                 .accessToken(accessToken)
-                .expiresIn(JWT_EXPIRATION)
+                .refreshToken(refreshToken)
+                .expiresIn(accessTokenExpiration)
+                .tokenType("Bearer")
+                .build();
+    }
+
+    @Override
+    public AuthenticationResponse refreshAccessToken(String refreshToken) throws JOSEException, ParseException {
+        JWTClaimsSet refreshClaims = verifyToken(refreshToken, refreshTokenSecret, REFRESH_TOKEN_TYPE);
+
+        String userId = refreshClaims.getSubject();
+        String username = refreshClaims.getStringClaim("username");
+        String roles = refreshClaims.getStringClaim("scope");
+
+        if (roles == null || roles.isBlank()) {
+            roles = DEFAULT_ROLE;
+        }
+
+        String newAccessToken = generateToken(
+                userId,
+                username,
+                roles,
+                accessTokenExpiration,
+                ACCESS_TOKEN_TYPE,
+                accessTokenSecret);
+
+        return AuthenticationResponse.builder()
+                .accessToken(newAccessToken)
+                .expiresIn(accessTokenExpiration)
                 .tokenType("Bearer")
                 .build();
     }
@@ -100,25 +154,10 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         }
 
         try {
-            SignedJWT signedJWT = SignedJWT.parse(token);
-
-            // Verify signature
-            JWSVerifier jwsVerifier = new MACVerifier(SIGNER_KEY.getBytes());
-            boolean verified = signedJWT.verify(jwsVerifier);
-
-            // TODO: Check Redis blacklist if implemented
-            // if
-            // (redisTokenService.isTokenBlacklisted(signedJWT.getJWTClaimsSet().getJWTID()))
-            // {
-            // verified = false;
-            // }
-
-            // Check expiration
-            Date expiredTime = signedJWT.getJWTClaimsSet().getExpirationTime();
-            boolean notExpired = expiredTime != null && expiredTime.after(new Date());
+            verifyToken(token, accessTokenSecret, ACCESS_TOKEN_TYPE);
 
             return IntrospectResponse.builder()
-                    .valid(verified && notExpired)
+                    .valid(true)
                     .build();
 
         } catch (Exception e) {
@@ -138,9 +177,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         }
 
         try {
-            SignedJWT signedJWT = SignedJWT.parse(token);
-            String tokenId = signedJWT.getJWTClaimsSet().getJWTID();
-            Date expireAt = signedJWT.getJWTClaimsSet().getExpirationTime();
+            JWTClaimsSet claims = verifyToken(token, accessTokenSecret, ACCESS_TOKEN_TYPE);
+            String tokenId = claims.getJWTID();
+            Date expireAt = claims.getExpirationTime();
 
             // TODO: Implement token blacklisting with Redis
             // long ttlMillis = expireAt.getTime() - System.currentTimeMillis();
@@ -149,11 +188,11 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             // log.info("Token {} blacklisted, expires in {}ms", tokenId, ttlMillis);
             // }
 
-            log.info("User logged out successfully. Token ID: {}", tokenId);
+            log.info("User logged out successfully. Token ID: {}, ExpireAt: {}", tokenId, expireAt);
 
-        } catch (ParseException e) {
+        } catch (Exception e) {
             log.error("Failed to parse token during logout", e);
-            throw new RuntimeException("Invalid token");
+            throw new AppException(ErrorCode.INVALID_TOKEN);
         }
     }
 
@@ -167,29 +206,60 @@ public class AuthenticationServiceImpl implements AuthenticationService {
      * @throws JOSEException if token generation fails
      */
     private String generateToken(String userId, String username, String roles,
-            long expirationInSeconds) throws JOSEException {
+            long expirationInSeconds, String tokenType, String tokenSecret) throws JOSEException {
         JWSHeader jwsHeader = new JWSHeader(JWSAlgorithm.HS512);
 
-        JWTClaimsSet jwtClaimsSet = new JWTClaimsSet.Builder()
+        JWTClaimsSet.Builder claimsBuilder = new JWTClaimsSet.Builder()
                 .subject(userId)
-                .claim("scope", roles) // Roles for Spring Security
-                .claim("username", username)
+                .claim("type", tokenType)
                 .issuer("Fruvia")
                 .issueTime(new Date())
                 .expirationTime(new Date(Instant.now().plus(expirationInSeconds, ChronoUnit.SECONDS).toEpochMilli()))
-                .jwtID(UUID.randomUUID().toString())
-                .build();
+                .jwtID(UUID.randomUUID().toString());
+
+        if (roles != null && !roles.isBlank()) {
+            claimsBuilder.claim("scope", roles); // Roles for Spring Security
+        }
+
+        if (username != null && !username.isBlank()) {
+            claimsBuilder.claim("username", username);
+        }
+
+        JWTClaimsSet jwtClaimsSet = claimsBuilder.build();
 
         Payload payload = new Payload(jwtClaimsSet.toJSONObject());
         JWSObject jwsObject = new JWSObject(jwsHeader, payload);
 
         try {
-            jwsObject.sign(new MACSigner(SIGNER_KEY.getBytes()));
+            jwsObject.sign(new MACSigner(tokenSecret.getBytes()));
             return jwsObject.serialize();
         } catch (JOSEException e) {
             log.error("Cannot create token", e);
             throw e;
         }
+    }
+
+    private JWTClaimsSet verifyToken(String token, String tokenSecret, String expectedType)
+            throws ParseException, JOSEException {
+        SignedJWT signedJWT = SignedJWT.parse(token);
+
+        JWSVerifier verifier = new MACVerifier(tokenSecret.getBytes());
+        if (!signedJWT.verify(verifier)) {
+            throw new AppException(ErrorCode.INVALID_TOKEN);
+        }
+
+        JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
+        Date expirationTime = claims.getExpirationTime();
+        if (expirationTime == null || expirationTime.before(new Date())) {
+            throw new AppException(ErrorCode.TOKEN_EXPIRED);
+        }
+
+        String tokenType = claims.getStringClaim("type");
+        if (!expectedType.equals(tokenType)) {
+            throw new AppException(ErrorCode.INVALID_TOKEN);
+        }
+
+        return claims;
     }
 
     @Override
@@ -265,12 +335,18 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 : user.getPhoneNumber();
 
         // Generate token for Web Client with name
-        String accessToken = generateToken(user.getUserId(), nameToInToken, "ROLE_USER", JWT_EXPIRATION);
+        String accessToken = generateToken(
+                user.getUserId(),
+                nameToInToken,
+                DEFAULT_ROLE,
+                accessTokenExpiration,
+                ACCESS_TOKEN_TYPE,
+                accessTokenSecret);
 
         // Notify Web Client over WebSocket: /topic/qr-login/{uuid}
         AuthenticationResponse response = AuthenticationResponse.builder()
                 .accessToken(accessToken)
-                .expiresIn(JWT_EXPIRATION)
+                .expiresIn(accessTokenExpiration)
                 .tokenType("Bearer")
                 .build();
 

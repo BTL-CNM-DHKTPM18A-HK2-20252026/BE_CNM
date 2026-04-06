@@ -47,8 +47,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
-    @Value("${jwt.signer-key}")
-    private String signerKey;
+    @Value("${jwt.access-token.secret}")
+    private String accessTokenSecret;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -84,7 +84,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
      */
     private String validateTokenAndGetUserId(String token) throws Exception {
         SignedJWT signedJWT = SignedJWT.parse(token);
-        SecretKey secretKey = new SecretKeySpec(signerKey.getBytes(), "HmacSHA512");
+        SecretKey secretKey = new SecretKeySpec(accessTokenSecret.getBytes(), "HmacSHA512");
         JWSVerifier verifier = new MACVerifier(secretKey);
 
         if (!signedJWT.verify(verifier)) {
@@ -95,6 +95,11 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         if (claims.getExpirationTime() != null
                 && claims.getExpirationTime().before(new java.util.Date())) {
             throw new SecurityException("JWT token has expired");
+        }
+
+        String tokenType = claims.getStringClaim("type");
+        if (!"access".equals(tokenType)) {
+            throw new SecurityException("JWT token type is not access");
         }
 
         return claims.getSubject(); // sub = userId
