@@ -57,13 +57,9 @@ public class UserServiceImpl implements UserService {
         String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
         log.info("Registering new user with email: {}", normalizedEmail);
 
-        // Validate email and phone uniqueness
+        // Validate email uniqueness
         if (userAuthRepository.existsByEmail(normalizedEmail)) {
             throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
-        }
-
-        if (userAuthRepository.existsByPhoneNumber(request.getPhoneNumber())) {
-            throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS);
         }
 
         // Generate user ID
@@ -73,7 +69,6 @@ public class UserServiceImpl implements UserService {
         String salt = UUID.randomUUID().toString();
         UserAuth userAuth = UserAuth.builder()
                 .userId(userId)
-                .phoneNumber(request.getPhoneNumber())
                 .email(normalizedEmail)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .salt(salt)
@@ -141,7 +136,6 @@ public class UserServiceImpl implements UserService {
         // --- CÁCH 1: KHÔNG XÀI MAPPER (Thủ công) ---
         return UserResponse.builder()
                 .userId(userId)
-                .phoneNumber(userAuth.getPhoneNumber())
                 .email(userAuth.getEmail())
                 .displayName(userDetail.getDisplayName())
                 .firstName(userDetail.getFirstName())
@@ -166,9 +160,6 @@ public class UserServiceImpl implements UserService {
         if (userAuthRepository.existsByEmail(normalizedEmail)) {
             throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
         }
-        if (userAuthRepository.existsByPhoneNumber(request.getPhoneNumber())) {
-            throw new AppException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS);
-        }
 
         // 2. Tạo ID chuyên biệt (UUID đã được cấu hình tự động trong Entity, nhưng gán
         // tay để đồng bộ các bảng)
@@ -177,7 +168,6 @@ public class UserServiceImpl implements UserService {
         // 3. Xây dựng các Entity
         UserAuth userAuth = UserAuth.builder()
                 .userId(userId)
-                .phoneNumber(request.getPhoneNumber())
                 .email(normalizedEmail)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .accountStatus(AccountStatus.ACTIVE)
@@ -222,7 +212,6 @@ public class UserServiceImpl implements UserService {
 
         return UserResponse.builder()
                 .userId(userAuth.getUserId())
-                .phoneNumber(userAuth.getPhoneNumber())
                 .email(userAuth.getEmail())
                 .displayName(userDetail != null ? userDetail.getDisplayName() : null)
                 .firstName(userDetail != null ? userDetail.getFirstName() : null)
@@ -269,7 +258,7 @@ public class UserServiceImpl implements UserService {
                 .fullName(fullName)
                 .gender(userDetail != null ? userDetail.getGender() : null)
                 .dob(userDetail != null ? userDetail.getDob() : null)
-                .phoneNumber(userAuth.getPhoneNumber())
+                .email(userAuth.getEmail())
                 .bio(userDetail != null ? userDetail.getBio() : null)
                 .address(userDetail != null ? userDetail.getAddress() : null)
                 .city(userDetail != null ? userDetail.getCity() : null)
@@ -341,7 +330,6 @@ public class UserServiceImpl implements UserService {
         // Re-index user in Elasticsearch after profile update
         UserAuth auth = userAuthRepository.findById(userId).orElse(null);
         searchService.indexUser(userDetail,
-                auth != null ? auth.getPhoneNumber() : "",
                 auth != null ? auth.getEmail() : "");
 
         return getUserMe(userId);
@@ -384,10 +372,10 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public UserResponse getUserByPhoneNumber(String phoneNumber, String currentUserId) {
-        log.info("Getting user by phone number: {} for searcher: {}", phoneNumber, currentUserId);
+    public UserResponse getUserByEmail(String email, String currentUserId) {
+        log.info("Getting user by email: {} for searcher: {}", email, currentUserId);
 
-        UserAuth userAuth = userAuthRepository.findByPhoneNumber(phoneNumber)
+        UserAuth userAuth = userAuthRepository.findByEmail(email)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         UserDetail userDetail = userDetailRepository.findByUserId(userAuth.getUserId())
@@ -445,7 +433,7 @@ public class UserServiceImpl implements UserService {
 
     private void initializePostRegistrationResources(UserAuth userAuth, UserDetail userDetail) {
         try {
-            searchService.indexUser(userDetail, userAuth.getPhoneNumber(), userAuth.getEmail());
+            searchService.indexUser(userDetail, userAuth.getEmail());
         } catch (Exception ex) {
             log.warn("Failed to index user {} after registration: {}", userAuth.getUserId(), ex.getMessage());
         }

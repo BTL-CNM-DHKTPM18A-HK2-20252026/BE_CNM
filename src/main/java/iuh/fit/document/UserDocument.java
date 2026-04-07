@@ -27,8 +27,11 @@ public class UserDocument {
     @Field(type = FieldType.Text, analyzer = "vietnamese_analyzer")
     private String displayName;
 
-    @Field(type = FieldType.Text, analyzer = "phone_ngram_analyzer", searchAnalyzer = "standard")
-    private String phoneNumber;
+    @Field(type = FieldType.Text, analyzer = "vietnamese_analyzer")
+    private String firstName;
+
+    @Field(type = FieldType.Text, analyzer = "vietnamese_analyzer")
+    private String lastName;
 
     @Field(type = FieldType.Text, analyzer = "vietnamese_analyzer")
     private String email;

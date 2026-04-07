@@ -12,7 +12,7 @@ import lombok.Getter;
 @Getter
 public enum ErrorCode {
     // Authentication & Authorization - 401, 403
-    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Số điện thoại hoặc mật khẩu không chính xác"),
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "Email hoặc mật khẩu không chính xác"),
     INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "Token không hợp lệ hoặc đã hết hạn"),
     TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "Token đã hết hạn, vui lòng đăng nhập lại"),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "Bạn chưa đăng nhập"),
@@ -21,7 +21,6 @@ public enum ErrorCode {
     // User - 404, 400, 409
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng"),
     USER_ALREADY_EXISTS(HttpStatus.CONFLICT, "Email này đã được đăng ký"),
-    PHONE_NUMBER_ALREADY_EXISTS(HttpStatus.CONFLICT, "Số điện thoại này đã được đăng ký"),
     USER_INACTIVE(HttpStatus.FORBIDDEN, "Tài khoản đã bị vô hiệu hóa"),
     INVALID_USER_DATA(HttpStatus.BAD_REQUEST, "Dữ liệu người dùng không hợp lệ"),
 

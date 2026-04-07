@@ -20,7 +20,6 @@ public class UserProfileResponse {
     private String coverPhotoUrl;
     private String bio;
     private String email;
-    private String phoneNumber;
     private Integer friendCount;
     private Boolean isFriend;
     private Boolean hasPendingRequest;

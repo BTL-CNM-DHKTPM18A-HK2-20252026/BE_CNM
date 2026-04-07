@@ -23,7 +23,9 @@ import iuh.fit.dto.request.user.UpdateCoverPhotoRequest;
 import iuh.fit.dto.request.user.UpdateProfileRequest;
 import iuh.fit.dto.response.user.UserMeResponse;
 import iuh.fit.dto.response.user.UserResponse;
+import iuh.fit.entity.UserSetting;
 import iuh.fit.service.user.UserService;
+import iuh.fit.repository.UserSettingRepository;
 import iuh.fit.response.ApiResponse;
 import iuh.fit.utils.JwtUtils;
 import jakarta.validation.Valid;
@@ -47,6 +49,7 @@ public class UserController {
 
         UserService userService;
         S3Service s3Service;
+        UserSettingRepository userSettingRepository;
 
         /**
          * Register a new user
@@ -80,6 +83,17 @@ public class UserController {
         @GetMapping("/{userId}")
         public ResponseEntity<UserResponse> getUserById(@PathVariable String userId) {
                 log.info("Get user request for userId: {}", userId);
+
+                // Check if target user has locked their account
+                String currentUserId = JwtUtils.getCurrentUserId();
+                if (currentUserId != null && !currentUserId.equals(userId)) {
+                        UserSetting targetSetting = userSettingRepository.findById(userId).orElse(null);
+                        if (targetSetting != null && Boolean.TRUE.equals(targetSetting.getAccountLocked())) {
+                                throw new RuntimeException(
+                                                "Người dùng này đã khóa tài khoản, không thể xem trang cá nhân");
+                        }
+                }
+
                 UserResponse response = userService.getUserById(userId);
                 return ResponseEntity.ok(response);
         }
@@ -180,16 +194,16 @@ public class UserController {
                 return ResponseEntity.ok(ApiResponse.success(url, "Lấy URL upload ảnh profile thành công"));
         }
 
-        @Operation(summary = "Get user by phone number", description = "Find a user profile using their phone number")
+        @Operation(summary = "Get user by email", description = "Find a user profile using their email address")
         @ApiResponses(value = {
                         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "User found", content = @Content(schema = @Schema(implementation = UserResponse.class))),
                         @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "User not found", content = @Content)
         })
-        @GetMapping("/phone/{phoneNumber}")
-        public ResponseEntity<UserResponse> getUserByPhoneNumber(@PathVariable String phoneNumber) {
-                log.info("Get user by phone number request: {}", phoneNumber);
+        @GetMapping("/email/{email}")
+        public ResponseEntity<UserResponse> getUserByEmail(@PathVariable String email) {
+                log.info("Get user by email request: {}", email);
                 String currentUserId = JwtUtils.getCurrentUserId();
-                UserResponse response = userService.getUserByPhoneNumber(phoneNumber, currentUserId);
+                UserResponse response = userService.getUserByEmail(email, currentUserId);
                 return ResponseEntity.ok(response);
         }
 
@@ -215,5 +229,39 @@ public class UserController {
                         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
                 boolean has = userService.hasPinConfigured(userId);
                 return ResponseEntity.ok(ApiResponse.success(java.util.Map.of("hasPin", has), "OK"));
+        }
+
+        // ==================== USER SETTINGS ====================
+
+        @Operation(summary = "Get current user settings", description = "Returns the settings of the currently logged-in user")
+        @SecurityRequirement(name = "bearerAuth")
+        @GetMapping("/me/settings")
+        public ResponseEntity<ApiResponse<UserSetting>> getMySettings() {
+                String userId = JwtUtils.getCurrentUserId();
+                if (userId == null)
+                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+                UserSetting settings = userSettingRepository.findById(userId).orElse(null);
+                return ResponseEntity.ok(ApiResponse.success(settings, "OK"));
+        }
+
+        @Operation(summary = "Toggle account lock", description = "Lock or unlock the current user's account")
+        @SecurityRequirement(name = "bearerAuth")
+        @PatchMapping("/me/settings/lock")
+        public ResponseEntity<ApiResponse<UserSetting>> toggleAccountLock(
+                        @RequestBody java.util.Map<String, Boolean> body) {
+                String userId = JwtUtils.getCurrentUserId();
+                if (userId == null)
+                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+                Boolean locked = body.get("accountLocked");
+                if (locked == null)
+                        return ResponseEntity.badRequest().build();
+
+                UserSetting settings = userSettingRepository.findById(userId)
+                                .orElseThrow(() -> new RuntimeException("Settings not found"));
+                settings.setAccountLocked(locked);
+                userSettingRepository.save(settings);
+                log.info("User {} {} account lock", userId, locked ? "enabled" : "disabled");
+                return ResponseEntity.ok(ApiResponse.success(settings,
+                                locked ? "Tài khoản đã được khóa" : "Tài khoản đã được mở khóa"));
         }
 }

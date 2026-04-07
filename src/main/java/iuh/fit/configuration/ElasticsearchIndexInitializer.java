@@ -204,6 +204,14 @@ public class ElasticsearchIndexInitializer {
                 "keyword": { "type": "keyword" }
               }
             },
+            "firstName": {
+              "type": "text",
+              "analyzer": "vietnamese_analyzer"
+            },
+            "lastName": {
+              "type": "text",
+              "analyzer": "vietnamese_analyzer"
+            },
             "phoneNumber": {
               "type": "text",
               "analyzer": "phone_ngram_analyzer",

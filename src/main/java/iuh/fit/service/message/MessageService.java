@@ -152,6 +152,12 @@ public class MessageService {
                     : conv.getParticipants().stream().filter(id -> !id.equals(senderId)).findFirst().orElse(null);
 
             if (recipientId != null) {
+                // Check if receiver's account is locked
+                UserSetting receiverSetting = userSettingRepository.findById(recipientId).orElse(null);
+                if (receiverSetting != null && Boolean.TRUE.equals(receiverSetting.getAccountLocked())) {
+                    throw new RuntimeException("Người dùng này đã khóa tài khoản, không thể gửi tin nhắn");
+                }
+
                 // Check if receiver blocked sender
                 boolean blocked = friendshipRepository
                         .findByRequesterIdAndReceiverIdAndStatus(recipientId, senderId, FriendshipStatus.BLOCKED)
@@ -161,7 +167,6 @@ public class MessageService {
                 }
 
                 // Check receiver's privacy setting
-                UserSetting receiverSetting = userSettingRepository.findById(recipientId).orElse(null);
                 if (receiverSetting != null
                         && receiverSetting.getWhoCanSendMessages() == PrivacyLevel.FRIEND_ONLY) {
                     // Only friends may send messages — check friendship

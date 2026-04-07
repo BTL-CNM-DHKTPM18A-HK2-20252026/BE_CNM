@@ -118,7 +118,7 @@ public class SearchService {
     // ── Async user indexing (with circuit breaker) ─────────────────────────────
 
     @Async
-    public void indexUser(UserDetail userDetail, String phoneNumber, String email) {
+    public void indexUser(UserDetail userDetail, String email) {
         if (!isElasticsearchAvailable()) {
             log.debug("Skipping user indexing — ES circuit breaker is open");
             return;
@@ -127,10 +127,11 @@ public class SearchService {
         UserDocument doc = UserDocument.builder()
                 .userId(userDetail.getUserId())
                 .displayName(userDetail.getDisplayName())
-                .phoneNumber(phoneNumber)
+                .firstName(userDetail.getFirstName())
+                .lastName(userDetail.getLastName())
                 .email(email)
                 .avatarUrl(userDetail.getAvatarUrl())
-                .suggest(buildUserCompletion(userDetail.getDisplayName(), phoneNumber, email))
+                .suggest(buildUserCompletion(userDetail.getDisplayName(), email))
                 .build();
 
         try {
@@ -304,7 +305,8 @@ public class SearchService {
             try {
                 Highlight highlight = new Highlight(List.of(
                         new HighlightField("displayName"),
-                        new HighlightField("phoneNumber"),
+                        new HighlightField("firstName"),
+                        new HighlightField("lastName"),
                         new HighlightField("email")));
 
                 NativeQuery nativeQuery = NativeQuery.builder()
@@ -312,7 +314,10 @@ public class SearchService {
                                 .bool(b -> b
                                         .should(s -> s
                                                 .match(m -> m.field("displayName").query(query).fuzziness("AUTO")))
-                                        .should(s -> s.match(m -> m.field("phoneNumber").query(query)))
+                                        .should(s -> s
+                                                .match(m -> m.field("firstName").query(query).fuzziness("AUTO")))
+                                        .should(s -> s
+                                                .match(m -> m.field("lastName").query(query).fuzziness("AUTO")))
                                         .should(s -> s.match(m -> m.field("email").query(query).fuzziness("AUTO")))
                                         .minimumShouldMatch("1")))
                         .withHighlightQuery(new HighlightQuery(highlight, UserDocument.class))
@@ -345,10 +350,10 @@ public class SearchService {
         java.util.LinkedHashMap<String, UserDetail> userMap = new java.util.LinkedHashMap<>();
         byName.getContent().forEach(u -> userMap.put(u.getUserId(), u));
 
-        // Search by phone/email — collect user IDs and fetch UserDetail
-        List<UserAuth> byPhoneEmail = userAuthRepository.searchByPhoneOrEmail(escapedQuery);
-        if (!byPhoneEmail.isEmpty()) {
-            List<String> extraIds = byPhoneEmail.stream()
+        // Search by email — collect user IDs and fetch UserDetail
+        List<UserAuth> byEmail = userAuthRepository.searchByEmail(escapedQuery);
+        if (!byEmail.isEmpty()) {
+            List<String> extraIds = byEmail.stream()
                     .map(UserAuth::getUserId)
                     .filter(id -> !userMap.containsKey(id))
                     .toList();
@@ -364,7 +369,6 @@ public class SearchService {
                     UserDocument doc = UserDocument.builder()
                             .userId(user.getUserId())
                             .displayName(user.getDisplayName())
-                            .phoneNumber(auth != null ? auth.getPhoneNumber() : null)
                             .email(auth != null ? auth.getEmail() : null)
                             .avatarUrl(user.getAvatarUrl())
                             .build();
@@ -473,16 +477,16 @@ public class SearchService {
 
             for (UserDetail user : page.getContent()) {
                 UserAuth auth = userAuthRepository.findById(user.getUserId()).orElse(null);
-                String phone = auth != null ? auth.getPhoneNumber() : "";
                 String email = auth != null ? auth.getEmail() : "";
 
                 UserDocument doc = UserDocument.builder()
                         .userId(user.getUserId())
                         .displayName(user.getDisplayName())
-                        .phoneNumber(phone)
+                        .firstName(user.getFirstName())
+                        .lastName(user.getLastName())
                         .email(email)
                         .avatarUrl(user.getAvatarUrl())
-                        .suggest(buildUserCompletion(user.getDisplayName(), phone, email))
+                        .suggest(buildUserCompletion(user.getDisplayName(), email))
                         .build();
 
                 bulkQueries.add(new IndexQueryBuilder()
@@ -604,7 +608,7 @@ public class SearchService {
 
     // ── Autocomplete (Completion Suggester) ───────────────────────────────────
 
-    private Completion buildUserCompletion(String displayName, String phone, String email) {
+    private Completion buildUserCompletion(String displayName, String email) {
         List<String> inputs = new ArrayList<>();
         if (displayName != null && !displayName.isBlank()) {
             inputs.add(displayName);
@@ -614,8 +618,6 @@ public class SearchService {
                     inputs.add(part);
             }
         }
-        if (phone != null && !phone.isBlank())
-            inputs.add(phone);
         if (email != null && !email.isBlank())
             inputs.add(email);
 
@@ -629,8 +631,6 @@ public class SearchService {
                         .bool(b -> b
                                 .should(s -> s
                                         .prefix(p -> p.field("displayName").value(prefix)))
-                                .should(s -> s
-                                        .prefix(p -> p.field("phoneNumber").value(prefix)))
                                 .should(s -> s
                                         .prefix(p -> p.field("email").value(prefix)))
                                 .minimumShouldMatch("1")))

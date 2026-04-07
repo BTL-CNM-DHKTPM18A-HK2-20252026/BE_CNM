@@ -24,7 +24,6 @@ public class UserMapper {
         UserProfileResponse.UserProfileResponseBuilder builder = UserProfileResponse.builder()
                 .userId(userAuth.getUserId())
                 .email(userAuth.getEmail())
-                .phoneNumber(userAuth.getPhoneNumber())
                 .createdAt(userAuth.getCreatedAt());
 
         if (userDetail != null) {
@@ -60,7 +59,6 @@ public class UserMapper {
 
         UserResponse.UserResponseBuilder builder = UserResponse.builder()
                 .userId(userAuth.getUserId())
-                .phoneNumber(userAuth.getPhoneNumber())
                 .email(userAuth.getEmail())
                 .isVerified(userAuth.getIsVerified())
                 .accountStatus(userAuth.getAccountStatus() != null ? userAuth.getAccountStatus().name() : null);

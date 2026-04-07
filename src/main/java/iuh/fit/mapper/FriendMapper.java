@@ -11,7 +11,7 @@ import iuh.fit.repository.UserDetailRepository;
 @Component
 @RequiredArgsConstructor
 public class FriendMapper {
-    
+
     private final UserAuthRepository userAuthRepository;
     private final UserDetailRepository userDetailRepository;
 
@@ -19,7 +19,7 @@ public class FriendMapper {
         if (rel == null) {
             return null;
         }
-        
+
         FriendRequestResponse.FriendRequestResponseBuilder builder = FriendRequestResponse.builder()
                 .requestId(rel.getId())
                 .senderId(rel.getRequesterId())
@@ -30,7 +30,7 @@ public class FriendMapper {
 
         // Fetch Sender Info
         userAuthRepository.findById(rel.getRequesterId()).ifPresent(auth -> {
-            builder.senderName(auth.getPhoneNumber()); // Fallback
+            builder.senderName(auth.getEmail()); // Fallback
             userDetailRepository.findByUserId(auth.getUserId()).ifPresent(detail -> {
                 builder.senderName(detail.getDisplayName());
                 builder.senderAvatarUrl(detail.getAvatarUrl());
@@ -39,13 +39,13 @@ public class FriendMapper {
 
         // Fetch Receiver Info
         userAuthRepository.findById(rel.getReceiverId()).ifPresent(auth -> {
-            builder.receiverName(auth.getPhoneNumber()); // Fallback
+            builder.receiverName(auth.getEmail()); // Fallback
             userDetailRepository.findByUserId(auth.getUserId()).ifPresent(detail -> {
                 builder.receiverName(detail.getDisplayName());
                 builder.receiverAvatarUrl(detail.getAvatarUrl());
             });
         });
-        
+
         return builder.build();
     }
 }

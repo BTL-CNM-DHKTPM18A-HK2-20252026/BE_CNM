@@ -24,11 +24,11 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserSetting {
-    
+
     @Id
     @Builder.Default
     String userId = UUID.randomUUID().toString(); // Same as UserAuth.userId
-    
+
     Boolean allowFriendRequests;
     PrivacyLevel whoCanSeeProfile;
     PrivacyLevel whoCanSeePost;
@@ -36,4 +36,7 @@ public class UserSetting {
     PrivacyLevel whoCanSendMessages;
     Boolean showOnlineStatus;
     Boolean showReadReceipts;
+
+    @Builder.Default
+    Boolean accountLocked = false;
 }

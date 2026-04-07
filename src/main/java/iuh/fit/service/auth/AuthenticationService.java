@@ -50,12 +50,12 @@ public interface AuthenticationService {
     void logout(LogoutRequest request);
 
     /**
-     * Check if a phone number exists in the database
+     * Check if an email exists in the database
      * 
-     * @param phoneNumber Phone number to check
+     * @param email Email to check
      * @return true if exists, false otherwise
      */
-    boolean checkPhoneNumberExists(String phoneNumber);
+    boolean checkEmailExists(String email);
 
     /**
      * Generate a new QR session UUID and store it in Redis with a short TTL (120s)

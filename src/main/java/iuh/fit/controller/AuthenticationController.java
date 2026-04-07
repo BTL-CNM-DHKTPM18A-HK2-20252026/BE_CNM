@@ -21,7 +21,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.auth.AuthenticationRequest;
-import iuh.fit.dto.request.auth.CheckPhoneNumberRequest;
+import iuh.fit.dto.request.auth.CheckEmailRequest;
 import iuh.fit.dto.request.auth.ForgotPasswordRequest;
 import iuh.fit.dto.request.auth.IntrospectRequest;
 import iuh.fit.dto.request.auth.LogoutRequest;
@@ -151,16 +151,16 @@ public class AuthenticationController {
     }
 
     /**
-     * Check if a phone number exists
+     * Check if an email exists
      * 
-     * @param request Request containing phone number
+     * @param request Request containing email
      * @return true if exists, false otherwise
      */
-    @Operation(summary = "Check phone number", description = "Verify if a phone number exists in the system")
-    @PostMapping("/check-phone-number")
-    public ResponseEntity<ApiResponse<Boolean>> checkPhoneNumber(@RequestBody CheckPhoneNumberRequest request) {
-        boolean exists = authenticationService.checkPhoneNumberExists(request.getPhoneNumber());
-        return ResponseEntity.ok(ApiResponse.success(exists, "Kiểm tra số điện thoại thành công"));
+    @Operation(summary = "Check email", description = "Verify if an email exists in the system")
+    @PostMapping("/check-email")
+    public ResponseEntity<ApiResponse<Boolean>> checkEmail(@RequestBody CheckEmailRequest request) {
+        boolean exists = authenticationService.checkEmailExists(request.getEmail());
+        return ResponseEntity.ok(ApiResponse.success(exists, "Kiểm tra email thành công"));
     }
 
     @Operation(summary = "Verify email OTP", description = "Verify a 6-digit OTP for email verification")

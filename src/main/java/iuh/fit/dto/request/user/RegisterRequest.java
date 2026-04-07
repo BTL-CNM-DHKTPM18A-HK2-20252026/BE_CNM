@@ -18,29 +18,24 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class RegisterRequest {
-    
-    @NotBlank(message = "Phone number is required")
-    @Pattern(regexp = "^0[35789]\\d{8}$", message = "Phone number must be a valid 10-digit Vietnamese mobile number")
-    String phoneNumber;
-    
+
     @NotBlank(message = "Email is required")
     @Email(message = "Email should be valid")
     String email;
-    
+
     @NotBlank(message = "Password is required")
     @Size(min = 8, message = "Password must be at least 8 characters")
-    @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*]).{8,}$", 
-             message = "Password must contain at least one uppercase, lowercase, number and special character")
+    @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[!@#$%^&*]).{8,}$", message = "Password must contain at least one uppercase, lowercase, number and special character")
     String password;
-    
+
     @NotBlank(message = "Display name is required")
     String displayName;
-    
+
     String firstName;
 
     String lastName;
-    
+
     Date dob;
-    
+
     String gender;
 }

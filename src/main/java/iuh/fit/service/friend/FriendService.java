@@ -14,12 +14,14 @@ import iuh.fit.dto.response.user.UserResponse;
 import iuh.fit.entity.Friendship;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
+import iuh.fit.entity.UserSetting;
 import iuh.fit.enums.FriendshipStatus;
 import iuh.fit.mapper.FriendMapper;
 import iuh.fit.mapper.UserMapper;
 import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.UserAuthRepository;
 import iuh.fit.repository.UserDetailRepository;
+import iuh.fit.repository.UserSettingRepository;
 import iuh.fit.service.conversation.ConversationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,12 +38,19 @@ public class FriendService {
     private final UserDetailRepository userDetailRepository;
     private final UserMapper userMapper;
     private final SimpMessagingTemplate messagingTemplate;
+    private final UserSettingRepository userSettingRepository;
 
     @Transactional
     public FriendRequestResponse sendFriendRequest(String senderId, String receiverId, String message) {
         // 0. Cannot send friend request to yourself
         if (senderId.equals(receiverId)) {
             throw new RuntimeException("Không thể kết bạn với chính mình");
+        }
+
+        // 0.5 Check if receiver's account is locked
+        UserSetting receiverSetting = userSettingRepository.findById(receiverId).orElse(null);
+        if (receiverSetting != null && Boolean.TRUE.equals(receiverSetting.getAccountLocked())) {
+            throw new RuntimeException("Người dùng này đã khóa tài khoản, không thể gửi lời mời kết bạn");
         }
 
         // 1. Check if receiver has BLOCKED sender

@@ -14,12 +14,8 @@ public interface UserAuthRepository extends MongoRepository<UserAuth, String> {
 
     Optional<UserAuth> findByEmail(String email);
 
-    Optional<UserAuth> findByPhoneNumber(String phoneNumber);
-
     boolean existsByEmail(String email);
 
-    boolean existsByPhoneNumber(String phoneNumber);
-
-    @Query("{$or: [{'phoneNumber': {$regex: ?0, $options: 'i'}}, {'email': {$regex: ?0, $options: 'i'}}]}")
-    List<UserAuth> searchByPhoneOrEmail(String query);
+    @Query("{'email': {$regex: ?0, $options: 'i'}}")
+    List<UserAuth> searchByEmail(String query);
 }

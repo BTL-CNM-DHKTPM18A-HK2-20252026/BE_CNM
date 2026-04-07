@@ -62,13 +62,13 @@ public interface UserService {
     UserMeResponse updateCoverPhoto(String userId, UpdateCoverPhotoRequest request);
 
     /**
-     * Get user information by phone number
+     * Get user information by email
      * 
-     * @param phoneNumber   Phone number to search for
+     * @param email         Email to search for
      * @param currentUserId Optional current user ID to check friendship status
      * @return UserResponse
      */
-    UserResponse getUserByPhoneNumber(String phoneNumber, String currentUserId);
+    UserResponse getUserByEmail(String email, String currentUserId);
 
     /**
      * Set or change the 6-digit PIN for hidden conversations.

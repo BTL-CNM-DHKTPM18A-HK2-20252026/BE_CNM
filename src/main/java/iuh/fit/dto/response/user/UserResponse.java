@@ -21,9 +21,6 @@ public class UserResponse {
     @JsonProperty("user_id")
     String userId;
 
-    @JsonProperty("phone_number")
-    String phoneNumber;
-
     String email;
 
     @JsonProperty("display_name")

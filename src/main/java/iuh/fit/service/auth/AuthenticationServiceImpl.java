@@ -76,8 +76,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     public AuthenticationResponse authenticate(AuthenticationRequest request) throws JOSEException {
         log.info("Authenticating user: {}", request.getUsername());
 
-        UserAuth user = userAuthRepository.findByPhoneNumber(request.getUsername())
-                .or(() -> userAuthRepository.findByEmail(request.getUsername()))
+        UserAuth user = userAuthRepository.findByEmail(request.getUsername())
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_CREDENTIALS));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
@@ -92,7 +91,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         var userDetail = userDetailRepository.findById(user.getUserId()).orElse(null);
         String nameToInToken = (userDetail != null && userDetail.getDisplayName() != null)
                 ? userDetail.getDisplayName()
-                : user.getPhoneNumber();
+                : user.getEmail();
 
         // Generate token with name as "username" claim
         String accessToken = generateToken(
@@ -263,9 +262,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     }
 
     @Override
-    public boolean checkPhoneNumberExists(String phoneNumber) {
-        log.info("Checking if phone number exists: {}", phoneNumber);
-        return userAuthRepository.existsByPhoneNumber(phoneNumber);
+    public boolean checkEmailExists(String email) {
+        log.info("Checking if email exists: {}", email);
+        return userAuthRepository.existsByEmail(email);
     }
 
     @Override
@@ -332,7 +331,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         var userDetail = userDetailRepository.findById(user.getUserId()).orElse(null);
         String nameToInToken = (userDetail != null && userDetail.getDisplayName() != null)
                 ? userDetail.getDisplayName()
-                : user.getPhoneNumber();
+                : user.getEmail();
 
         // Generate token for Web Client with name
         String accessToken = generateToken(
