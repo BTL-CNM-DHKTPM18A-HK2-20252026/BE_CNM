@@ -5,20 +5,28 @@ services:
     container_name: fruvia-redis
     restart: always
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: ["redis-server", "--appendonly", "yes"]
+    deploy:
+      resources:
+        limits:
+          memory: 256m
 
   # MongoDB service for database
   mongodb:
-    image: mongo:latest
+    image: mongo:7.0
     container_name: fruvia-mongodb
     restart: always
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo_data:/data/db
+    deploy:
+      resources:
+        limits:
+          memory: 1g
 
   # ── Kafka (KRaft mode — no Zookeeper) ───────────────────────────────────
   kafka:
@@ -26,14 +34,14 @@ services:
     container_name: fruvia-kafka
     restart: always
     ports:
-      - "9092:9092"
+      - "127.0.0.1:9092:9092"
     environment:
       # KRaft single-node setup (apache/kafka uses plain KAFKA_ prefix, no KAFKA_CFG_)
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -49,6 +57,10 @@ services:
       CLUSTER_ID: "4L6g3nShT-eMCtK--X86sw"
     volumes:
       - kafka_data:/var/lib/kafka/data
+    deploy:
+      resources:
+        limits:
+          memory: 512m
 
   # Elasticsearch service for search
   elasticsearch:
@@ -65,10 +77,14 @@ services:
       # Snapshot repository path
       - path.repo=/usr/share/elasticsearch/snapshots
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data
       - elasticsearch_snapshots:/usr/share/elasticsearch/snapshots
+    deploy:
+      resources:
+        limits:
+          memory: 1g
     healthcheck:
       test:
         [
@@ -79,21 +95,47 @@ services:
       timeout: 10s
       retries: 5
 
-  # Kibana — bound to localhost only (not exposed publicly)
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.12.0
-    container_name: fruvia-kibana
+  # ── Spring Boot Backend ──────────────────────────────────────────────────
+  backend:
+    image: ${BACKEND_IMAGE}
+    container_name: fruvia-backend
     restart: always
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-      - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:-changeme}
-      - xpack.security.enabled=true
     ports:
-      - "127.0.0.1:5601:5601"
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Override localhost defaults → use Docker service names
+      - MONGODB_HOST=mongodb
+      - REDIS_HOST=redis
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - ELASTICSEARCH_URIS=http://elasticsearch:9200
+      # All secrets come from .env file on the EC2
+      - MONGODB_DATABASE=${MONGODB_DATABASE}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET}
+      - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET}
+      - REFRESH_TOKEN_COOKIE_SECURE=${REFRESH_TOKEN_COOKIE_SECURE:-true}
+      - REFRESH_TOKEN_COOKIE_SAME_SITE=${REFRESH_TOKEN_COOKIE_SAME_SITE:-None}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME}
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - BLACKBOX_API_KEY=${BLACKBOX_API_KEY}
+      - SWAGGER_ENABLED=false
     depends_on:
       elasticsearch:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 768m
 
 volumes:
   redis_data:
