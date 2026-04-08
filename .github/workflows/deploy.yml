@@ -107,9 +107,10 @@ jobs:
             set -e
 
             APP_DIR="${{ secrets.APP_DIR }}"
-            IMAGE_TAG="${{ needs.docker.outputs.image-tag }}"
             ECR_REGISTRY="${{ secrets.ECR_REGISTRY }}"
             AWS_REGION="${{ secrets.AWS_REGION }}"
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            IMAGE_TAG="${ECR_REGISTRY}/${{ secrets.ECR_REPOSITORY }}:${SHORT_SHA}"
 
             echo "==> Logging into ECR..."
             aws ecr get-login-password --region "${AWS_REGION}" \
