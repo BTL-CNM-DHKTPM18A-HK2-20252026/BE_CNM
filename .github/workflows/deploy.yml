@@ -142,9 +142,17 @@ jobs:
             echo "==> Restarting backend container only..."
             docker compose up -d --no-deps --pull never backend
 
-            echo "==> Waiting for health check (30s)..."
-            sleep 30
+            echo "==> Waiting for backend to start (45s)..."
+            sleep 45
+
+            echo "==> Container status:"
             docker compose ps backend
+
+            echo "==> Backend logs (last 50 lines):"
+            docker compose logs --tail=50 backend
+
+            echo "==> Health check via curl:"
+            curl -sf --max-time 10 http://localhost:8080/actuator/health || echo "WARN: Health endpoint not reachable"
 
             echo "==> Cleaning up old images..."
             docker image prune -f
