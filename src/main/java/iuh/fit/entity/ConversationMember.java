@@ -53,4 +53,6 @@ public class ConversationMember {
 
     @Builder.Default
     Boolean isMarkedUnread = false; // Per-user mark as unread
+
+    String wallpaperUrl; // Per-user chat wallpaper URL for this conversation
 }

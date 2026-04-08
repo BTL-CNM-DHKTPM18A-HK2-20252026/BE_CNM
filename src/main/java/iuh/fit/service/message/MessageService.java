@@ -36,6 +36,7 @@ import iuh.fit.dto.response.message.MessageAndConversationResponse;
 import iuh.fit.utils.LinkScraper;
 import iuh.fit.service.storage.StorageService;
 import iuh.fit.service.search.SearchService;
+import iuh.fit.dto.response.message.MessageResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -75,6 +76,9 @@ public class MessageService {
     private final UserSettingRepository userSettingRepository;
     private final SearchService searchService;
     private final PinnedMessageRepository pinnedMessageRepository;
+    private final MessageBucketService messageBucketService;
+    private final MessageCacheService messageCacheService;
+    private final MessageProducerService messageProducerService;
 
     @Transactional
     public MessageAndConversationResponse sendMessage(String senderId, SendMessageRequest request) {
@@ -179,6 +183,18 @@ public class MessageService {
                     }
                 }
 
+                // Check blockStrangerMessages — block non-friends from messaging
+                if (receiverSetting != null
+                        && Boolean.TRUE.equals(receiverSetting.getBlockStrangerMessages())) {
+                    boolean areFriends = friendshipRepository
+                            .findByRequesterIdAndReceiverId(senderId, recipientId)
+                            .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED)
+                            .isPresent();
+                    if (!areFriends) {
+                        throw new RuntimeException("Người dùng này không nhận tin nhắn từ người lạ");
+                    }
+                }
+
                 // If conv is still NORMAL and they're not friends → mark PENDING
                 if (conv.getConversationStatus() == ConversationStatus.NORMAL
                         || conv.getConversationStatus() == null) {
@@ -198,7 +214,8 @@ public class MessageService {
         String forwardedFromMessageId = null;
         String forwardedFromSenderId = null;
         if (request.getForwardedFromMessageId() != null && !request.getForwardedFromMessageId().isEmpty()) {
-            Message originalMsg = messageRepository.findById(request.getForwardedFromMessageId()).orElse(null);
+            Message originalMsg = messageBucketService.findMessageById(request.getForwardedFromMessageId())
+                    .orElseGet(() -> messageRepository.findById(request.getForwardedFromMessageId()).orElse(null));
             if (originalMsg != null) {
                 forwardedFromMessageId = originalMsg.getMessageId();
                 forwardedFromSenderId = originalMsg.getSenderId();
@@ -210,6 +227,7 @@ public class MessageService {
                 .conversationId(convId)
                 .senderId(senderId)
                 .content(content)
+                .caption(request.getCaption())
                 .messageType(type)
                 .replyToMessageId(request.getReplyToMessageId())
                 .isEdited(false)
@@ -222,6 +240,7 @@ public class MessageService {
                 .fileSize(request.getFileSize())
                 .forwardedFromMessageId(forwardedFromMessageId)
                 .forwardedFromSenderId(forwardedFromSenderId)
+                .mentions(request.getMentions())
                 .build();
 
         // If it's a LINK, scrape metadata
@@ -238,10 +257,12 @@ public class MessageService {
         message = messageRepository.save(message);
         log.info("Message sent: {} in conversation: {}", message.getMessageId(), convId);
 
-        // Index message in Elasticsearch
-        String senderDisplayName = userDetailRepository.findByUserId(senderId)
-                .map(UserDetail::getDisplayName).orElse("Unknown");
-        searchService.indexMessage(message, senderDisplayName);
+        // ── Write-behind pattern ────────────────────────────────────────────────
+        // 1. Hot cache: push to Redis (50 most recent per conversation)
+        messageCacheService.pushMessage(message);
+        // 2. Async persistence: produce to Kafka → consumer writes bucket + ES index
+        messageProducerService.send(message);
+        // ─────────────────────────────────────────────────────────────────────────
 
         // Update conversation last message denormalized fields
         String snippet = message.getContent();
@@ -318,23 +339,100 @@ public class MessageService {
             storageService.pushStorageUpdate(senderId);
         }
 
+        // Send mention notifications to mentioned users (group chats only)
+        if (message.getMentions() != null && !message.getMentions().isEmpty()) {
+            UserDetail senderDetail = userDetailRepository.findByUserId(senderId).orElse(null);
+            String senderName = senderDetail != null ? senderDetail.getDisplayName() : "Ai đó";
+            String groupName = conv.getConversationName() != null ? conv.getConversationName() : "";
+            for (String mentionedUserId : message.getMentions()) {
+                if (!mentionedUserId.equals(senderId)) {
+                    java.util.Map<String, Object> mentionNotification = new java.util.HashMap<>();
+                    mentionNotification.put("type", "MENTION");
+                    mentionNotification.put("conversationId", convId);
+                    mentionNotification.put("messageId", message.getMessageId());
+                    mentionNotification.put("senderName", senderName);
+                    mentionNotification.put("groupName", groupName);
+                    mentionNotification.put("text", content);
+                    messagingTemplate.convertAndSendToUser(mentionedUserId, "/queue/notifications",
+                            mentionNotification);
+                }
+            }
+        }
+
         return finalResponse;
     }
 
+    /**
+     * Hybrid read: check Redis cache first for recent messages,
+     * fall back to MongoDB bucket aggregation for older data.
+     */
     public Page<MessageResponse> getConversationMessages(String conversationId, Pageable pageable) {
+        // Page 0 = most recent → try Redis first
+        if (pageable.getPageNumber() == 0 && pageable.getPageSize() <= MessageCacheService.MAX_CACHED) {
+            List<Message> cached = messageCacheService.getRecentMessages(
+                    conversationId, pageable.getPageSize());
+            if (!cached.isEmpty()) {
+                List<MessageResponse> responses = cached.stream()
+                        .map(messageMapper::toResponse)
+                        .collect(Collectors.toList());
+                long total = messageBucketService.countMessages(conversationId);
+                return new org.springframework.data.domain.PageImpl<>(responses, pageable,
+                        Math.max(total, cached.size()));
+            }
+        }
+
+        // Fall back to bucket (primary DB storage)
+        Page<Message> bucketPage = messageBucketService.getConversationMessages(conversationId, pageable);
+        if (bucketPage.getTotalElements() > 0) {
+            return bucketPage.map(messageMapper::toResponse);
+        }
+        // Fallback for conversations not yet migrated to buckets
         return messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
                 .map(messageMapper::toResponse);
     }
 
+    /**
+     * Cursor-based pagination: get messages older than {@code beforeId}.
+     * Hybrid read: Redis cache → MongoDB bucket → legacy message collection.
+     */
     public Page<MessageResponse> getMessagesBefore(String conversationId, String beforeId, int size) {
-        Pageable pageable = PageRequest.of(0, size);
-
-        // Find the cursor message first
-        Message beforeMsg = messageRepository.findById(beforeId).orElse(null);
+        // Find cursor message from bucket first, fallback to message collection
+        Message beforeMsg = messageBucketService.findMessageById(beforeId)
+                .orElseGet(() -> messageRepository.findById(beforeId).orElse(null));
         if (beforeMsg == null) {
             return Page.empty();
         }
 
+        long beforeMs = beforeMsg.getCreatedAt()
+                .atZone(java.time.ZoneId.systemDefault())
+                .toInstant().toEpochMilli();
+
+        // 1. Try Redis cache first (if cursor is within cached window)
+        long oldestCached = messageCacheService.oldestCachedTimestamp(conversationId);
+        if (beforeMs > oldestCached) {
+            List<Message> cached = messageCacheService.getMessagesBefore(conversationId, beforeMs, size);
+            if (!cached.isEmpty()) {
+                List<MessageResponse> responses = cached.stream()
+                        .map(messageMapper::toResponse)
+                        .collect(Collectors.toList());
+                return new org.springframework.data.domain.PageImpl<>(responses, PageRequest.of(0, size),
+                        responses.size());
+            }
+        }
+
+        // 2. Fall back to MongoDB bucket aggregation
+        List<Message> bucketMsgs = messageBucketService.getMessagesBefore(
+                conversationId, beforeMsg.getCreatedAt(), size);
+        if (!bucketMsgs.isEmpty()) {
+            List<MessageResponse> responses = bucketMsgs.stream()
+                    .map(messageMapper::toResponse)
+                    .collect(Collectors.toList());
+            return new org.springframework.data.domain.PageImpl<>(responses, PageRequest.of(0, size),
+                    responses.size());
+        }
+
+        // 3. Fallback for conversations not yet migrated to buckets
+        Pageable pageable = PageRequest.of(0, size);
         return messageRepository.findByConversationIdAndCreatedAtBeforeOrderByCreatedAtDesc(
                 conversationId, beforeMsg.getCreatedAt(), pageable)
                 .map(messageMapper::toResponse);
@@ -345,19 +443,26 @@ public class MessageService {
                 MessageType.IMAGE.name(),
                 MessageType.VIDEO.name(),
                 MessageType.MEDIA.name());
+        List<Message> bucketResults = messageBucketService.findByConversationIdAndMessageTypeIn(conversationId,
+                mediaTypes);
+        if (!bucketResults.isEmpty()) {
+            return bucketResults.stream().map(messageMapper::toResponse).collect(Collectors.toList());
+        }
+        // Fallback for conversations not yet migrated
         return messageRepository.findByConversationIdAndMessageTypeInOrderByCreatedAtDesc(conversationId, mediaTypes)
-                .stream()
-                .map(messageMapper::toResponse)
-                .collect(Collectors.toList());
+                .stream().map(messageMapper::toResponse).collect(Collectors.toList());
     }
 
     public List<MessageResponse> getConversationLinks(String conversationId) {
+        List<Message> bucketResults = messageBucketService.findLinksByConversationId(conversationId);
+        if (!bucketResults.isEmpty()) {
+            return bucketResults.stream().map(messageMapper::toResponse).collect(Collectors.toList());
+        }
+        // Fallback for conversations not yet migrated
         return messageRepository
                 .findByConversationIdAndMessageTypeInOrderByCreatedAtDesc(conversationId,
                         List.of(MessageType.LINK.name()))
-                .stream()
-                .map(messageMapper::toResponse)
-                .collect(Collectors.toList());
+                .stream().map(messageMapper::toResponse).collect(Collectors.toList());
     }
 
     // ── Time limits (minutes) ──
@@ -366,7 +471,7 @@ public class MessageService {
 
     @Transactional
     public MessageResponse updateMessage(String messageId, String content, String userId) {
-        Message message = messageRepository.findById(messageId)
+        Message message = messageBucketService.findMessageById(messageId)
                 .orElseThrow(() -> new RuntimeException("Message not found"));
 
         if (!message.getSenderId().equals(userId)) {
@@ -397,7 +502,8 @@ public class MessageService {
         message.setIsEdited(true);
         message.setUpdatedAt(LocalDateTime.now());
 
-        message = messageRepository.save(message);
+        // Persist to bucket (primary storage)
+        messageBucketService.syncMessageUpdate(message);
         log.info("Message edited: {}", messageId);
 
         MessageResponse response = messageMapper.toResponse(message);
@@ -417,7 +523,7 @@ public class MessageService {
 
     @Transactional
     public MessageResponse recallMessage(String messageId, String userId) {
-        Message message = messageRepository.findById(messageId)
+        Message message = messageBucketService.findMessageById(messageId)
                 .orElseThrow(() -> new RuntimeException("Message not found"));
 
         if (!message.getSenderId().equals(userId)) {
@@ -436,7 +542,9 @@ public class MessageService {
 
         message.setIsRecalled(true);
         message.setUpdatedAt(LocalDateTime.now());
-        message = messageRepository.save(message);
+
+        // Persist to bucket (primary storage)
+        messageBucketService.syncMessageRecall(messageId, message.getUpdatedAt());
         log.info("Message recalled: {}", messageId);
 
         MessageResponse response = messageMapper.toResponse(message);
@@ -454,15 +562,15 @@ public class MessageService {
 
     @Transactional
     public void deleteMessage(String messageId, String userId) {
-        Message message = messageRepository.findById(messageId)
+        Message message = messageBucketService.findMessageById(messageId)
                 .orElseThrow(() -> new RuntimeException("Message not found"));
 
         if (!message.getSenderId().equals(userId)) {
             throw new RuntimeException("Not authorized to delete this message");
         }
 
-        message.setIsDeleted(true);
-        messageRepository.save(message);
+        // Persist to bucket (primary storage)
+        messageBucketService.syncMessageDelete(messageId);
         log.info("Message deleted: {}", messageId);
     }
 
@@ -472,7 +580,7 @@ public class MessageService {
      */
     @Transactional
     public void deleteMessageLocal(String messageId, String userId) {
-        Message message = messageRepository.findById(messageId)
+        Message message = messageBucketService.findMessageById(messageId)
                 .orElseThrow(() -> new RuntimeException("Message not found"));
 
         if (message.getLocalDeletedBy() == null) {
@@ -481,13 +589,15 @@ public class MessageService {
         if (!message.getLocalDeletedBy().contains(userId)) {
             message.getLocalDeletedBy().add(userId);
         }
-        messageRepository.save(message);
+
+        // Persist to bucket (primary storage)
+        messageBucketService.syncMessageLocalDelete(messageId, message.getLocalDeletedBy());
         log.info("Message locally deleted for user {}: {}", userId, messageId);
     }
 
     @Transactional
     public void addReaction(String messageId, String userId, ReactionType reactionType) {
-        Message message = messageRepository.findById(messageId)
+        Message message = messageBucketService.findMessageById(messageId)
                 .orElseThrow(() -> new RuntimeException("Message not found"));
 
         // New reaction (can have multiple reaction types per user)
@@ -562,8 +672,8 @@ public class MessageService {
                     "Ch\u1ec9 c\u00f3 th\u1ec3 x\u00f3a to\u00e0n b\u1ed9 h\u1ed9i tho\u1ea1i c\u00e1 nh\u00e2n ho\u1eb7c AI");
         }
 
-        // 4. Fetch all messages in the conversation
-        List<Message> messages = messageRepository.findByConversationId(conversationId);
+        // 4. Fetch all messages from buckets (primary storage)
+        List<Message> messages = messageBucketService.findAllByConversationId(conversationId);
         if (messages.isEmpty()) {
             log.info("clearConversationAll: no messages found in conversation {}", conversationId);
             return;
@@ -595,6 +705,9 @@ public class MessageService {
         messageReactionRepository.deleteByMessageIdIn(messageIds);
         messageAttachmentRepository.deleteByMessageIdIn(messageIds);
         pinnedMessageRepository.deleteByConversationId(conversationId);
+
+        // Delete from bucket storage (primary) and legacy message collection
+        messageBucketService.deleteByConversationId(conversationId);
         messageRepository.deleteByConversationId(conversationId);
 
         // 8. Reset conversation last-message metadata so the UI shows empty state

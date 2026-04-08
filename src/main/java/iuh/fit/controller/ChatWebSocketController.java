@@ -1,7 +1,10 @@
 package iuh.fit.controller;
 
 import iuh.fit.entity.ConversationMember;
+import iuh.fit.entity.UserSetting;
 import iuh.fit.repository.ConversationMemberRepository;
+import iuh.fit.repository.UserSettingRepository;
+import iuh.fit.service.message.TypingIndicatorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
@@ -24,6 +27,8 @@ public class ChatWebSocketController {
 
     private final SimpMessageSendingOperations messagingTemplate;
     private final ConversationMemberRepository conversationMemberRepository;
+    private final UserSettingRepository userSettingRepository;
+    private final TypingIndicatorService typingIndicatorService;
 
     /**
      * Typing indicator: Client sends to /app/chat/{conversationId}/typing
@@ -33,6 +38,13 @@ public class ChatWebSocketController {
     public void handleTyping(
             @DestinationVariable String conversationId,
             @Payload Map<String, Object> payload) {
+        // Record typing state in Redis with auto-expiry (3s TTL)
+        String userId = (String) payload.get("userId");
+        if (userId != null) {
+            typingIndicatorService.setTyping(conversationId, userId);
+        }
+
+        // Broadcast to subscribers for real-time update
         messagingTemplate.convertAndSend(
                 "/topic/chat/" + conversationId + "/typing", payload);
     }
@@ -62,8 +74,14 @@ public class ChatWebSocketController {
                     });
         }
 
-        // Broadcast read receipt to all members
-        messagingTemplate.convertAndSend(
-                "/topic/chat/" + conversationId + "/read", payload);
+        // Only broadcast read receipt if user has not disabled it
+        boolean readReceiptsHidden = userSettingRepository.findById(userId)
+                .map(s -> Boolean.FALSE.equals(s.getShowReadReceipts()))
+                .orElse(false);
+
+        if (!readReceiptsHidden) {
+            messagingTemplate.convertAndSend(
+                    "/topic/chat/" + conversationId + "/read", payload);
+        }
     }
 }

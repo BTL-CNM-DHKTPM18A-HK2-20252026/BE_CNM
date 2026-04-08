@@ -46,7 +46,9 @@ public class MessageResponse {
     private String s3Url;
     private Integer width;
     private Integer height;
+    private String caption; // Optional caption text for IMAGE/VIDEO messages
     private String forwardedFromMessageId;
     private String forwardedFromSenderName;
     private List<MessageReactionDto> reactions;
+    private List<String> mentions;
 }

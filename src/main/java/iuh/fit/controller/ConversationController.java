@@ -25,6 +25,7 @@ import java.util.List;
 public class ConversationController {
 
     private final ConversationService conversationService;
+    private final iuh.fit.repository.ConversationMemberRepository conversationMemberRepository;
 
     @PostMapping
     @Operation(summary = "Create a group conversation")
@@ -372,6 +373,32 @@ public class ConversationController {
         return ResponseEntity.ok(ApiResponse.success(
                 conversationService.updateAutoDeleteDuration(conversationId, userId, duration),
                 "Cập nhật tin nhắn tự xóa thành công"));
+    }
+
+    // ==================== HIDE / UNHIDE CONVERSATION ====================
+
+    // ==================== CHAT WALLPAPER ====================
+
+    @PatchMapping("/{conversationId}/wallpaper")
+    @Operation(summary = "Set chat wallpaper for a specific conversation (per user)")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> updateWallpaper(
+            @PathVariable String conversationId,
+            @RequestBody java.util.Map<String, String> body) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        String wallpaperUrl = body.get("wallpaperUrl"); // null or empty to reset
+        java.util.Optional<iuh.fit.entity.ConversationMember> optMember = conversationMemberRepository
+                .findByConversationIdAndUserId(conversationId, userId);
+        if (optMember.isEmpty())
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        iuh.fit.entity.ConversationMember member = optMember.get();
+        member.setWallpaperUrl(wallpaperUrl == null || wallpaperUrl.isBlank() ? null : wallpaperUrl);
+        conversationMemberRepository.save(member);
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("conversationId", conversationId);
+        result.put("wallpaperUrl", member.getWallpaperUrl());
+        return ResponseEntity.ok(ApiResponse.success(result, "Cập nhật hình nền chat thành công"));
     }
 
     // ==================== HIDE / UNHIDE CONVERSATION ====================

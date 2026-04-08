@@ -42,19 +42,24 @@ public class StorageService {
     private String bucketName;
 
     public Map<String, Object> getUserStorageStats(String userId) {
-        // Step 1: Find the user's SELF (My Cloud) conversation
-        String selfConvId = findSelfConversationId(userId);
+        // Step 1: Find ALL conversations the user is a member of
+        List<ConversationMember> memberships = conversationMemberRepository.findByUserId(userId);
+        List<String> conversationIds = memberships.stream()
+                .map(ConversationMember::getConversationId)
+                .collect(Collectors.toList());
 
-        if (selfConvId == null) {
-            // No cloud conversation yet — return empty stats
+        if (conversationIds.isEmpty()) {
             return buildResponse(0, 0, 0, 0, 0, new ArrayList<>());
         }
 
-        // Step 2: Get all non-TEXT messages in the SELF conversation
-        List<Message> cloudMessages = messageRepository.findByConversationIdAndMessageTypeInOrderByCreatedAtDesc(
-                selfConvId, List.of("IMAGE", "VIDEO", "VOICE", "MEDIA", "LINK"));
+        // Step 2: Get all non-TEXT messages across all user conversations
+        List<Message> allMessages = new ArrayList<>();
+        for (String convId : conversationIds) {
+            allMessages.addAll(messageRepository.findByConversationIdAndMessageTypeInOrderByCreatedAtDesc(
+                    convId, List.of("IMAGE", "VIDEO", "VOICE", "MEDIA", "LINK")));
+        }
 
-        List<String> messageIds = cloudMessages.stream()
+        List<String> messageIds = allMessages.stream()
                 .map(Message::getMessageId)
                 .collect(Collectors.toList());
 
@@ -63,7 +68,7 @@ public class StorageService {
         Map<String, MessageAttachment> msgIdToAttachment = attachments.stream()
                 .collect(Collectors.toMap(MessageAttachment::getMessageId, a -> a, (a1, a2) -> a1));
 
-        Map<String, Message> idToMsg = cloudMessages.stream()
+        Map<String, Message> idToMsg = allMessages.stream()
                 .collect(Collectors.toMap(Message::getMessageId, m -> m, (a, b) -> a));
 
         long totalSize = 0, imageSize = 0, videoSize = 0, fileSize = 0, voiceSize = 0;
@@ -87,7 +92,7 @@ public class StorageService {
         }
 
         // Step 5: Discovery – messages without saved attachments → pull size from S3
-        for (Message msg : cloudMessages) {
+        for (Message msg : allMessages) {
             if (!msgIdToAttachment.containsKey(msg.getMessageId())) {
                 try {
                     String url = msg.getContent();

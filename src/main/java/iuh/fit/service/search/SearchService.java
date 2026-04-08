@@ -31,12 +31,14 @@ import iuh.fit.entity.Message;
 import iuh.fit.entity.SearchHistory;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
+import iuh.fit.repository.MessageBucketRepository;
 import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.SearchHistoryRepository;
 import iuh.fit.repository.UserAuthRepository;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.elasticsearch.DocumentSearchRepository;
 import iuh.fit.repository.elasticsearch.MessageSearchRepository;
+import iuh.fit.entity.MessageBucket;
 import iuh.fit.response.SearchResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +51,7 @@ public class SearchService {
     private final MessageSearchRepository messageSearchRepository;
     private final DocumentSearchRepository documentSearchRepository;
     private final MessageRepository messageRepository;
+    private final MessageBucketRepository messageBucketRepository;
     private final UserDetailRepository userDetailRepository;
     private final UserAuthRepository userAuthRepository;
     private final SearchHistoryRepository searchHistoryRepository;
@@ -80,6 +83,11 @@ public class SearchService {
 
     @Async
     public void indexMessage(Message message, String senderName) {
+        indexMessage(message, senderName, null);
+    }
+
+    @Async
+    public void indexMessage(Message message, String senderName, Integer bucketSequenceNumber) {
         if (message.getContent() == null || message.getContent().isBlank())
             return;
         if (!isElasticsearchAvailable()) {
@@ -94,6 +102,7 @@ public class SearchService {
                 .senderName(senderName)
                 .content(message.getContent())
                 .messageType(message.getMessageType().name())
+                .bucketSequenceNumber(bucketSequenceNumber)
                 .createdAt(message.getCreatedAt())
                 .build();
 
@@ -434,6 +443,11 @@ public class SearchService {
                         .map(UserDetail::getDisplayName)
                         .orElse("Unknown");
 
+                // Look up bucket sequence number for this message
+                Integer bucketSeq = messageBucketRepository.findByMessagesMessageId(msg.getMessageId())
+                        .map(MessageBucket::getSequenceNumber)
+                        .orElse(null);
+
                 MessageDocument doc = MessageDocument.builder()
                         .messageId(msg.getMessageId())
                         .conversationId(msg.getConversationId())
@@ -441,6 +455,7 @@ public class SearchService {
                         .senderName(senderName)
                         .content(msg.getContent())
                         .messageType(msg.getMessageType().name())
+                        .bucketSequenceNumber(bucketSeq)
                         .createdAt(msg.getCreatedAt())
                         .build();
 

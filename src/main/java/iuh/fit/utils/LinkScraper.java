@@ -16,6 +16,7 @@ public class LinkScraper {
     @Builder
     public static class LinkMetadata {
         private String title;
+        private String description;
         private String thumbnail;
     }
 
@@ -29,15 +30,29 @@ public class LinkScraper {
 
             Document doc = Jsoup.connect(url)
                     .timeout(5000)
-                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+                    .userAgent(
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
                     .get();
 
             String title = doc.title();
-            
+
             // Try Open Graph Meta Tags (standard for social previews)
             Element ogTitle = doc.selectFirst("meta[property=og:title]");
             if (ogTitle != null && !ogTitle.attr("content").isBlank()) {
                 title = ogTitle.attr("content");
+            }
+
+            // Extract description
+            String description = null;
+            Element ogDescription = doc.selectFirst("meta[property=og:description]");
+            if (ogDescription != null && !ogDescription.attr("content").isBlank()) {
+                description = ogDescription.attr("content");
+            }
+            if (description == null) {
+                Element metaDescription = doc.selectFirst("meta[name=description]");
+                if (metaDescription != null && !metaDescription.attr("content").isBlank()) {
+                    description = metaDescription.attr("content");
+                }
             }
 
             String thumbnail = null;
@@ -46,7 +61,7 @@ public class LinkScraper {
             if (ogImage != null && !ogImage.attr("content").isBlank()) {
                 thumbnail = ogImage.attr("content");
             }
-            
+
             // 2. Twitter Image if OG fails
             if (thumbnail == null) {
                 Element twitterImage = doc.selectFirst("meta[name=twitter:image]");
@@ -57,15 +72,16 @@ public class LinkScraper {
 
             // 3. Fallback to first large-ish image if still null
             if (thumbnail == null) {
-               Element firstImg = doc.selectFirst("img[src~=(?i)\\.(png|jpe?g)]");
-               if (firstImg != null) {
-                   thumbnail = firstImg.absUrl("src");
-               }
+                Element firstImg = doc.selectFirst("img[src~=(?i)\\.(png|jpe?g)]");
+                if (firstImg != null) {
+                    thumbnail = firstImg.absUrl("src");
+                }
             }
 
             log.info("Successfully scraped metadata for {}: Title={}, Image={}", url, title, thumbnail);
             return LinkMetadata.builder()
                     .title(title)
+                    .description(description)
                     .thumbnail(thumbnail)
                     .build();
 

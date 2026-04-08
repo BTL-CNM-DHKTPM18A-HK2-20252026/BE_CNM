@@ -1,5 +1,7 @@
 package iuh.fit.dto.request.message;
 
+import java.util.List;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -30,4 +32,6 @@ public class SendMessageRequest {
     private Integer voiceDuration;
     private Integer videoDuration;
     private String forwardedFromMessageId;
+    private String caption; // Optional caption text for IMAGE/VIDEO messages
+    private List<String> mentions; // Optional list of mentioned userIds
 }

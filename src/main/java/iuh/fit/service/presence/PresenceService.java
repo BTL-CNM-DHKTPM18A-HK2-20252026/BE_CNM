@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 import org.springframework.data.redis.RedisConnectionFailureException;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
@@ -26,31 +26,39 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * PresenceService — quản lý trạng thái online/offline của user.
+ * Layer 2 — Real-time Presence ("The Green Dot")
  *
  * <p>
- * Luồng hoạt động:
- * <ol>
- * <li>Khi user kết nối WebSocket → {@link #userConnected(String)}</li>
- * <li>Khi user ngắt kết nối → {@link #userDisconnected(String)}</li>
- * <li>Heartbeat refresh → {@link #heartbeat(String)}</li>
- * </ol>
+ * Cơ chế Heartbeat: Client gửi Ping mỗi 30s → Server SET key với TTL 60s.
+ * Nếu quá 60s không có Ping → Redis tự xóa key → User hiện Offline.
+ *
+ * <h3>Redis Structure:</h3>
+ * 
+ * <pre>
+ * Key   : user:presence:{userId}
+ * Type  : String
+ * Value : "online"
+ * TTL   : 60 seconds
+ * </pre>
  *
  * <p>
- * Redis key pattern: {@code presence:{userId}} với value {@code "online"},
- * tự động expire sau 60s (heartbeat sẽ renew).
+ * Kiểm tra online: {@code EXISTS user:presence:{userId}} → O(1), &lt;0.1ms
+ *
+ * <h3>Fallback:</h3>
+ * Nếu Redis bị sập → fallback sang ConcurrentHashMap in-memory.
+ * Không ảnh hưởng logic gửi tin nhắn chính (Kafka → MongoDB).
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class PresenceService {
 
-    private static final String REDIS_PREFIX = "presence:";
+    private static final String REDIS_PREFIX = "user:presence:";
     /** TTL dài hơn heartbeat interval (30s) để tránh flicker */
     private static final long PRESENCE_TTL_SECONDS = 60;
     private static final long LOCAL_PRESENCE_TTL_MILLIS = PRESENCE_TTL_SECONDS * 1000;
 
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
     private final SimpMessagingTemplate messagingTemplate;
     private final FriendshipRepository friendshipRepository;
     private final UserAuthRepository userAuthRepository;
@@ -122,11 +130,9 @@ public class PresenceService {
     }
 
     private void markOnline(String userId) {
-        // Always keep local fallback alive so presence still works in local dev without
-        // Redis.
         localPresenceCache.put(userId, System.currentTimeMillis() + LOCAL_PRESENCE_TTL_MILLIS);
         try {
-            redisTemplate.opsForValue().set(
+            stringRedisTemplate.opsForValue().set(
                     REDIS_PREFIX + userId, "online", PRESENCE_TTL_SECONDS, TimeUnit.SECONDS);
             if (!redisHealthy.getAndSet(true)) {
                 log.info("[Presence] Redis recovered, presence writes restored.");
@@ -141,7 +147,7 @@ public class PresenceService {
     private void markOffline(String userId) {
         localPresenceCache.remove(userId);
         try {
-            redisTemplate.delete(REDIS_PREFIX + userId);
+            stringRedisTemplate.delete(REDIS_PREFIX + userId);
             if (!redisHealthy.getAndSet(true)) {
                 log.info("[Presence] Redis recovered, presence delete restored.");
             }
@@ -154,7 +160,7 @@ public class PresenceService {
 
     private boolean isOnlineInternal(String userId) {
         try {
-            boolean online = Boolean.TRUE.equals(redisTemplate.hasKey(REDIS_PREFIX + userId));
+            boolean online = Boolean.TRUE.equals(stringRedisTemplate.hasKey(REDIS_PREFIX + userId));
             if (!redisHealthy.getAndSet(true)) {
                 log.info("[Presence] Redis recovered, presence reads restored.");
             }

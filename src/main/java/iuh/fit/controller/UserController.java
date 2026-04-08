@@ -20,11 +20,14 @@ import iuh.fit.dto.request.user.RegisterRequest;
 import iuh.fit.dto.request.user.SetPinRequest;
 import iuh.fit.dto.request.user.UpdateAvatarRequest;
 import iuh.fit.dto.request.user.UpdateCoverPhotoRequest;
+import iuh.fit.dto.request.user.UpdatePrivacySettingsRequest;
 import iuh.fit.dto.request.user.UpdateProfileRequest;
 import iuh.fit.dto.response.user.UserMeResponse;
 import iuh.fit.dto.response.user.UserResponse;
+import iuh.fit.entity.UserDevice;
 import iuh.fit.entity.UserSetting;
 import iuh.fit.service.user.UserService;
+import iuh.fit.repository.UserDeviceRepository;
 import iuh.fit.repository.UserSettingRepository;
 import iuh.fit.response.ApiResponse;
 import iuh.fit.utils.JwtUtils;
@@ -50,6 +53,10 @@ public class UserController {
         UserService userService;
         S3Service s3Service;
         UserSettingRepository userSettingRepository;
+        UserDeviceRepository userDeviceRepository;
+        iuh.fit.repository.FriendshipRepository friendshipRepository;
+        iuh.fit.repository.MessageRepository messageRepository;
+        iuh.fit.repository.ConversationMemberRepository conversationMemberRepository;
 
         /**
          * Register a new user
@@ -91,6 +98,18 @@ public class UserController {
                         if (targetSetting != null && Boolean.TRUE.equals(targetSetting.getAccountLocked())) {
                                 throw new RuntimeException(
                                                 "Người dùng này đã khóa tài khoản, không thể xem trang cá nhân");
+                        }
+                        // Check blockStrangerProfileView — block non-friends from viewing profile
+                        if (targetSetting != null
+                                        && Boolean.TRUE.equals(targetSetting.getBlockStrangerProfileView())) {
+                                boolean areFriends = friendshipRepository
+                                                .findByRequesterIdAndReceiverId(currentUserId, userId)
+                                                .filter(f -> f.getStatus() == iuh.fit.enums.FriendshipStatus.ACCEPTED)
+                                                .isPresent();
+                                if (!areFriends) {
+                                        throw new RuntimeException(
+                                                        "Người dùng này không cho phép người lạ xem trang cá nhân");
+                                }
                         }
                 }
 
@@ -263,5 +282,108 @@ public class UserController {
                 log.info("User {} {} account lock", userId, locked ? "enabled" : "disabled");
                 return ResponseEntity.ok(ApiResponse.success(settings,
                                 locked ? "Tài khoản đã được khóa" : "Tài khoản đã được mở khóa"));
+        }
+
+        // ==================== PRIVACY SETTINGS ====================
+
+        @Operation(summary = "Update privacy settings", description = "Update privacy settings for the current user")
+        @SecurityRequirement(name = "bearerAuth")
+        @PatchMapping("/me/settings/privacy")
+        public ResponseEntity<ApiResponse<UserSetting>> updatePrivacySettings(
+                        @RequestBody UpdatePrivacySettingsRequest request) {
+                String userId = JwtUtils.getCurrentUserId();
+                if (userId == null)
+                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+                UserSetting settings = userSettingRepository.findById(userId)
+                                .orElseThrow(() -> new RuntimeException("Settings not found"));
+
+                if (request.getShowReadReceipts() != null)
+                        settings.setShowReadReceipts(request.getShowReadReceipts());
+                if (request.getShowOnlineStatus() != null)
+                        settings.setShowOnlineStatus(request.getShowOnlineStatus());
+                if (request.getAllowSearchByPhone() != null)
+                        settings.setAllowSearchByPhone(request.getAllowSearchByPhone());
+                if (request.getAllowSearchByQR() != null)
+                        settings.setAllowSearchByQR(request.getAllowSearchByQR());
+                if (request.getAllowSearchByGroup() != null)
+                        settings.setAllowSearchByGroup(request.getAllowSearchByGroup());
+                if (request.getBlockStrangerMessages() != null)
+                        settings.setBlockStrangerMessages(request.getBlockStrangerMessages());
+                if (request.getBlockStrangerProfileView() != null)
+                        settings.setBlockStrangerProfileView(request.getBlockStrangerProfileView());
+
+                userSettingRepository.save(settings);
+                log.info("User {} updated privacy settings", userId);
+                return ResponseEntity.ok(ApiResponse.success(settings, "Cập nhật cài đặt quyền riêng tư thành công"));
+        }
+
+        // ==================== DEVICE MANAGEMENT ====================
+
+        @Operation(summary = "Get active devices", description = "Returns all active login devices for the current user")
+        @SecurityRequirement(name = "bearerAuth")
+        @GetMapping("/me/devices")
+        public ResponseEntity<ApiResponse<java.util.List<UserDevice>>> getMyDevices() {
+                String userId = JwtUtils.getCurrentUserId();
+                if (userId == null)
+                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+                java.util.List<UserDevice> devices = userDeviceRepository
+                                .findByUserIdAndIsActiveTrueOrderByLastActiveAtDesc(userId);
+                return ResponseEntity.ok(ApiResponse.success(devices, "OK"));
+        }
+
+        @Operation(summary = "Remote logout device", description = "Deactivate a specific device session")
+        @SecurityRequirement(name = "bearerAuth")
+        @org.springframework.web.bind.annotation.DeleteMapping("/me/devices/{deviceId}")
+        public ResponseEntity<ApiResponse<Void>> logoutDevice(@PathVariable String deviceId) {
+                String userId = JwtUtils.getCurrentUserId();
+                if (userId == null)
+                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+                UserDevice device = userDeviceRepository.findById(deviceId).orElse(null);
+                if (device == null || !device.getUserId().equals(userId)) {
+                        return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+                }
+                device.setIsActive(false);
+                userDeviceRepository.save(device);
+                log.info("User {} remotely logged out device {}", userId, deviceId);
+                return ResponseEntity.ok(ApiResponse.success(null, "Đã đăng xuất thiết bị từ xa"));
+        }
+
+        // ==================== AI TOKEN USAGE ====================
+
+        @Operation(summary = "Get AI token usage today", description = "Returns the total AI tokens used by the current user today")
+        @SecurityRequirement(name = "bearerAuth")
+        @GetMapping("/me/ai/usage/today")
+        public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getAiTokenUsageToday() {
+                String userId = JwtUtils.getCurrentUserId();
+                if (userId == null)
+                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+                java.time.LocalDateTime startOfDay = java.time.LocalDate.now().atStartOfDay();
+
+                // Get all conversations the user is in
+                java.util.List<String> conversationIds = conversationMemberRepository.findByUserId(userId)
+                                .stream()
+                                .map(iuh.fit.entity.ConversationMember::getConversationId)
+                                .collect(java.util.stream.Collectors.toList());
+
+                long totalTokens = 0;
+                int requestCount = 0;
+
+                if (!conversationIds.isEmpty()) {
+                        java.util.List<iuh.fit.entity.Message> aiMessages = messageRepository
+                                        .findAiMessagesByConversationIdsAfter(conversationIds, startOfDay);
+                        for (iuh.fit.entity.Message msg : aiMessages) {
+                                if (msg.getTotalTokens() != null)
+                                        totalTokens += msg.getTotalTokens();
+                                requestCount++;
+                        }
+                }
+
+                java.util.Map<String, Object> usage = new java.util.HashMap<>();
+                usage.put("totalTokensToday", totalTokens);
+                usage.put("requestCount", requestCount);
+                usage.put("date", java.time.LocalDate.now().toString());
+                return ResponseEntity.ok(ApiResponse.success(usage, "OK"));
         }
 }

@@ -31,6 +31,8 @@ import iuh.fit.dto.request.auth.ResetPasswordRequest;
 import iuh.fit.dto.request.auth.VerifyOtpRequest;
 import iuh.fit.dto.response.auth.AuthenticationResponse;
 import iuh.fit.dto.response.auth.IntrospectResponse;
+import iuh.fit.entity.UserDevice;
+import iuh.fit.repository.UserDeviceRepository;
 import iuh.fit.response.ApiResponse;
 import iuh.fit.service.auth.AuthenticationService;
 import jakarta.servlet.http.Cookie;
@@ -56,6 +58,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AuthenticationController {
 
     AuthenticationService authenticationService;
+    UserDeviceRepository userDeviceRepository;
 
     @NonFinal
     @Value("${jwt.refresh-token.cookie-name}")
@@ -86,11 +89,61 @@ public class AuthenticationController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid credentials", content = @Content)
     })
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<AuthenticationResponse>> authenticate(@RequestBody AuthenticationRequest request)
+    public ResponseEntity<ApiResponse<AuthenticationResponse>> authenticate(
+            @RequestBody AuthenticationRequest request,
+            HttpServletRequest httpRequest)
             throws JOSEException {
         log.info("Login attempt for user: {}", request.getUsername());
-        log.info("Login attempt for user: {}", request);
         AuthenticationResponse response = authenticationService.authenticate(request);
+
+        // Record device info on successful login
+        try {
+            String userAgent = httpRequest.getHeader("User-Agent");
+            String ip = httpRequest.getHeader("X-Forwarded-For");
+            if (ip == null || ip.isBlank())
+                ip = httpRequest.getRemoteAddr();
+
+            String browser = parseBrowser(userAgent);
+            String os = parseOS(userAgent);
+            String deviceType = parseDeviceType(userAgent);
+            String deviceName = browser + " on " + os;
+
+            // Extract userId from the access token
+            String userId = extractUserIdFromToken(response.getAccessToken());
+
+            if (userId != null) {
+                // Check if same device already exists for this user
+                java.util.Optional<UserDevice> existingDevice = userDeviceRepository
+                        .findByUserIdAndDeviceNameAndIpAddressAndIsActiveTrue(userId, deviceName, ip);
+
+                if (existingDevice.isPresent()) {
+                    // Update existing device record
+                    UserDevice device = existingDevice.get();
+                    device.setLastActiveAt(java.time.LocalDateTime.now());
+                    device.setLoginAt(java.time.LocalDateTime.now());
+                    userDeviceRepository.save(device);
+                    log.info("Updated existing device login for user {}: {}", userId, deviceName);
+                } else {
+                    // Create new device record
+                    UserDevice device = UserDevice.builder()
+                            .userId(userId)
+                            .deviceName(deviceName)
+                            .deviceType(deviceType)
+                            .browser(browser)
+                            .os(os)
+                            .ipAddress(ip)
+                            .loginAt(java.time.LocalDateTime.now())
+                            .lastActiveAt(java.time.LocalDateTime.now())
+                            .createdAt(java.time.LocalDateTime.now())
+                            .isActive(true)
+                            .build();
+                    userDeviceRepository.save(device);
+                    log.info("Recorded new device login for user {}: {}", userId, deviceName);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to record device info: {}", e.getMessage());
+        }
 
         ResponseCookie refreshTokenCookie = buildRefreshTokenCookie(response.getRefreshToken());
         response.setRefreshToken(null);
@@ -191,9 +244,89 @@ public class AuthenticationController {
         return ResponseEntity.ok(ApiResponse.success("Đặt lại mật khẩu thành công"));
     }
 
+    private ResponseCookie buildRefreshTokenCookie(String refreshToken) {
+        return ResponseCookie.from(refreshTokenCookieName, refreshToken)
+                .httpOnly(true)
+                .secure(refreshTokenCookieSecure)
+                .path("/")
+                .maxAge(Duration.ofSeconds(refreshTokenExpiration))
+                .sameSite(refreshTokenCookieSameSite)
+                .build();
+    }
+
+    private String extractUserIdFromToken(String token) {
+        try {
+            com.nimbusds.jwt.SignedJWT jwt = com.nimbusds.jwt.SignedJWT.parse(token);
+            return jwt.getJWTClaimsSet().getSubject();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String parseBrowser(String ua) {
+        if (ua == null)
+            return "Unknown";
+        if (ua.contains("Edg/"))
+            return "Edge";
+        if (ua.contains("OPR/") || ua.contains("Opera"))
+            return "Opera";
+        if (ua.contains("Chrome/") && !ua.contains("Edg/"))
+            return "Chrome";
+        if (ua.contains("Safari/") && !ua.contains("Chrome/"))
+            return "Safari";
+        if (ua.contains("Firefox/"))
+            return "Firefox";
+        return "Unknown";
+    }
+
+    private String parseOS(String ua) {
+        if (ua == null)
+            return "Unknown";
+        if (ua.contains("Windows NT 10"))
+            return "Windows 10";
+        if (ua.contains("Windows NT 11") || (ua.contains("Windows NT 10") && ua.contains("Win64")))
+            return "Windows";
+        if (ua.contains("Windows"))
+            return "Windows";
+        if (ua.contains("Mac OS X"))
+            return "macOS";
+        if (ua.contains("Android"))
+            return "Android";
+        if (ua.contains("iPhone") || ua.contains("iPad"))
+            return "iOS";
+        if (ua.contains("Linux"))
+            return "Linux";
+        return "Unknown";
+    }
+
+    private String parseDeviceType(String ua) {
+        if (ua == null)
+            return "WEB";
+        if (ua.contains("Mobile") || ua.contains("Android") || ua.contains("iPhone"))
+            return "MOBILE";
+        if (ua.contains("Electron") || ua.contains("Desktop"))
+            return "DESKTOP";
+        return "WEB";
+    }
+
+    private String extractRefreshTokenFromCookies(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+
+        for (Cookie cookie : cookies) {
+            if (refreshTokenCookieName.equals(cookie.getName())) {
+                return cookie.getValue();
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Get a unique QR session UUID
-     * 
+     *
      * @return UUID string
      */
     @Operation(summary = "Get QR session", description = "Get a unique UUID for QR login, valid for 120s")
@@ -206,7 +339,7 @@ public class AuthenticationController {
 
     /**
      * Confirm QR login from mobile app
-     * 
+     *
      * @param request Request containing UUID and User ID
      * @return Success response
      * @throws JOSEException if token generation fails
@@ -227,30 +360,5 @@ public class AuthenticationController {
         log.info("Mobile app scanned QR login for session: {}", request.getUuid());
         authenticationService.qrScanned(request.getUuid(), request.getUserId());
         return ResponseEntity.ok(ApiResponse.success("Thông báo quét mã thành công"));
-    }
-
-    private ResponseCookie buildRefreshTokenCookie(String refreshToken) {
-        return ResponseCookie.from(refreshTokenCookieName, refreshToken)
-                .httpOnly(true)
-                .secure(refreshTokenCookieSecure)
-                .path("/")
-                .maxAge(Duration.ofSeconds(refreshTokenExpiration))
-                .sameSite(refreshTokenCookieSameSite)
-                .build();
-    }
-
-    private String extractRefreshTokenFromCookies(HttpServletRequest request) {
-        Cookie[] cookies = request.getCookies();
-        if (cookies == null) {
-            return null;
-        }
-
-        for (Cookie cookie : cookies) {
-            if (refreshTokenCookieName.equals(cookie.getName())) {
-                return cookie.getValue();
-            }
-        }
-
-        return null;
     }
 }

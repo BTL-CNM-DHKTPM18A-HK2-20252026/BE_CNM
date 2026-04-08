@@ -67,4 +67,8 @@ public interface MessageRepository extends MongoRepository<Message, String> {
 
         // Hard-delete all messages in a conversation (used by clearConversationAll)
         void deleteByConversationId(String conversationId);
+
+        // Find AI-generated messages in conversations after a certain time
+        @Query("{ 'conversationId': { $in: ?0 }, 'aiGenerated': true, 'createdAt': { $gte: ?1 } }")
+        List<Message> findAiMessagesByConversationIdsAfter(List<String> conversationIds, LocalDateTime after);
 }

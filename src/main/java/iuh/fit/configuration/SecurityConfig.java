@@ -59,6 +59,9 @@ public class SecurityConfig {
                         // === Debug endpoints (TODO: Remove before production) ===
                         .requestMatchers("/debug/**").permitAll()
 
+                        // === Utility endpoints ===
+                        .requestMatchers("/utils/**").permitAll()
+
                         // === Actuator / Prometheus endpoints ===
                         .requestMatchers("/actuator/**").permitAll()
 

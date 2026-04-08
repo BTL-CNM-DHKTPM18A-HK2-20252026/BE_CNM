@@ -106,9 +106,11 @@ public class MessageMapper {
                                 .s3Url(resolvedS3Url)
                                 .width(resolvedWidth)
                                 .height(resolvedHeight)
+                                .caption(message.getCaption())
                                 .forwardedFromMessageId(message.getForwardedFromMessageId())
                                 .forwardedFromSenderName(forwardedFromSenderName)
                                 .reactions(reactionDtos)
+                                .mentions(message.getMentions())
                                 .build();
         }
 

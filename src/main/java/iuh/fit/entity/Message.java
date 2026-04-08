@@ -39,6 +39,7 @@ public class Message {
     AiRole role; // USER, ASSISTANT, SYSTEM for AI context building
     MessageType messageType;
     String content; // Text content or file URL
+    String caption; // Optional caption text for IMAGE/VIDEO messages
     String replyToMessageId; // Reference to another Message (for replies)
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
@@ -52,6 +53,9 @@ public class Message {
     // Local delete: list of userIds who deleted this message locally ("delete for
     // me")
     List<String> localDeletedBy;
+
+    // Mentions: list of userIds mentioned in this message
+    List<String> mentions;
 
     // Link Metadata
     String linkTitle;

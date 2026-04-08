@@ -37,6 +37,23 @@ public class UserSetting {
     Boolean showOnlineStatus;
     Boolean showReadReceipts;
 
+    // Discovery/search privacy
+    @Builder.Default
+    Boolean allowSearchByPhone = true;
+
+    @Builder.Default
+    Boolean allowSearchByQR = true;
+
+    @Builder.Default
+    Boolean allowSearchByGroup = true;
+
+    // Stranger blocking
+    @Builder.Default
+    Boolean blockStrangerMessages = false;
+
+    @Builder.Default
+    Boolean blockStrangerProfileView = false;
+
     @Builder.Default
     Boolean accountLocked = false;
 }

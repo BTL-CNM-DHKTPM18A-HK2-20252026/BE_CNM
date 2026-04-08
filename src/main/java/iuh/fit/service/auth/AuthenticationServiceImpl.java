@@ -55,6 +55,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     QrSessionService qrSessionService;
     SimpMessagingTemplate messagingTemplate;
     EmailVerificationService emailVerificationService;
+    iuh.fit.service.presence.SessionService sessionService;
 
     @NonFinal
     @Value("${jwt.access-token.secret}")
@@ -179,6 +180,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             JWTClaimsSet claims = verifyToken(token, accessTokenSecret, ACCESS_TOKEN_TYPE);
             String tokenId = claims.getJWTID();
             Date expireAt = claims.getExpirationTime();
+            String userId = claims.getSubject();
+
+            // Layer 1: Xóa phiên kết nối ngay lập tức khi logout rõ ràng
+            if (userId != null) {
+                sessionService.removeSession(userId);
+            }
 
             // TODO: Implement token blacklisting with Redis
             // long ttlMillis = expireAt.getTime() - System.currentTimeMillis();

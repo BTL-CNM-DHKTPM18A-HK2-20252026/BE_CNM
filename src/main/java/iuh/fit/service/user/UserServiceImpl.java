@@ -121,6 +121,11 @@ public class UserServiceImpl implements UserService {
                 .whoCanSendMessages(PrivacyLevel.PUBLIC)
                 .showOnlineStatus(true)
                 .showReadReceipts(true)
+                .allowSearchByPhone(true)
+                .allowSearchByQR(true)
+                .allowSearchByGroup(true)
+                .blockStrangerMessages(false)
+                .blockStrangerProfileView(false)
                 .build();
 
         userSettingRepository.save(userSetting);

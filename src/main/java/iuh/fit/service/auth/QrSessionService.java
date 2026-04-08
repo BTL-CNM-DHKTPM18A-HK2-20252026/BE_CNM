@@ -26,7 +26,7 @@ public class QrSessionService {
 
     /**
      * Create a new QR Session UUID and store it in Redis with PENDING status.
-     * 
+     *
      * @return Generated UUID string
      */
     public String createQrSession() {

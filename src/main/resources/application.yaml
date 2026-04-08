@@ -24,7 +24,7 @@ spring:
       port: ${MONGODB_PORT:27017}
       database: ${MONGODB_DATABASE:fruvia_db}
       auto-index-creation: true
-      ddl-auto: create-drop
+      ddl-auto: update
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
@@ -41,6 +41,26 @@ spring:
       sniffer:
         delay-after-failure: ${ELASTICSEARCH_SNIFFER_DELAY:60s}
         interval: ${ELASTICSEARCH_SNIFFER_INTERVAL:5m}
+
+  # Kafka Configuration (Write-behind message persistence)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: ${KAFKA_PRODUCER_ACKS:1}
+      retries: ${KAFKA_PRODUCER_RETRIES:3}
+      properties:
+        spring.json.add.type.headers: false
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP:fruvia-message-group}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest
+      properties:
+        spring.json.trusted.packages: "iuh.fit.entity,iuh.fit.dto.*"
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: iuh.fit.entity.Message
 
   # Multipart File Upload Configuration
   servlet:

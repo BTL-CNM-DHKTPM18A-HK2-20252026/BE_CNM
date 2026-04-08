@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import iuh.fit.dto.response.user.UserStatusDTO;
 import iuh.fit.response.ApiResponse;
 import iuh.fit.service.presence.PresenceService;
+import iuh.fit.service.presence.SessionService;
 import iuh.fit.utils.JwtUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +44,7 @@ import lombok.extern.slf4j.Slf4j;
 public class PresenceController {
 
     private final PresenceService presenceService;
+    private final SessionService sessionService;
 
     // ──────────────────────────────────────────────────────────
     // REST endpoints
@@ -113,7 +115,10 @@ public class PresenceController {
     public void heartbeat(SimpMessageHeaderAccessor headerAccessor) {
         if (headerAccessor.getUser() != null) {
             String userId = headerAccessor.getUser().getName();
+            // Layer 2: Renew presence TTL (60s)
             presenceService.heartbeat(userId);
+            // Layer 1: Touch session lastActive
+            sessionService.touchSession(userId);
         }
     }
 }

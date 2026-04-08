@@ -19,7 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.RedisConnectionFailureException;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
@@ -32,7 +32,7 @@ import iuh.fit.repository.UserSettingRepository;
 class PresenceServiceTest {
 
     @Mock
-    private RedisTemplate<String, Object> redisTemplate;
+    private StringRedisTemplate stringRedisTemplate;
 
     @Mock
     private SimpMessagingTemplate messagingTemplate;
@@ -47,14 +47,14 @@ class PresenceServiceTest {
     private UserSettingRepository userSettingRepository;
 
     @Mock
-    private ValueOperations<String, Object> valueOperations;
+    private ValueOperations<String, String> valueOperations;
 
     private PresenceService presenceService;
 
     @BeforeEach
     void setUp() {
         presenceService = new PresenceService(
-                redisTemplate,
+                stringRedisTemplate,
                 messagingTemplate,
                 friendshipRepository,
                 userAuthRepository,
@@ -63,12 +63,12 @@ class PresenceServiceTest {
 
     @Test
     void heartbeatShouldUseLocalFallbackWhenRedisIsDown() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(redisTemplate.hasKey(anyString())).thenThrow(new RedisConnectionFailureException("Redis down"));
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.hasKey(anyString())).thenThrow(new RedisConnectionFailureException("Redis down"));
         RedisConnectionFailureException redisException = new RedisConnectionFailureException("Redis down");
         org.mockito.Mockito.doThrow(redisException)
                 .when(valueOperations)
-                .set(anyString(), any(), anyLong(), any(TimeUnit.class));
+                .set(anyString(), anyString(), anyLong(), any(TimeUnit.class));
 
         assertDoesNotThrow(() -> presenceService.heartbeat("user-1"));
         assertTrue(presenceService.isOnline("user-1"));
@@ -76,13 +76,13 @@ class PresenceServiceTest {
 
     @Test
     void userDisconnectedShouldRemoveLocalPresenceEvenWhenRedisIsDown() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(redisTemplate.hasKey(anyString())).thenThrow(new RedisConnectionFailureException("Redis down"));
+        when(stringRedisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(stringRedisTemplate.hasKey(anyString())).thenThrow(new RedisConnectionFailureException("Redis down"));
         RedisConnectionFailureException redisException = new RedisConnectionFailureException("Redis down");
         org.mockito.Mockito.doThrow(redisException)
                 .when(valueOperations)
-                .set(anyString(), any(), anyLong(), any(TimeUnit.class));
-        when(redisTemplate.delete(anyString())).thenThrow(new RedisConnectionFailureException("Redis down"));
+                .set(anyString(), anyString(), anyLong(), any(TimeUnit.class));
+        when(stringRedisTemplate.delete(anyString())).thenThrow(new RedisConnectionFailureException("Redis down"));
         when(friendshipRepository.findAllAcceptedFriends(anyString())).thenReturn(Collections.emptyList());
         when(userSettingRepository.findById(anyString())).thenReturn(Optional.empty());
         when(userAuthRepository.findById(anyString())).thenReturn(Optional.of(new UserAuth()));
