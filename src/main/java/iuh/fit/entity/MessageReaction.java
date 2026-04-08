@@ -4,8 +4,10 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import iuh.fit.enums.ReactionType;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,10 +31,13 @@ public class MessageReaction {
     @Builder.Default
     String id = UUID.randomUUID().toString();
     
+    @Indexed(name = "messageId_idx")
     String messageId; // Reference to Message
     
     String userId; // Reference to UserAuth (who reacted)
-    String icon; // Emoji or reaction icon
-    LocalDateTime createdAt;
-    Integer quantity; // Number of times this reaction was used
+    
+    ReactionType icon; // Emoji reaction type
+    
+    @Builder.Default
+    LocalDateTime createdAt = LocalDateTime.now();
 }

@@ -1,24 +1,51 @@
 package iuh.fit.mapper;
 
 import org.springframework.stereotype.Component;
+import lombok.RequiredArgsConstructor;
 
 import iuh.fit.dto.response.friend.FriendRequestResponse;
-import iuh.fit.entity.FriendRequest;
+import iuh.fit.entity.Friendship;
+import iuh.fit.repository.UserAuthRepository;
+import iuh.fit.repository.UserDetailRepository;
 
 @Component
+@RequiredArgsConstructor
 public class FriendMapper {
-    
-    public FriendRequestResponse toResponse(FriendRequest request) {
-        if (request == null) {
+
+    private final UserAuthRepository userAuthRepository;
+    private final UserDetailRepository userDetailRepository;
+
+    public FriendRequestResponse toResponse(Friendship rel) {
+        if (rel == null) {
             return null;
         }
-        
-        return FriendRequestResponse.builder()
-                .requestId(request.getRequestId())
-                .senderId(request.getSenderId())
-                .receiverId(request.getReceiverId())
-                .status(request.getStatus() != null ? request.getStatus().toString() : null)
-                .createdAt(request.getSentAt())
-                .build();
+
+        FriendRequestResponse.FriendRequestResponseBuilder builder = FriendRequestResponse.builder()
+                .requestId(rel.getId())
+                .senderId(rel.getRequesterId())
+                .receiverId(rel.getReceiverId())
+                .status(rel.getStatus() != null ? rel.getStatus().toString() : null)
+                .message(rel.getMessage())
+                .createdAt(rel.getCreatedAt());
+
+        // Fetch Sender Info
+        userAuthRepository.findById(rel.getRequesterId()).ifPresent(auth -> {
+            builder.senderName(auth.getEmail()); // Fallback
+            userDetailRepository.findByUserId(auth.getUserId()).ifPresent(detail -> {
+                builder.senderName(detail.getDisplayName());
+                builder.senderAvatarUrl(detail.getAvatarUrl());
+            });
+        });
+
+        // Fetch Receiver Info
+        userAuthRepository.findById(rel.getReceiverId()).ifPresent(auth -> {
+            builder.receiverName(auth.getEmail()); // Fallback
+            userDetailRepository.findByUserId(auth.getUserId()).ifPresent(detail -> {
+                builder.receiverName(detail.getDisplayName());
+                builder.receiverAvatarUrl(detail.getAvatarUrl());
+            });
+        });
+
+        return builder.build();
     }
 }

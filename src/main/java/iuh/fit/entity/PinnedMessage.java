@@ -24,13 +24,14 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class PinnedMessage {
-    
+
     @Id
     @Builder.Default
     String id = UUID.randomUUID().toString();
-    
+
     String messageId; // Reference to Message
     String conversationId; // Reference to Conversations
     String type; // Type of pin
+    String pinnedByUserId; // User who pinned the message
     LocalDateTime pinnedAt;
 }

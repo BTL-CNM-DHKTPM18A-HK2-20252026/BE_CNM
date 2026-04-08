@@ -5,5 +5,6 @@ package iuh.fit.enums;
  */
 public enum ConversationType {
     PRIVATE,  // Private conversation (1-1)
-    GROUP     // Group conversation
+    GROUP,    // Group conversation
+    SELF      // Cloud - My Documents (Self-chat)
 }

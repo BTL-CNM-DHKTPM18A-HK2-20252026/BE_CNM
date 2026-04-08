@@ -2,13 +2,65 @@ spring:
   application:
     name: fruvia_backend
 
+  mail:
+    host: ${EMAIL_HOST:smtp.gmail.com}
+    port: ${EMAIL_PORT:587}
+    username: ${EMAIL_USERNAME:}
+    password: ${EMAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            trust: ${EMAIL_SSL_TRUST:smtp.gmail.com}
+            protocols: ${EMAIL_SSL_PROTOCOLS:TLSv1.2}
+
   data:
     mongodb:
       host: ${MONGODB_HOST:localhost}
       port: ${MONGODB_PORT:27017}
       database: ${MONGODB_DATABASE:fruvia_db}
       auto-index-creation: true
-      ddl-auto: create-drop
+      ddl-auto: update
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: ${REDIS_TIMEOUT:2000ms}
+
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+    username: ${ELASTICSEARCH_USERNAME:elastic}
+    password: ${ELASTICSEARCH_PASSWORD:changeme}
+    connection-timeout: ${ELASTICSEARCH_CONNECTION_TIMEOUT:5s}
+    socket-timeout: ${ELASTICSEARCH_SOCKET_TIMEOUT:30s}
+    restclient:
+      sniffer:
+        delay-after-failure: ${ELASTICSEARCH_SNIFFER_DELAY:60s}
+        interval: ${ELASTICSEARCH_SNIFFER_INTERVAL:5m}
+
+  # Kafka Configuration (Write-behind message persistence)
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: ${KAFKA_PRODUCER_ACKS:1}
+      retries: ${KAFKA_PRODUCER_RETRIES:3}
+      properties:
+        spring.json.add.type.headers: false
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP:fruvia-message-group}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      auto-offset-reset: earliest
+      properties:
+        spring.json.trusted.packages: "iuh.fit.entity,iuh.fit.dto.*"
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: iuh.fit.entity.Message
 
   # Multipart File Upload Configuration
   servlet:
@@ -23,7 +75,15 @@ server:
     context-path: ${SERVER_CONTEXT_PATH:/api/v1}
 
 jwt:
-  signer-key: "${JWT_SIGNER_KEY:wDhbSSpxZfV5HKciZOEUlvBExqAuzHmHhLDAuO6PALLAqTP163lNPxLYsUxs3UUI}"
+  access-token:
+    secret: "${ACCESS_TOKEN_SECRET:wDhbSSpxZfV5HKciZOEUlvBExqAuzHmHhLDAuO6PALLAqTP163lNPxLYsUxs3UUI}"
+    expiration: ${ACCESS_TOKEN_EXPIRATION:900} # default: 15 minutes in seconds
+  refresh-token:
+    secret: "${REFRESH_TOKEN_SECRET:6J5vDRY6W5gMQQE7GfFZfEHGxMv88NwKK0QBo2a2DfJf0YPfWa1b7QTHg9YyPW1Q}"
+    expiration: ${REFRESH_TOKEN_EXPIRATION:604800} # default: 7 days in seconds
+    cookie-name: ${REFRESH_TOKEN_COOKIE_NAME:refreshToken}
+    cookie-secure: ${REFRESH_TOKEN_COOKIE_SECURE:false}
+    cookie-same-site: ${REFRESH_TOKEN_COOKIE_SAME_SITE:Lax}
 
 # Cloudinary Configuration
 cloudinary:
@@ -33,7 +93,7 @@ cloudinary:
 
 # CORS Configuration (Web + Mobile App)
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173,http://localhost:8081,http://192.168.1.100:8081}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001,http://localhost:5173,http://localhost:8081,http://192.168.1.100:8081}
   allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,DELETE,PATCH,OPTIONS}
   allowed-headers: ${CORS_ALLOWED_HEADERS:*}
   exposed-headers: ${CORS_EXPOSED_HEADERS:Authorization,Content-Type,X-Total-Count,X-User-Id}
@@ -53,3 +113,60 @@ springdoc:
 
 dotenv:
   enabled: true
+
+# AWS S3 SDK v2 configuration (Pre-signed URL)
+aws:
+  s3:
+    access-key: ${AWS_ACCESS_KEY_ID:}
+    secret-key: ${AWS_SECRET_ACCESS_KEY:}
+    region: ${AWS_REGION:ap-southeast-1}
+    bucket-name: ${AWS_S3_BUCKET_NAME:your-bucket-name}
+
+ai:
+  timeout-ms: ${AI_TIMEOUT_MS:30000}
+  max-retries: ${AI_MAX_RETRIES:2}
+  max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:1000}
+  router:
+    model: ${AI_ROUTER_MODEL:blackboxai/minimax-free}
+  model:
+    chat: ${AI_MODEL_CHAT:blackboxai/blackbox-pro}
+    reasoning: ${AI_MODEL_REASONING:blackboxai/openai/gpt-5.3-codex}
+    knowledge: ${AI_MODEL_KNOWLEDGE:blackboxai/google/gemini-3.1-pro-preview}
+    image: ${AI_MODEL_IMAGE:blackboxai/google/imagen-4-ultra}
+  image:
+    provider-url: ${AI_IMAGE_PROVIDER_URL:}
+    timeout-ms: ${AI_IMAGE_TIMEOUT_MS:45000}
+    read-url-expiry-minutes: ${AI_IMAGE_READ_URL_EXPIRY_MINUTES:10080}
+    allow-local-placeholder: ${AI_IMAGE_ALLOW_LOCAL_PLACEHOLDER:true}
+    hf-model: ${AI_IMAGE_HF_MODEL:black-forest-labs/FLUX.1-schnell}
+    fallback:
+      connect-timeout-ms: ${AI_IMAGE_FALLBACK_CONNECT_TIMEOUT_MS:8000}
+      read-timeout-ms: ${AI_IMAGE_FALLBACK_READ_TIMEOUT_MS:30000}
+      retries: ${AI_IMAGE_FALLBACK_RETRIES:2}
+      max-dimension: ${AI_IMAGE_FALLBACK_MAX_DIMENSION:768}
+      backoff-ms: ${AI_IMAGE_FALLBACK_BACKOFF_MS:800}
+  sliding-window:
+    size: ${AI_SLIDING_WINDOW_SIZE:10}
+  window-token-budget: ${AI_WINDOW_TOKEN_BUDGET:2000}
+  blackbox:
+    url: ${BLACKBOX_API_URL:https://api.blackbox.ai/v1/chat/completions}
+
+# Actuator & Prometheus Monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    tags:
+      application: fruvia_backend
+
+app:
+  email:
+    from: ${EMAIL_FROM:${EMAIL_USERNAME:}}
+  otp:
+    ttl-minutes: ${OTP_TTL_MINUTES:5}

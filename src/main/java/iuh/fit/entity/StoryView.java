@@ -1,5 +1,6 @@
 package iuh.fit.entity;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
@@ -30,6 +31,6 @@ public class StoryView {
 
     String storyId; // Reference to Story
     String viewerId; // Reference to UserAuth (who viewed)
-    java.time.LocalDateTime viewedAt;
+    LocalDateTime viewedAt;
     String reaction; // Optional reaction to story
 }

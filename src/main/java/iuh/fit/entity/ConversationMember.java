@@ -25,15 +25,34 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ConversationMember {
-    
+
     @Id
     @Builder.Default
     String id = UUID.randomUUID().toString();
-    
+
     String conversationId; // Reference to Conversations
-    
+
     String userId; // Reference to UserAuth
     MemberRole role; // ADMIN, DEPUTY, MEMBER
     LocalDateTime joinedAt;
     String nickname; // Custom nickname in this conversation
+    String lastReadMessageId; // Last message this member has read
+    LocalDateTime lastReadAt;
+
+    @Builder.Default
+    Boolean isPinned = false; // Per-user pin status
+
+    LocalDateTime pinnedAt; // Last time user pinned this conversation
+
+    @Builder.Default
+    Boolean isHidden = false; // Per-user soft delete (hide conversation)
+
+    String conversationTag; // Per-user tag: customer, family, work, friends, reply_later, colleagues
+
+    LocalDateTime mutedUntil; // Null = not muted, future date = muted until, max = forever
+
+    @Builder.Default
+    Boolean isMarkedUnread = false; // Per-user mark as unread
+
+    String wallpaperUrl; // Per-user chat wallpaper URL for this conversation
 }

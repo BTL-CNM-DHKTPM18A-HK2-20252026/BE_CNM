@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import iuh.fit.enums.VerificationType;
@@ -25,14 +26,17 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserVerification {
-    
+
     @Id
     @Builder.Default
     String verificationId = UUID.randomUUID().toString();
-    
+
     String userId; // Reference to UserAuth
+    String email;
     String otpCode;
     VerificationType type;
+
+    @Indexed(expireAfter = "PT0S")
     LocalDateTime expiresAt;
     Boolean isUsed;
     LocalDateTime createdAt;

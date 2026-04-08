@@ -43,6 +43,7 @@ public class MessageUtils {
             case "VIDEO" -> "🎥 Video";
             case "LOCATION" -> "📍 Vị trí";
             case "STICKER" -> "😊 Sticker";
+            case "SHARE_CONTACT" -> "📇 Danh thiếp";
             default -> generatePreview(content);
         };
     }

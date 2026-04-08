@@ -29,19 +29,26 @@ public class UserDetail {
     @Id
     @Builder.Default
     String userId = UUID.randomUUID().toString(); // Same as UserAuth.userId
-    
     String displayName;
     String firstName;
     String lastName;
-    String avatarUrl;
-    String coverPhotoUrl;
-    String bio;
+    @Builder.Default
+    String avatarUrl = "";
+    @Builder.Default
+    String coverPhotoUrl = "";
+    @Builder.Default
+    String bio = "";
     Date dob;
-    String gender;
-    String address;
-    String city;
-    String education;
-    String workplace;
+    @Builder.Default
+    String gender = "";
+    @Builder.Default
+    String address = "";
+    @Builder.Default
+    String city = "";
+    @Builder.Default
+    String education = "";
+    @Builder.Default
+    String workplace = "";
     Boolean isOrgActive;
     LocalDateTime orgCode;
     LocalDateTime lastUpdateProfile;

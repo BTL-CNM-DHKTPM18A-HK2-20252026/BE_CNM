@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import iuh.fit.enums.AccountStatus;
@@ -25,19 +26,30 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserAuth {
-    
+
     @Id
     @Builder.Default
     String userId = UUID.randomUUID().toString(); // Primary key and reference to other user collections
-    
-    String phoneNumber;
-    String email;
+
+    String phoneNumber; // Legacy field – no longer required
+
+    @Indexed(unique = true)
+    String email; // Primary identifier
     String passwordHash;
     String salt;
-    
+
     AccountStatus accountStatus;
     Boolean isTwoFactorEnabled;
-    
+
+    @Builder.Default
+    Boolean isVerified = true;
+
+    /**
+     * Bcrypt-hashed 6-digit PIN used to protect hidden conversations. Null if not
+     * set.
+     */
+    String pinCode;
+
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
     LocalDateTime lastLoginAt;

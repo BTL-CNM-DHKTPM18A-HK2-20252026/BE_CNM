@@ -33,6 +33,7 @@ build/
 .vscode/
 
 ### Environment Variables ###
+.env
 src/main/resources/.env
 .env.local
 .env.production
