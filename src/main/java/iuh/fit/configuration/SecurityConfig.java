@@ -38,7 +38,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         // === PUBLIC ENDPOINTS ===
-                        .requestMatchers("/auth/**").permitAll() // Login, logout, refresh
+                        .requestMatchers("/auth/**").permitAll() // Login, logout, refresh, test-cicd
                         .requestMatchers(HttpMethod.POST, "/users").permitAll() // Register account
                         // .requestMatchers(HttpMethod.GET, "/users/**").permitAll()// View user info
                         // (temporary for testing) - Now protected
@@ -56,14 +56,12 @@ public class SecurityConfig {
                         // === WebSocket endpoints ===
                         .requestMatchers("/ws", "/ws/**", "/ws-native", "/ws-native/**").permitAll()
 
-                        // === Debug endpoints (TODO: Remove before production) ===
-                        .requestMatchers("/debug/**").permitAll()
-
                         // === Utility endpoints ===
                         .requestMatchers("/utils/**").permitAll()
 
-                        // === Actuator / Prometheus endpoints ===
-                        .requestMatchers("/actuator/**").permitAll()
+                        // === Actuator: only /health is public, rest requires ADMIN ===
+                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/actuator/**").hasRole("ADMIN")
 
                         // === ALL OTHER ENDPOINTS REQUIRE AUTHENTICATION ===
                         .anyRequest().authenticated())

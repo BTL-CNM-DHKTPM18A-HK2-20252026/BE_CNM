@@ -361,4 +361,9 @@ public class AuthenticationController {
         authenticationService.qrScanned(request.getUuid(), request.getUserId());
         return ResponseEntity.ok(ApiResponse.success("Thông báo quét mã thành công"));
     }
+
+    @GetMapping("/test-cicd")
+    public ResponseEntity<ApiResponse<String>> testCicd() {
+        return ResponseEntity.ok(ApiResponse.success("Chúc mừng bạn đã CICD thành công"));
+    }
 }
