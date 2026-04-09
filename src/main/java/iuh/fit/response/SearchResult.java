@@ -15,4 +15,5 @@ import lombok.NoArgsConstructor;
 public class SearchResult<T> {
     private T document;
     private Map<String, List<String>> highlights;
+    private String friendshipStatus;
 }

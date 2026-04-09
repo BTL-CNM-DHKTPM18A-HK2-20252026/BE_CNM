@@ -33,11 +33,10 @@ public class SearchHistory {
 
     String query;
 
-    String searchType; // "messages" or "users"
-
-    String conversationId; // nullable, only for message search
-
-    int resultCount;
+    String targetId;     // ID của User/Group cụ thể mà họ đã nhấn vào
+    String targetName;   // Lưu tên tại thời điểm đó (để hiển thị nhanh)
+    String targetAvatar; // Lưu link ảnh (để hiển thị nhanh)
+    String targetType;   // "USER" hoặc "GROUP"
 
     @Builder.Default
     LocalDateTime searchedAt = LocalDateTime.now();
