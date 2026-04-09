@@ -13,8 +13,10 @@ public interface SearchHistoryRepository extends MongoRepository<SearchHistory, 
 
     List<SearchHistory> findByUserIdOrderBySearchedAtDesc(String userId, Pageable pageable);
 
-    List<SearchHistory> findByUserIdAndSearchTypeOrderBySearchedAtDesc(String userId, String searchType,
-            Pageable pageable);
+//    List<SearchHistory> findByUserIdAndSearchTypeOrderBySearchedAtDesc(String userId, String searchType,
+//            Pageable pageable);
 
     void deleteByUserId(String userId);
+
+    void deleteByUserIdAndTargetId(String userId, String targetId);
 }
