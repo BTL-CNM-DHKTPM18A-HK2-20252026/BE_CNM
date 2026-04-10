@@ -3,6 +3,7 @@ package iuh.fit.service.search;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -732,6 +733,22 @@ public class SearchService {
 
     public void clearSearchHistory(String userId) {
         searchHistoryRepository.deleteByUserId(userId);
+    }
+
+    public boolean deleteSearchHistoryItem(String historyId, String userId) {
+        // 1. Tìm kiếm bản ghi trong DB
+        Optional<SearchHistory> historyOpt = searchHistoryRepository.findById(historyId);
+
+        if (historyOpt.isPresent()) {
+            SearchHistory history = historyOpt.get();
+
+            // 2. Kiểm tra xem bản ghi này có thuộc về user đang đăng nhập không
+            if (history.getUserId().equals(userId)) {
+                searchHistoryRepository.deleteById(historyId);
+                return true;
+            }
+        }
+        return false;
     }
 
     //ĐỒNG BỘ ELASTICSEARCH VỚI VỚI DATABASE

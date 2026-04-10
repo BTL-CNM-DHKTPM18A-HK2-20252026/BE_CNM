@@ -189,6 +189,31 @@ public class SearchController {
                 .success(true).message("Search history retrieved").data(history).build());
     }
 
+    // Thêm vào SearchController.java
+
+    @DeleteMapping("/history/{id}")
+    @Operation(summary = "Delete a specific search history item by ID")
+    public ResponseEntity<ApiResponse<Void>> deleteSearchHistoryItem(@PathVariable String id) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        boolean deleted = searchService.deleteSearchHistoryItem(id, userId);
+
+        if (deleted) {
+            return ResponseEntity.ok(ApiResponse.<Void>builder()
+                    .success(true)
+                    .message("Search history item deleted")
+                    .build());
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.<Void>builder()
+                            .success(false)
+                            .message("History item not found or unauthorized")
+                            .build());
+        }
+    }
+
     @DeleteMapping("/history")
     @Operation(summary = "Clear search history for current user")
     public ResponseEntity<ApiResponse<String>> clearSearchHistory() {
