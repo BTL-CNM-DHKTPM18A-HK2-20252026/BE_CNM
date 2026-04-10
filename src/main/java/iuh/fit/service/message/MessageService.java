@@ -438,6 +438,47 @@ public class MessageService {
                 .map(messageMapper::toResponse);
     }
 
+    /**
+     * Returns up to {@code halfSize} messages before and {@code halfSize} after the
+     * target message, plus the target itself — sorted ascending by createdAt.
+     * Used for the "jump to searched message" feature.
+     */
+    public List<MessageResponse> getMessagesAround(String conversationId, String targetId, int halfSize) {
+        Message targetMsg = messageBucketService.findMessageById(targetId)
+                .orElseGet(() -> messageRepository.findById(targetId).orElse(null));
+        if (targetMsg == null) {
+            return List.of();
+        }
+
+        LocalDateTime targetTime = targetMsg.getCreatedAt();
+
+        // Messages before (returned desc by getMessagesBefore, so reverse to asc)
+        List<Message> beforeDesc = messageBucketService.getMessagesBefore(conversationId, targetTime, halfSize);
+        if (beforeDesc.isEmpty()) {
+            Pageable p = PageRequest.of(0, halfSize);
+            beforeDesc = messageRepository
+                    .findByConversationIdAndCreatedAtBeforeOrderByCreatedAtDesc(conversationId, targetTime, p)
+                    .getContent();
+        }
+        List<Message> beforeAsc = new java.util.ArrayList<>(beforeDesc);
+        java.util.Collections.reverse(beforeAsc);
+
+        // Messages after (asc)
+        List<Message> afterAsc = messageBucketService.getMessagesAfter(conversationId, targetTime, halfSize);
+        if (afterAsc.isEmpty()) {
+            Pageable p = PageRequest.of(0, halfSize);
+            afterAsc = messageRepository
+                    .findByConversationIdAndCreatedAtAfterOrderByCreatedAtAsc(conversationId, targetTime, p);
+        }
+
+        List<Message> all = new java.util.ArrayList<>();
+        all.addAll(beforeAsc);
+        all.add(targetMsg);
+        all.addAll(afterAsc);
+
+        return all.stream().map(messageMapper::toResponse).collect(Collectors.toList());
+    }
+
     public List<MessageResponse> getConversationMedia(String conversationId) {
         List<String> mediaTypes = Arrays.asList(
                 MessageType.IMAGE.name(),

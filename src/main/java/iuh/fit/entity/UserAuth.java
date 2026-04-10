@@ -31,10 +31,9 @@ public class UserAuth {
     @Builder.Default
     String userId = UUID.randomUUID().toString(); // Primary key and reference to other user collections
 
-    String phoneNumber; // Legacy field – no longer required
+    @Indexed(unique = true, sparse = true)
+    String phoneNumber; // Primary login identifier
 
-    @Indexed(unique = true)
-    String email; // Primary identifier
     String passwordHash;
     String salt;
 

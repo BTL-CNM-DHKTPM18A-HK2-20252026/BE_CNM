@@ -21,7 +21,10 @@ public class UserResponse {
     @JsonProperty("user_id")
     String userId;
 
-    String email;
+    @JsonProperty("phone_number")
+    String phoneNumber;
+
+    String gmail;
 
     @JsonProperty("display_name")
     String displayName;
@@ -51,4 +54,9 @@ public class UserResponse {
 
     @JsonProperty("is_requester")
     Boolean isRequester;
+
+    @JsonProperty("cover_photo_url")
+    String coverPhotoUrl;
+
+    String bio;
 }

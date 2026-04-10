@@ -3,6 +3,7 @@ package iuh.fit.service.user;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -54,13 +55,16 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse register(RegisterRequest request) {
-        String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
-        log.info("Registering new user with email: {}", normalizedEmail);
+        String phoneNumber = request.getPhoneNumber().trim();
+        log.info("Registering new user with phone: {}", phoneNumber);
 
-        // Validate email uniqueness
-        if (userAuthRepository.existsByEmail(normalizedEmail)) {
+        // Validate phone uniqueness
+        if (userAuthRepository.existsByPhoneNumber(phoneNumber)) {
             throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
         }
+
+        // Normalize gmail if provided
+        String normalizedGmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase(Locale.ROOT) : null;
 
         // Generate user ID
         String userId = UUID.randomUUID().toString();
@@ -69,12 +73,12 @@ public class UserServiceImpl implements UserService {
         String salt = UUID.randomUUID().toString();
         UserAuth userAuth = UserAuth.builder()
                 .userId(userId)
-                .email(normalizedEmail)
+                .phoneNumber(phoneNumber)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .salt(salt)
                 .accountStatus(AccountStatus.ACTIVE)
                 .isTwoFactorEnabled(false)
-                .isVerified(false)
+                .isVerified(normalizedGmail != null ? false : true)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .isDeleted(false)
@@ -102,6 +106,7 @@ public class UserServiceImpl implements UserService {
                 .lastName(request.getLastName())
                 .dob(request.getDob())
                 .gender(request.getGender())
+                .gmail(normalizedGmail != null ? normalizedGmail : "")
                 .avatarUrl(defaultAvatar)
                 .coverPhotoUrl(defaultCoverPhoto)
                 .isOrgActive(false)
@@ -131,17 +136,18 @@ public class UserServiceImpl implements UserService {
         userSettingRepository.save(userSetting);
         log.info("UserSetting created for userId: {}", userId);
 
-        // Send OTP for registration first. If email sending fails, rollback the user
-        // artifacts because Mongo transactions may not be active in local standalone
-        // mode.
-        sendRegistrationOtpOrRollback(userId, normalizedEmail);
+        // Send OTP for registration if gmail is provided (async, don't block response)
+        if (normalizedGmail != null && !normalizedGmail.isEmpty()) {
+            sendRegistrationOtpAsync(normalizedGmail);
+        }
 
         initializePostRegistrationResources(userAuth, userDetail);
 
         // --- CÁCH 1: KHÔNG XÀI MAPPER (Thủ công) ---
         return UserResponse.builder()
                 .userId(userId)
-                .email(userAuth.getEmail())
+                .phoneNumber(userAuth.getPhoneNumber())
+                .gmail(normalizedGmail)
                 .displayName(userDetail.getDisplayName())
                 .firstName(userDetail.getFirstName())
                 .lastName(userDetail.getLastName())
@@ -154,29 +160,30 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * PHIÊN BẢN SỬ DỤNG MAPPER (Viết đầy đủ để so sánh)
+     * PHẬN BẢN SỬ DỤNG MAPPER (Đã cập nhật cho phone login)
      */
     @Transactional
     public UserResponse registerWithMapper(RegisterRequest request) {
-        String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
-        log.info("Registering (with Mapper) for email: {}", normalizedEmail);
+        String phoneNumber = request.getPhoneNumber().trim();
+        log.info("Registering (with Mapper) for phone: {}", phoneNumber);
 
         // 1. Kiểm tra duy nhất
-        if (userAuthRepository.existsByEmail(normalizedEmail)) {
+        if (userAuthRepository.existsByPhoneNumber(phoneNumber)) {
             throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
         }
 
-        // 2. Tạo ID chuyên biệt (UUID đã được cấu hình tự động trong Entity, nhưng gán
-        // tay để đồng bộ các bảng)
+        String normalizedGmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase(Locale.ROOT) : null;
+
+        // 2. Tạo ID chuyên biệt
         String userId = UUID.randomUUID().toString();
 
         // 3. Xây dựng các Entity
         UserAuth userAuth = UserAuth.builder()
                 .userId(userId)
-                .email(normalizedEmail)
+                .phoneNumber(phoneNumber)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .accountStatus(AccountStatus.ACTIVE)
-                .isVerified(false)
+                .isVerified(normalizedGmail != null ? false : true)
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -185,6 +192,7 @@ public class UserServiceImpl implements UserService {
                 .displayName(request.getDisplayName())
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())
+                .gmail(normalizedGmail != null ? normalizedGmail : "")
                 .build();
 
         UserSetting userSetting = UserSetting.builder()
@@ -197,7 +205,9 @@ public class UserServiceImpl implements UserService {
         userDetailRepository.save(userDetail);
         userSettingRepository.save(userSetting);
 
-        sendRegistrationOtpOrRollback(userId, normalizedEmail);
+        if (normalizedGmail != null && !normalizedGmail.isEmpty()) {
+            sendRegistrationOtpAsync(normalizedGmail);
+        }
 
         initializePostRegistrationResources(userAuth, userDetail);
 
@@ -217,7 +227,8 @@ public class UserServiceImpl implements UserService {
 
         return UserResponse.builder()
                 .userId(userAuth.getUserId())
-                .email(userAuth.getEmail())
+                .phoneNumber(userAuth.getPhoneNumber())
+                .gmail(userDetail != null ? userDetail.getGmail() : null)
                 .displayName(userDetail != null ? userDetail.getDisplayName() : null)
                 .firstName(userDetail != null ? userDetail.getFirstName() : null)
                 .lastName(userDetail != null ? userDetail.getLastName() : null)
@@ -226,6 +237,8 @@ public class UserServiceImpl implements UserService {
                 .isVerified(userAuth.getIsVerified())
                 .gender(userDetail != null ? userDetail.getGender() : null)
                 .dob(userDetail != null ? userDetail.getDob() : null)
+                .coverPhotoUrl(userDetail != null ? userDetail.getCoverPhotoUrl() : null)
+                .bio(userDetail != null ? userDetail.getBio() : null)
                 .build();
     }
 
@@ -263,7 +276,8 @@ public class UserServiceImpl implements UserService {
                 .fullName(fullName)
                 .gender(userDetail != null ? userDetail.getGender() : null)
                 .dob(userDetail != null ? userDetail.getDob() : null)
-                .email(userAuth.getEmail())
+                .phoneNumber(userAuth.getPhoneNumber())
+                .gmail(userDetail != null ? userDetail.getGmail() : null)
                 .bio(userDetail != null ? userDetail.getBio() : null)
                 .address(userDetail != null ? userDetail.getAddress() : null)
                 .city(userDetail != null ? userDetail.getCity() : null)
@@ -335,7 +349,8 @@ public class UserServiceImpl implements UserService {
         // Re-index user in Elasticsearch after profile update
         UserAuth auth = userAuthRepository.findById(userId).orElse(null);
         searchService.indexUser(userDetail,
-                auth != null ? auth.getEmail() : "");
+                userDetail.getGmail() != null ? userDetail.getGmail() : "",
+                auth != null ? auth.getPhoneNumber() : "");
 
         return getUserMe(userId);
     }
@@ -378,9 +393,22 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserResponse getUserByEmail(String email, String currentUserId) {
-        log.info("Getting user by email: {} for searcher: {}", email, currentUserId);
+        log.info("Getting user by gmail: {} for searcher: {}", email, currentUserId);
 
-        UserAuth userAuth = userAuthRepository.findByEmail(email)
+        UserDetail userDetail = userDetailRepository.findByGmail(email)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        UserAuth userAuth = userAuthRepository.findById(userDetail.getUserId())
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        return userMapper.toUserResponse(userAuth, userDetail, currentUserId);
+    }
+
+    @Override
+    public UserResponse getUserByPhone(String phoneNumber, String currentUserId) {
+        log.info("Getting user by phone: {} for searcher: {}", phoneNumber, currentUserId);
+
+        UserAuth userAuth = userAuthRepository.findByPhoneNumber(phoneNumber)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         UserDetail userDetail = userDetailRepository.findByUserId(userAuth.getUserId())
@@ -427,18 +455,21 @@ public class UserServiceImpl implements UserService {
                 .orElse(false);
     }
 
-    private void sendRegistrationOtpOrRollback(String userId, String normalizedEmail) {
-        try {
-            emailVerificationService.sendVerificationOtp(normalizedEmail);
-        } catch (RuntimeException ex) {
-            rollbackRegistrationArtifacts(userId);
-            throw ex;
-        }
+    private void sendRegistrationOtpAsync(String gmail) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                emailVerificationService.sendVerificationOtp(gmail);
+            } catch (RuntimeException ex) {
+                log.warn("Failed to send registration OTP to {}: {}", gmail, ex.getMessage());
+            }
+        });
     }
 
     private void initializePostRegistrationResources(UserAuth userAuth, UserDetail userDetail) {
         try {
-            searchService.indexUser(userDetail, userAuth.getEmail());
+            searchService.indexUser(userDetail,
+                    userDetail.getGmail() != null ? userDetail.getGmail() : "",
+                    userAuth.getPhoneNumber());
         } catch (Exception ex) {
             log.warn("Failed to index user {} after registration: {}", userAuth.getUserId(), ex.getMessage());
         }
@@ -447,18 +478,6 @@ public class UserServiceImpl implements UserService {
             conversationService.getOrCreateSelfConversation(userAuth.getUserId());
         } catch (Exception ex) {
             log.warn("Failed to create self conversation for user {}: {}", userAuth.getUserId(), ex.getMessage());
-        }
-    }
-
-    private void rollbackRegistrationArtifacts(String userId) {
-        try {
-            userVerificationRepository.deleteByUserId(userId);
-            userSettingRepository.deleteById(userId);
-            userDetailRepository.deleteById(userId);
-            userAuthRepository.deleteById(userId);
-            log.warn("Rolled back registration artifacts for userId: {} due to OTP send failure", userId);
-        } catch (Exception cleanupEx) {
-            log.error("Failed to rollback registration artifacts for userId: {}", userId, cleanupEx);
         }
     }
 }

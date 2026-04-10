@@ -27,10 +27,14 @@ import org.springframework.stereotype.Service;
 import iuh.fit.document.DocumentDocument;
 import iuh.fit.document.MessageDocument;
 import iuh.fit.document.UserDocument;
+import iuh.fit.entity.Conversations;
+import iuh.fit.entity.Friendship;
 import iuh.fit.entity.Message;
 import iuh.fit.entity.SearchHistory;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
+import iuh.fit.repository.ConversationRepository;
+import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.MessageBucketRepository;
 import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.SearchHistoryRepository;
@@ -39,7 +43,11 @@ import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.elasticsearch.DocumentSearchRepository;
 import iuh.fit.repository.elasticsearch.MessageSearchRepository;
 import iuh.fit.entity.MessageBucket;
+import iuh.fit.response.GlobalSearchResult;
 import iuh.fit.response.SearchResult;
+
+import java.util.HashSet;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -56,6 +64,8 @@ public class SearchService {
     private final UserAuthRepository userAuthRepository;
     private final SearchHistoryRepository searchHistoryRepository;
     private final ElasticsearchOperations elasticsearchOperations;
+    private final FriendshipRepository friendshipRepository;
+    private final ConversationRepository conversationRepository;
 
     // ── Circuit breaker state ─────────────────────────────────────────────────
     private final AtomicBoolean esAvailable = new AtomicBoolean(true);
@@ -127,7 +137,7 @@ public class SearchService {
     // ── Async user indexing (with circuit breaker) ─────────────────────────────
 
     @Async
-    public void indexUser(UserDetail userDetail, String email) {
+    public void indexUser(UserDetail userDetail, String gmail, String phoneNumber) {
         if (!isElasticsearchAvailable()) {
             log.debug("Skipping user indexing — ES circuit breaker is open");
             return;
@@ -138,9 +148,10 @@ public class SearchService {
                 .displayName(userDetail.getDisplayName())
                 .firstName(userDetail.getFirstName())
                 .lastName(userDetail.getLastName())
-                .email(email)
+                .gmail(gmail)
+                .phoneNumber(phoneNumber)
                 .avatarUrl(userDetail.getAvatarUrl())
-                .suggest(buildUserCompletion(userDetail.getDisplayName(), email))
+                .suggest(buildUserCompletion(userDetail.getDisplayName(), phoneNumber))
                 .build();
 
         try {
@@ -316,7 +327,7 @@ public class SearchService {
                         new HighlightField("displayName"),
                         new HighlightField("firstName"),
                         new HighlightField("lastName"),
-                        new HighlightField("email")));
+                        new HighlightField("gmail")));
 
                 NativeQuery nativeQuery = NativeQuery.builder()
                         .withQuery(q -> q
@@ -327,7 +338,7 @@ public class SearchService {
                                                 .match(m -> m.field("firstName").query(query).fuzziness("AUTO")))
                                         .should(s -> s
                                                 .match(m -> m.field("lastName").query(query).fuzziness("AUTO")))
-                                        .should(s -> s.match(m -> m.field("email").query(query).fuzziness("AUTO")))
+                                        .should(s -> s.match(m -> m.field("gmail").query(query).fuzziness("AUTO")))
                                         .minimumShouldMatch("1")))
                         .withHighlightQuery(new HighlightQuery(highlight, UserDocument.class))
                         .withPageable(pageable)
@@ -350,7 +361,7 @@ public class SearchService {
             }
         }
 
-        // MongoDB fallback — search by displayName, then union with phone/email matches
+        // MongoDB fallback — search by displayName, then union with phone matches
         log.debug("searchUsers MongoDB fallback for query='{}'", query);
         String escapedQuery = java.util.regex.Pattern.quote(query);
 
@@ -359,10 +370,10 @@ public class SearchService {
         java.util.LinkedHashMap<String, UserDetail> userMap = new java.util.LinkedHashMap<>();
         byName.getContent().forEach(u -> userMap.put(u.getUserId(), u));
 
-        // Search by email — collect user IDs and fetch UserDetail
-        List<UserAuth> byEmail = userAuthRepository.searchByEmail(escapedQuery);
-        if (!byEmail.isEmpty()) {
-            List<String> extraIds = byEmail.stream()
+        // Search by phone number — collect user IDs and fetch UserDetail
+        List<UserAuth> byPhone = userAuthRepository.searchByPhoneNumber(escapedQuery);
+        if (!byPhone.isEmpty()) {
+            List<String> extraIds = byPhone.stream()
                     .map(UserAuth::getUserId)
                     .filter(id -> !userMap.containsKey(id))
                     .toList();
@@ -378,7 +389,7 @@ public class SearchService {
                     UserDocument doc = UserDocument.builder()
                             .userId(user.getUserId())
                             .displayName(user.getDisplayName())
-                            .email(auth != null ? auth.getEmail() : null)
+                            .gmail(user.getGmail())
                             .avatarUrl(user.getAvatarUrl())
                             .build();
                     return SearchResult.<UserDocument>builder().document(doc).build();
@@ -492,16 +503,18 @@ public class SearchService {
 
             for (UserDetail user : page.getContent()) {
                 UserAuth auth = userAuthRepository.findById(user.getUserId()).orElse(null);
-                String email = auth != null ? auth.getEmail() : "";
+                String gmail = user.getGmail() != null ? user.getGmail() : "";
+                String phoneNumber = auth != null ? auth.getPhoneNumber() : "";
 
                 UserDocument doc = UserDocument.builder()
                         .userId(user.getUserId())
                         .displayName(user.getDisplayName())
                         .firstName(user.getFirstName())
                         .lastName(user.getLastName())
-                        .email(email)
+                        .gmail(gmail)
+                        .phoneNumber(phoneNumber)
                         .avatarUrl(user.getAvatarUrl())
-                        .suggest(buildUserCompletion(user.getDisplayName(), email))
+                        .suggest(buildUserCompletion(user.getDisplayName(), phoneNumber))
                         .build();
 
                 bulkQueries.add(new IndexQueryBuilder()
@@ -595,22 +608,77 @@ public class SearchService {
         return new PageImpl<>(results, pageable, searchHits.getTotalHits());
     }
 
-    // ── Global search: messages + users + documents ───────────────────────────
+    // ── Global search: friends + conversations + messages + globalUsers ────────
 
-    public iuh.fit.response.GlobalSearchResult globalSearch(
+    public GlobalSearchResult globalSearch(
             String query, String userId, List<String> conversationIds, int page, int size) {
 
+        // 1. Get friend IDs for the current user
+        Set<String> friendIds = new HashSet<>();
+        List<Friendship> friendships = friendshipRepository.findAllAcceptedFriends(userId);
+        for (Friendship f : friendships) {
+            friendIds.add(f.getRequesterId().equals(userId) ? f.getReceiverId() : f.getRequesterId());
+        }
+
+        // 2. Search users via ES/MongoDB
+        Page<SearchResult<UserDocument>> allUsers = searchUsers(query, page, size);
+
+        // 3. Split into friends vs global (strangers)
+        List<GlobalSearchResult.FriendSearchItem> friendResults = new ArrayList<>();
+        List<GlobalSearchResult.FriendSearchItem> globalUserResults = new ArrayList<>();
+
+        for (SearchResult<UserDocument> sr : allUsers.getContent()) {
+            UserDocument doc = sr.getDocument();
+            if (doc == null || doc.getUserId().equals(userId))
+                continue;
+
+            GlobalSearchResult.FriendSearchItem item = GlobalSearchResult.FriendSearchItem.builder()
+                    .userId(doc.getUserId())
+                    .displayName(doc.getDisplayName())
+                    .phoneNumber(doc.getPhoneNumber())
+                    .avatarUrl(doc.getAvatarUrl())
+                    .friendshipStatus(friendIds.contains(doc.getUserId()) ? "ACCEPTED" : "NONE")
+                    .build();
+
+            if (friendIds.contains(doc.getUserId())) {
+                friendResults.add(item);
+            } else {
+                globalUserResults.add(item);
+            }
+        }
+
+        // 4. Search conversations by name (groups + private chats the user belongs to)
+        String escapedQuery = java.util.regex.Pattern.quote(query);
+        List<Conversations> matchedConversations = conversationRepository
+                .searchByNameAndParticipant(escapedQuery, userId);
+
+        List<GlobalSearchResult.ConversationSearchItem> conversationResults = matchedConversations.stream()
+                .limit(size)
+                .map(conv -> GlobalSearchResult.ConversationSearchItem.builder()
+                        .conversationId(conv.getConversationId())
+                        .conversationType(conv.getConversationType() != null ? conv.getConversationType().name() : null)
+                        .conversationName(conv.getConversationName())
+                        .conversationAvatarUrl(conv.getAvatarUrl())
+                        .lastMessageContent(conv.getLastMessageContent())
+                        .lastMessageTime(
+                                conv.getLastMessageTime() != null ? conv.getLastMessageTime().toString() : null)
+                        .build())
+                .toList();
+
+        // 5. Search messages across all user conversations
         Page<SearchResult<MessageDocument>> messages = conversationIds != null && !conversationIds.isEmpty()
                 ? searchMessagesByUserId(query, conversationIds, page, size)
                 : Page.empty();
 
-        Page<SearchResult<UserDocument>> users = searchUsers(query, page, size);
-
+        // 6. Documents (kept for backward compatibility)
         Page<SearchResult<DocumentDocument>> documents = searchDocuments(query, userId, page, size);
 
-        return iuh.fit.response.GlobalSearchResult.builder()
+        return GlobalSearchResult.builder()
+                .friends(friendResults)
+                .conversations(conversationResults)
                 .messages(messages)
-                .users(users)
+                .globalUsers(globalUserResults)
+                .users(allUsers)
                 .documents(documents)
                 .build();
     }
@@ -623,7 +691,7 @@ public class SearchService {
 
     // ── Autocomplete (Completion Suggester) ───────────────────────────────────
 
-    private Completion buildUserCompletion(String displayName, String email) {
+    private Completion buildUserCompletion(String displayName, String phoneNumber) {
         List<String> inputs = new ArrayList<>();
         if (displayName != null && !displayName.isBlank()) {
             inputs.add(displayName);
@@ -633,8 +701,8 @@ public class SearchService {
                     inputs.add(part);
             }
         }
-        if (email != null && !email.isBlank())
-            inputs.add(email);
+        if (phoneNumber != null && !phoneNumber.isBlank())
+            inputs.add(phoneNumber);
 
         Completion completion = new Completion(inputs.toArray(new String[0]));
         return completion;
@@ -647,7 +715,7 @@ public class SearchService {
                                 .should(s -> s
                                         .prefix(p -> p.field("displayName").value(prefix)))
                                 .should(s -> s
-                                        .prefix(p -> p.field("email").value(prefix)))
+                                        .prefix(p -> p.field("phoneNumber").value(prefix)))
                                 .minimumShouldMatch("1")))
                 .withPageable(PageRequest.of(0, size))
                 .build();

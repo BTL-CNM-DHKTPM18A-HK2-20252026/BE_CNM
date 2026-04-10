@@ -58,6 +58,14 @@ public interface AuthenticationService {
     boolean checkEmailExists(String email);
 
     /**
+     * Check if a phone number exists in the database
+     * 
+     * @param phoneNumber Phone number to check
+     * @return true if exists, false otherwise
+     */
+    boolean checkPhoneExists(String phoneNumber);
+
+    /**
      * Generate a new QR session UUID and store it in Redis with a short TTL (120s)
      * 
      * @return Generated UUID string

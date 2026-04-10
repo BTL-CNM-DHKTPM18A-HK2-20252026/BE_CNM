@@ -268,10 +268,10 @@ public class SearchController {
                 .success(true).message("Search documents successful").data(results).build());
     }
 
-    // ── Global search: messages + users + documents in one call ──────────────
+    // ── Global search: friends + conversations + messages + globalUsers ─────
 
     @GetMapping("/global")
-    @Operation(summary = "Global search across messages, users, and documents")
+    @Operation(summary = "Global search across friends, conversations, messages, and global users")
     public ResponseEntity<ApiResponse<GlobalSearchResult>> globalSearch(
             @RequestParam String q,
             @RequestParam(defaultValue = "0") int page,
@@ -290,10 +290,12 @@ public class SearchController {
                 .stream().map(m -> m.getConversationId()).toList();
 
         GlobalSearchResult result = searchService.globalSearch(q.trim(), userId, conversationIds, page, size);
-        searchService.trackSearch(userId, q.trim(), "global", null,
-                (int) (result.getMessages().getTotalElements()
-                        + result.getUsers().getTotalElements()
-                        + result.getDocuments().getTotalElements()));
+
+        int totalResults = (result.getFriends() != null ? result.getFriends().size() : 0)
+                + (result.getConversations() != null ? result.getConversations().size() : 0)
+                + (result.getMessages() != null ? (int) result.getMessages().getTotalElements() : 0)
+                + (result.getGlobalUsers() != null ? result.getGlobalUsers().size() : 0);
+        searchService.trackSearch(userId, q.trim(), "global", null, totalResults);
 
         return ResponseEntity.ok(ApiResponse.<GlobalSearchResult>builder()
                 .success(true).message("Global search successful").data(result).build());

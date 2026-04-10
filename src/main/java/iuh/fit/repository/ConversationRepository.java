@@ -39,4 +39,9 @@ public interface ConversationRepository extends MongoRepository<Conversations, S
 
     // Find conversations with auto-delete enabled
     List<Conversations> findByAutoDeleteDurationNotNull();
+
+    // Search conversations by name (regex, case-insensitive) where user is a
+    // participant
+    @Query("{ 'conversationName': { $regex: ?0, $options: 'i' }, 'participants': ?1, 'isDeleted': { $ne: true } }")
+    List<Conversations> searchByNameAndParticipant(String nameRegex, String userId);
 }

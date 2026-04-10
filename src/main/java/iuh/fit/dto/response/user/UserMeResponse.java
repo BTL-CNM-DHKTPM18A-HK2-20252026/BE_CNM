@@ -29,7 +29,10 @@ public class UserMeResponse {
     @JsonProperty("dob")
     Date dob;
 
-    String email;
+    @JsonProperty("phone_number")
+    String phoneNumber;
+
+    String gmail;
 
     String bio;
     String address;

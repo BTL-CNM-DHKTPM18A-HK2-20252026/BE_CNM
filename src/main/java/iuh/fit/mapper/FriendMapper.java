@@ -30,7 +30,7 @@ public class FriendMapper {
 
         // Fetch Sender Info
         userAuthRepository.findById(rel.getRequesterId()).ifPresent(auth -> {
-            builder.senderName(auth.getEmail()); // Fallback
+            builder.senderName(auth.getPhoneNumber()); // Fallback
             userDetailRepository.findByUserId(auth.getUserId()).ifPresent(detail -> {
                 builder.senderName(detail.getDisplayName());
                 builder.senderAvatarUrl(detail.getAvatarUrl());
@@ -39,7 +39,7 @@ public class FriendMapper {
 
         // Fetch Receiver Info
         userAuthRepository.findById(rel.getReceiverId()).ifPresent(auth -> {
-            builder.receiverName(auth.getEmail()); // Fallback
+            builder.receiverName(auth.getPhoneNumber()); // Fallback
             userDetailRepository.findByUserId(auth.getUserId()).ifPresent(detail -> {
                 builder.receiverName(detail.getDisplayName());
                 builder.receiverAvatarUrl(detail.getAvatarUrl());

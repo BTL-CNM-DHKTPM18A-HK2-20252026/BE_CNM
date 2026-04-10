@@ -82,86 +82,87 @@ public class DataInitializer {
                         }
 
                         // 1. Tạo danh sách 4 user mặc định nếu chưa có
+                        // { name, email, gender, city, bio, education, dob, avatar, phoneNumber }
                         String[][] defaultUsers = {
-                                        { "Nguyễn Quang Huy", "nguyenquanghuy1163@gmail.com", "Nam",
+                                        { "Nguyễn Quang Huy", "huy@gmail.com", "Nam",
                                                         "TP. Hồ Chí Minh",
                                                         "Sinh viên IUH - Khoa CNTT", "Đại học Công nghiệp TP.HCM (IUH)",
                                                         "20/04/2004",
-                                                        "/default/image1.jpg" },
+                                                        "/default/image1.jpg", "0399614016" },
                                         { "Lê Mẫn Nghi", "nghi.le@gmail.com", "Nữ", "Đà Lạt, Lâm Đồng",
                                                         "Yêu thích du lịch và lập trình", "Đại học Công nghiệp TP.HCM",
                                                         "15/08/2004",
-                                                        "/default/image2.jpg" },
+                                                        "/default/image2.jpg", "                " },
                                         { "Trần Hồng Nhiên", "nhien.tran@gmail.com", "Nữ", "Cần Thơ",
                                                         "Chuyên gia về thiết kế UI/UX", "Đại học Công nghiệp TP.HCM",
                                                         "10/10/2004",
-                                                        "/default/image3.jpg" },
+                                                        "/default/image3.jpg", "0901000003" },
                                         { "Nguyễn Ngọc Hồng Minh", "minh.nguyen@gmail.com", "Nữ", "Hà Nội",
                                                         "Data Scientist đam mê AI", "Đại học Công nghiệp TP.HCM",
                                                         "05/12/2004",
-                                                        "/default/image4.jpg" },
+                                                        "/default/image4.jpg", "0901000004" },
                                         { "Phan Thanh Tùng", "tung.phan@gmail.com", "Nam", "Hải Phòng",
                                                         "Fullstack Developer", "Đại học Công nghiệp TP.HCM",
-                                                        "12/03/2004", "/default/image5.jpg" },
+                                                        "12/03/2004", "/default/image5.jpg", "0901000005" },
                                         { "Đặng Minh Quân", "quan.dang@gmail.com", "Nam", "Huế",
                                                         "Mobile Developer",
                                                         "Đại học Công nghiệp TP.HCM", "25/06/2004",
-                                                        "/default/image6.jpg" },
+                                                        "/default/image6.jpg", "0901000006" },
                                         { "Hoàng Thị Thu Hà", "ha.hoang@gmail.com", "Nữ", "Nam Định",
                                                         "QA Engineer",
                                                         "Đại học Công nghiệp TP.HCM", "08/09/2004",
-                                                        "/default/image7.jpg" },
+                                                        "/default/image7.jpg", "0901000007" },
                                         { "Bùi Văn Tâm", "tam.bui@gmail.com", "Nam", "Thanh Hóa",
                                                         "DevOps Engineer",
                                                         "Đại học Công nghiệp TP.HCM", "14/11/2004",
-                                                        "/default/image8.jpg" },
+                                                        "/default/image8.jpg", "0901000008" },
                                         { "Bảo Châu", "chau.ngo@gmail.com", "Nữ", "Hưng Yên",
                                                         "UI/UX Designer",
                                                         "Đại học Công nghiệp TP.HCM", "20/01/2005",
-                                                        "/default/image1.jpg" },
+                                                        "/default/image1.jpg", "0901000009" },
                                         { "Phạm Anh Tuấn", "tuan.pham@gmail.com", "Nam", "Quảng Ninh",
                                                         "Backend Developer",
                                                         "Đại học Công nghiệp TP.HCM", "05/02/2004",
-                                                        "/default/image2.jpg" },
+                                                        "/default/image2.jpg", "0901000010" },
                                         { "Vũ Việt Hoàng", "hoang.vu@gmail.com", "Nam", "Thái Bình",
                                                         "Product Manager",
                                                         "Đại học Công nghiệp TP.HCM", "10/03/2004",
-                                                        "/default/image3.jpg" },
+                                                        "/default/image3.jpg", "0901000011" },
                                         { "Đỗ Thùy Linh", "linh.do@gmail.com", "Nữ", "Vĩnh Phúc",
                                                         "Content Creator",
                                                         "Đại học Công nghiệp TP.HCM", "15/04/2004",
-                                                        "/default/image4.jpg" },
+                                                        "/default/image4.jpg", "0901000012" },
                                         { "Dương Hoàng Anh", "anh.duong@gmail.com", "Nam", "Bắc Ninh",
                                                         "Security Researcher",
                                                         "Đại học Công nghiệp TP.HCM", "20/05/2004",
-                                                        "/default/image5.jpg" },
+                                                        "/default/image5.jpg", "0901000013" },
                                         { "Lý Gia Hân", "han.ly@gmail.com", "Nữ", "Long An",
                                                         "Data Analyst",
                                                         "Đại học Công nghiệp TP.HCM", "25/06/2004",
-                                                        "/default/image6.jpg" },
+                                                        "/default/image6.jpg", "0901000014" },
                                         { "Trịnh Công Sơn", "son.trinh@gmail.com", "Nam", "Thừa Thiên Huế",
                                                         "Software Architect", "Đại học Công nghiệp TP.HCM",
-                                                        "30/07/2004", "/default/image7.jpg" },
+                                                        "30/07/2004", "/default/image7.jpg", "0901000015" },
                                         { "Võ Hoàng Yến", "yen.vo@gmail.com", "Nữ", "Vũng Tàu",
                                                         "Project Manager",
                                                         "Đại học Công nghiệp TP.HCM", "05/08/2004",
-                                                        "/default/image8.jpg" },
+                                                        "/default/image8.jpg", "0901000016" },
                                         { "Mai Phương Thúy", "thuy.mai@gmail.com", "Nữ", "Khánh Hòa",
                                                         "Business Analyst",
                                                         "Đại học Công nghiệp TP.HCM", "10/09/2004",
-                                                        "/default/image1.jpg" },
+                                                        "/default/image1.jpg", "0901000017" },
                                         { "Đinh Tiến Dũng", "dung.dinh@gmail.com", "Nam", "Nghệ An",
                                                         "Database Administrator", "Đại học Công nghiệp TP.HCM",
                                                         "15/10/2004",
-                                                        "/default/image2.jpg" },
+                                                        "/default/image2.jpg", "0901000018" },
                                         { "Hồ Xuân Hương", "huong.ho@gmail.com", "Nữ", "Quảng Bình",
                                                         "System Admin",
                                                         "Đại học Công nghiệp TP.HCM", "20/11/2004",
-                                                        "/default/image3.jpg" },
+                                                        "/default/image3.jpg", "0901000019" },
                                         { "Trương Vĩnh Ký", "ky.truong@gmail.com", "Nam", "Bến Tre",
                                                         "Network Engineer",
                                                         "Đại học Công nghiệp TP.HCM", "25/12/2004",
-                                                        "/default/image4.jpg" }
+                                                        "/default/image4.jpg", "0901000020" }
                         };
 
                         for (String[] userData : defaultUsers) {
@@ -173,14 +174,15 @@ public class DataInitializer {
                                 String education = userData[5];
                                 String dobString = userData[6];
                                 String avatarUrl = userData[7];
+                                String phoneNumber = userData[8];
                                 Date dob = new SimpleDateFormat("dd/MM/yyyy").parse(dobString);
 
                                 if (!mongoTemplate.exists(Query.query(
-                                                Criteria.where("email").is(email)), UserAuth.class)) {
+                                                Criteria.where("phoneNumber").is(phoneNumber)), UserAuth.class)) {
 
                                         // Tạo UserAuth
                                         UserAuth userAuth = UserAuth.builder()
-                                                        .email(email)
+                                                        .phoneNumber(phoneNumber)
                                                         .passwordHash(passwordEncoder.encode("TestUser123@")) // Sử dụng
                                                                                                               // hash ở
                                                                                                               // đây
@@ -197,6 +199,7 @@ public class DataInitializer {
                                                         .displayName(fullName)
                                                         .firstName(fullName.substring(fullName.lastIndexOf(" ") + 1))
                                                         .lastName(fullName.substring(0, fullName.lastIndexOf(" ")))
+                                                        .gmail(email)
                                                         .gender(gender)
                                                         .city(city)
                                                         .address(city) // Tạm lấy thành phố làm địa chỉ
@@ -237,7 +240,7 @@ public class DataInitializer {
                                 } else {
                                         // Cập nhật existing user
                                         UserAuth existingAuth = mongoTemplate.findOne(
-                                                        Query.query(Criteria.where("email").is(email)),
+                                                        Query.query(Criteria.where("phoneNumber").is(phoneNumber)),
                                                         UserAuth.class);
                                         if (existingAuth != null) {
                                                 conversationService

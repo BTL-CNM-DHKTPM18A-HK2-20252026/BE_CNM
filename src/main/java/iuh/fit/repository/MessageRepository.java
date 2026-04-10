@@ -27,6 +27,10 @@ public interface MessageRepository extends MongoRepository<Message, String> {
                         String conversationId, LocalDateTime createdAt, Pageable pageable); // Changed back to
                                                                                             // LocalDateTime
 
+        // Find messages newer than a specific date (for "around message" pagination)
+        List<Message> findByConversationIdAndCreatedAtAfterOrderByCreatedAtAsc(
+                        String conversationId, LocalDateTime createdAt, Pageable pageable);
+
         // Search messages by content (case-insensitive regex) in a conversation
         @Query("{ 'conversationId': ?0, 'content': { $regex: ?1, $options: 'i' }, 'isDeleted': { $ne: true } }")
         Page<Message> searchByConversationIdAndContent(String conversationId, String query, Pageable pageable);

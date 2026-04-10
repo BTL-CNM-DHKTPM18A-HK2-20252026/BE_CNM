@@ -1174,7 +1174,7 @@ public class AiChatService {
         profile.put("bio", detail != null ? trimContent(redactSensitiveInfo(detail.getBio()), 300) : null);
 
         Map<String, Object> contact = new LinkedHashMap<>();
-        contact.put("email", auth != null ? redactSensitiveInfo(auth.getEmail()) : null);
+        contact.put("gmail", detail != null ? redactSensitiveInfo(detail.getGmail()) : null);
         contact.put("last_login_at",
                 auth != null && auth.getLastLoginAt() != null ? auth.getLastLoginAt().toString() : null);
         profile.put("contact", contact);
@@ -1558,7 +1558,10 @@ public class AiChatService {
             appendIfHasText(fields, "bio", detail.getBio());
         }
         if (auth != null) {
-            appendIfHasText(fields, "email", auth.getEmail());
+            appendIfHasText(fields, "phone", auth.getPhoneNumber());
+        }
+        if (detail != null) {
+            appendIfHasText(fields, "gmail", detail.getGmail());
         }
 
         if (fields.isEmpty()) {

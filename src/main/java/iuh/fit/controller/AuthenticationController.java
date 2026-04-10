@@ -216,6 +216,19 @@ public class AuthenticationController {
         return ResponseEntity.ok(ApiResponse.success(exists, "Kiểm tra email thành công"));
     }
 
+    /**
+     * Check if a phone number exists
+     * 
+     * @param phoneNumber Phone number to check
+     * @return true if exists, false otherwise
+     */
+    @Operation(summary = "Check phone", description = "Verify if a phone number exists in the system")
+    @PostMapping("/check-phone")
+    public ResponseEntity<ApiResponse<Boolean>> checkPhone(@RequestBody java.util.Map<String, String> request) {
+        boolean exists = authenticationService.checkPhoneExists(request.get("phoneNumber"));
+        return ResponseEntity.ok(ApiResponse.success(exists, "Kiểm tra số điện thoại thành công"));
+    }
+
     @Operation(summary = "Verify email OTP", description = "Verify a 6-digit OTP for email verification")
     @PostMapping("/verify-otp")
     public ResponseEntity<ApiResponse<Void>> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {

@@ -19,7 +19,8 @@ public class UserProfileResponse {
     private String avatarUrl;
     private String coverPhotoUrl;
     private String bio;
-    private String email;
+    private String gmail;
+    private String phoneNumber;
     private Integer friendCount;
     private Boolean isFriend;
     private Boolean hasPendingRequest;
