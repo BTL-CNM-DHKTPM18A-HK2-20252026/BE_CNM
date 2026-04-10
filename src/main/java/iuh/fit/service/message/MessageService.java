@@ -415,8 +415,10 @@ public class MessageService {
                 List<MessageResponse> responses = cached.stream()
                         .map(messageMapper::toResponse)
                         .collect(Collectors.toList());
+                // If full page returned, signal there may be more (last=false)
+                long estimatedTotal = (responses.size() >= size) ? (long) size * 2 : responses.size();
                 return new org.springframework.data.domain.PageImpl<>(responses, PageRequest.of(0, size),
-                        responses.size());
+                        estimatedTotal);
             }
         }
 
@@ -427,8 +429,10 @@ public class MessageService {
             List<MessageResponse> responses = bucketMsgs.stream()
                     .map(messageMapper::toResponse)
                     .collect(Collectors.toList());
+            // If full page returned, signal there may be more (last=false)
+            long estimatedTotal = (responses.size() >= size) ? (long) size * 2 : responses.size();
             return new org.springframework.data.domain.PageImpl<>(responses, PageRequest.of(0, size),
-                    responses.size());
+                    estimatedTotal);
         }
 
         // 3. Fallback for conversations not yet migrated to buckets
