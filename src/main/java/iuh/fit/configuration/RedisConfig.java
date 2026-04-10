@@ -2,10 +2,12 @@ package iuh.fit.configuration;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.listener.ChannelTopic;
+import org.springframework.data.redis.listener.PatternTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.listener.adapter.MessageListenerAdapter;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
@@ -16,19 +18,24 @@ import com.fasterxml.jackson.databind.ObjectMapper.DefaultTyping;
 import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
+import iuh.fit.service.presence.PresenceExpirationSubscriber;
 import iuh.fit.service.presence.SessionKickSubscriber;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Redis Configuration — 3-Layer Architecture
  *
  * <ul>
- *   <li>Layer 1 (Session): StringRedisTemplate → Hash user:session:{userId}</li>
- *   <li>Layer 2 (Presence): StringRedisTemplate → String user:presence:{userId}</li>
- *   <li>Layer 3 (Message Cache): RedisTemplate&lt;String, Object&gt; → ZSET chat:messages:{convId}</li>
- *   <li>Pub/Sub: session:kick channel for Zalo-style single-tab enforcement</li>
+ * <li>Layer 1 (Session): StringRedisTemplate → Hash user:session:{userId}</li>
+ * <li>Layer 2 (Presence): StringRedisTemplate → String
+ * user:presence:{userId}</li>
+ * <li>Layer 3 (Message Cache): RedisTemplate&lt;String, Object&gt; → ZSET
+ * chat:messages:{convId}</li>
+ * <li>Pub/Sub: session:kick channel for Zalo-style single-tab enforcement</li>
  * </ul>
  */
 @Configuration
+@Slf4j
 public class RedisConfig {
 
     /**
@@ -84,10 +91,28 @@ public class RedisConfig {
     public RedisMessageListenerContainer redisMessageListenerContainer(
             RedisConnectionFactory connectionFactory,
             MessageListenerAdapter sessionKickListenerAdapter,
-            ChannelTopic sessionKickTopic) {
+            ChannelTopic sessionKickTopic,
+            PresenceExpirationSubscriber presenceExpirationSubscriber) {
+
+        // Bật Redis keyspace notifications cho expired events
+        // Cần thiết để PresenceExpirationSubscriber nhận được sự kiện key hết TTL
+        RedisConnection conn = connectionFactory.getConnection();
+        try {
+            conn.serverCommands().setConfig("notify-keyspace-events", "Ex");
+            log.info("[Redis] Keyspace notifications enabled (notify-keyspace-events=Ex)");
+        } catch (Exception e) {
+            log.warn("[Redis] Could not set notify-keyspace-events (managed Redis?): {}", e.getMessage());
+        } finally {
+            conn.close();
+        }
+
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
+        // Session kick pub/sub (Zalo-style single-tab enforcement)
         container.addMessageListener(sessionKickListenerAdapter, sessionKickTopic);
+        // Presence expiration: broadcast offline khi user:presence:{userId} hết TTL
+        container.addMessageListener(presenceExpirationSubscriber,
+                new PatternTopic("__keyevent@*__:expired"));
         return container;
     }
 }

@@ -48,4 +48,15 @@ public class AiFeatureController {
                 request.getConversationId(), userId, request.getLastReadMessageId());
         return ResponseEntity.ok(ApiResponse.success(response, "Tóm tắt tin nhắn thành công"));
     }
+
+    @PostMapping("/summarize-recent")
+    @Operation(summary = "Summarize the N most recent messages in a conversation")
+    public ResponseEntity<ApiResponse<SummarizeResponse>> summarizeRecent(
+            @Valid @RequestBody SummarizeRequest request) {
+        String userId = JwtUtils.getCurrentUserId();
+        int count = request.getMessageCount() != null ? request.getMessageCount() : 100;
+        SummarizeResponse response = messageSummaryService.summarizeRecent(
+                request.getConversationId(), userId, count);
+        return ResponseEntity.ok(ApiResponse.success(response, "Tóm tắt tin nhắn thành công"));
+    }
 }
