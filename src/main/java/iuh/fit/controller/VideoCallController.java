@@ -103,17 +103,21 @@ public class VideoCallController {
      * Tạo CallLog trong DB, relay tín hiệu tới callee.
      */
     private void handleCallRequest(String senderId, String receiverId, String callId, Map<String, Object> message) {
-        // Lưu call log
-        CallLog callLog = CallLog.builder()
-                .callId(callId)
-                .initiatorId(senderId)
-                .conversationId((String) message.get("conversationId"))
-                .callType(CallType.VIDEO)
-                .callStatus(CallStatus.MISSED) // default MISSED, cập nhật khi accepted/ended
-                .createdAt(LocalDateTime.now())
-                .build();
-        callLogRepository.save(callLog);
-        log.info("[VideoCall] CallLog created: callId={}", callId);
+        // Lưu call log (non-blocking: relay luôn được gọi)
+        try {
+            CallLog callLog = CallLog.builder()
+                    .callId(callId)
+                    .initiatorId(senderId)
+                    .conversationId((String) message.get("conversationId"))
+                    .callType(CallType.VIDEO)
+                    .callStatus(CallStatus.MISSED) // default MISSED, cập nhật khi accepted/ended
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            callLogRepository.save(callLog);
+            log.info("[VideoCall] CallLog created: callId={}", callId);
+        } catch (Exception e) {
+            log.error("[VideoCall] Failed to save CallLog: callId={}, error={}", callId, e.getMessage());
+        }
 
         relay(receiverId, message);
     }
@@ -122,12 +126,16 @@ public class VideoCallController {
      * CALL_ACCEPTED — Callee chấp nhận. Update startedAt.
      */
     private void handleCallAccepted(String callId, Map<String, Object> message, String receiverId) {
-        if (callId != null) {
-            callLogRepository.findById(callId).ifPresent(cl -> {
-                cl.setCallStatus(CallStatus.COMPLETED);
-                cl.setStartedAt(LocalDateTime.now());
-                callLogRepository.save(cl);
-            });
+        try {
+            if (callId != null) {
+                callLogRepository.findById(callId).ifPresent(cl -> {
+                    cl.setCallStatus(CallStatus.COMPLETED);
+                    cl.setStartedAt(LocalDateTime.now());
+                    callLogRepository.save(cl);
+                });
+            }
+        } catch (Exception e) {
+            log.error("[VideoCall] Failed to update CallLog on ACCEPTED: callId={}, error={}", callId, e.getMessage());
         }
         relay(receiverId, message);
     }
@@ -138,16 +146,18 @@ public class VideoCallController {
      * WebSocket.
      */
     private void handleCallRejected(String senderId, String callId, Map<String, Object> message, String receiverId) {
-        if (callId != null) {
-            callLogRepository.findById(callId).ifPresent(cl -> {
-                cl.setCallStatus(CallStatus.REJECTED);
-                cl.setEndedAt(LocalDateTime.now());
-                callLogRepository.save(cl);
-                // callerId = receiverId here (REJECTED is sent by callee, relay target is
-                // caller)
-                callMessageService.saveAndBroadcast(cl.getConversationId(), cl.getInitiatorId(),
-                        MessageType.CALL_REJECTED, null);
-            });
+        try {
+            if (callId != null) {
+                callLogRepository.findById(callId).ifPresent(cl -> {
+                    cl.setCallStatus(CallStatus.REJECTED);
+                    cl.setEndedAt(LocalDateTime.now());
+                    callLogRepository.save(cl);
+                    callMessageService.saveAndBroadcast(cl.getConversationId(), cl.getInitiatorId(),
+                            MessageType.CALL_REJECTED, null);
+                });
+            }
+        } catch (Exception e) {
+            log.error("[VideoCall] Failed to update CallLog on REJECTED: callId={}, error={}", callId, e.getMessage());
         }
         relay(receiverId, message);
     }
@@ -161,26 +171,30 @@ public class VideoCallController {
      * </ul>
      */
     private void handleCallEnd(String senderId, String callId, Map<String, Object> message, String receiverId) {
-        if (callId != null) {
-            callLogRepository.findById(callId).ifPresent(cl -> {
-                cl.setEndedAt(LocalDateTime.now());
-                if (cl.getStartedAt() != null) {
-                    long seconds = java.time.Duration.between(cl.getStartedAt(), cl.getEndedAt()).getSeconds();
-                    cl.setDurationSeconds((int) seconds);
-                    cl.setCallStatus(CallStatus.COMPLETED);
-                    callLogRepository.save(cl);
-                    log.info("[VideoCall] CallLog ended (completed): callId={}, duration={}s", callId,
-                            cl.getDurationSeconds());
-                    callMessageService.saveAndBroadcast(cl.getConversationId(), cl.getInitiatorId(),
-                            MessageType.CALL_ENDED, cl.getDurationSeconds());
-                } else {
-                    cl.setCallStatus(CallStatus.CANCELLED);
-                    callLogRepository.save(cl);
-                    log.info("[VideoCall] CallLog ended (missed/cancelled): callId={}", callId);
-                    callMessageService.saveAndBroadcast(cl.getConversationId(), cl.getInitiatorId(),
-                            MessageType.CALL_MISSED, null);
-                }
-            });
+        try {
+            if (callId != null) {
+                callLogRepository.findById(callId).ifPresent(cl -> {
+                    cl.setEndedAt(LocalDateTime.now());
+                    if (cl.getStartedAt() != null) {
+                        long seconds = java.time.Duration.between(cl.getStartedAt(), cl.getEndedAt()).getSeconds();
+                        cl.setDurationSeconds((int) seconds);
+                        cl.setCallStatus(CallStatus.COMPLETED);
+                        callLogRepository.save(cl);
+                        log.info("[VideoCall] CallLog ended (completed): callId={}, duration={}s", callId,
+                                cl.getDurationSeconds());
+                        callMessageService.saveAndBroadcast(cl.getConversationId(), cl.getInitiatorId(),
+                                MessageType.CALL_ENDED, cl.getDurationSeconds());
+                    } else {
+                        cl.setCallStatus(CallStatus.CANCELLED);
+                        callLogRepository.save(cl);
+                        log.info("[VideoCall] CallLog ended (missed/cancelled): callId={}", callId);
+                        callMessageService.saveAndBroadcast(cl.getConversationId(), cl.getInitiatorId(),
+                                MessageType.CALL_MISSED, null);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            log.error("[VideoCall] Failed to update CallLog on END: callId={}, error={}", callId, e.getMessage());
         }
         relay(receiverId, message);
     }
