@@ -30,6 +30,8 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
       timeout: ${REDIS_TIMEOUT:2000ms}
+      repositories:
+        enabled: false
 
   elasticsearch:
     uris: ${ELASTICSEARCH_URIS:http://localhost:9200}

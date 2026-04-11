@@ -767,7 +767,9 @@ public class AiChatService {
         if ("vi".equals(language)) {
             prompt.add(createPromptMessage(
                     "system",
-                    "Always respond in Vietnamese. Keep responses natural for Vietnamese users."));
+                    "Always respond in Vietnamese with full diacritical marks (dấu tiếng Việt). "
+                            + "For example: 'xin chào' NOT 'xin chao', 'bạn khỏe không' NOT 'ban khoe khong'. "
+                            + "Keep responses natural for Vietnamese users."));
         } else {
             prompt.add(createPromptMessage(
                     "system",
@@ -877,8 +879,9 @@ public class AiChatService {
 
     private String buildQuickCommandInstruction(String language) {
         if ("vi".equals(language)) {
-            return "Lenh nhanh than thien: 'ten toi', 'ngay sinh toi', 'ho so toi', 'liet ke file', 'xoa file <ten_file>', 'xoa nhanh <ten_nhanh>', '/image <mo_ta>', '/image_pro <mo_ta>', '/sketch <mo_ta>', '/wallpaper <mo_ta>'. "
-                    + "Van ho tro lenh cu dang /me.name, /files.list... Neu nguoi dung gui cac cum nay, hay xu ly dung y nghia va tra loi ngan gon.";
+            return "Lệnh nhanh thân thiện: 'tên tôi', 'ngày sinh tôi', 'hồ sơ tôi', 'liệt kê file', 'xóa file <tên_file>', 'xóa nhánh <tên_nhánh>', '/image <mô_tả>', '/image_pro <mô_tả>', '/sketch <mô_tả>', '/wallpaper <mô_tả>'. "
+                    + "Vẫn hỗ trợ lệnh cũ dạng /me.name, /files.list... Nếu người dùng gửi các cụm này, hãy xử lý đúng ý nghĩa và trả lời ngắn gọn. "
+                    + "QUAN TRỌNG: Luôn trả lời bằng tiếng Việt có dấu đầy đủ (ví dụ: 'xin chào' chứ không phải 'xin chao').";
         }
         return "Friendly quick commands: 'my name', 'my birthday', 'my profile', 'list files', 'delete file <file_name>', 'delete branch <branch_name>', '/image <description>', '/image_pro <description>', '/sketch <description>', '/wallpaper <description>'. "
                 + "Legacy slash commands are still supported. If user uses these phrases, interpret by intent and respond clearly.";

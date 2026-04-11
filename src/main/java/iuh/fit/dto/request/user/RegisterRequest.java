@@ -22,7 +22,7 @@ public class RegisterRequest {
     @Pattern(regexp = "^(0|\\+84)[0-9]{9}$", message = "Phone number must be a valid Vietnamese phone number")
     String phoneNumber;
 
-    @NotBlank(message = "Email is required")
+    @Pattern(regexp = "^$|^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", message = "Email should be valid")
     String email;
 
     @NotBlank(message = "Password is required")

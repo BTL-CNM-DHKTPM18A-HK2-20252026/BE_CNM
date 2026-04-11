@@ -89,6 +89,48 @@ public class EmailVerificationService {
     }
   }
 
+  public void sendRegistrationOtp(String email) {
+    String normalizedGmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+    if (normalizedGmail.isBlank()) {
+      throw new AppException(ErrorCode.INVALID_EMAIL);
+    }
+
+    if (userDetailRepository.findByGmail(normalizedGmail).isPresent()) {
+      throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
+    }
+
+    List<UserVerification> activeOtps = userVerificationRepository.findByEmailAndTypeAndIsUsedFalse(
+        normalizedGmail, VerificationType.REGISTRATION);
+
+    String rawOtp = generateSixDigitOtp();
+    LocalDateTime now = LocalDateTime.now();
+    LocalDateTime expiresAt = now.plusMinutes(otpTtlMinutes);
+
+    UserVerification verification = UserVerification.builder()
+        .userId(null)
+        .email(normalizedGmail)
+        .otpCode(passwordEncoder.encode(rawOtp))
+        .type(VerificationType.REGISTRATION)
+        .isUsed(false)
+        .createdAt(now)
+        .expiresAt(expiresAt)
+        .build();
+
+    userVerificationRepository.save(verification);
+
+    try {
+      sendOtpEmail(normalizedGmail, rawOtp, expiresAt);
+    } catch (RuntimeException ex) {
+      userVerificationRepository.deleteById(verification.getVerificationId());
+      throw ex;
+    }
+
+    if (!activeOtps.isEmpty()) {
+      activeOtps.forEach(otp -> otp.setIsUsed(true));
+      userVerificationRepository.saveAll(activeOtps);
+    }
+  }
+
   public void sendPasswordResetOtp(String email) {
     String normalizedGmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
     UserAuth user = findUserByEmail(normalizedGmail);
@@ -151,6 +193,25 @@ public class EmailVerificationService {
     user.setIsVerified(true);
     user.setUpdatedAt(LocalDateTime.now());
     userAuthRepository.save(user);
+  }
+
+  public void verifyRegistrationOtp(String email, String otp) {
+    String normalizedGmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+
+    UserVerification verification = userVerificationRepository
+        .findTopByEmailAndTypeAndIsUsedFalseOrderByCreatedAtDesc(normalizedGmail, VerificationType.REGISTRATION)
+        .orElseThrow(() -> new AppException(ErrorCode.OTP_NOT_FOUND));
+
+    if (verification.getExpiresAt() == null || LocalDateTime.now().isAfter(verification.getExpiresAt())) {
+      throw new AppException(ErrorCode.OTP_EXPIRED);
+    }
+
+    if (!passwordEncoder.matches(otp, verification.getOtpCode())) {
+      throw new AppException(ErrorCode.INVALID_OTP);
+    }
+
+    verification.setIsUsed(true);
+    userVerificationRepository.save(verification);
   }
 
   public void resetPassword(String email, String otp, String newPassword) {

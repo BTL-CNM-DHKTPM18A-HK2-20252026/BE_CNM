@@ -93,26 +93,35 @@ public class RedisConfig {
             MessageListenerAdapter sessionKickListenerAdapter,
             ChannelTopic sessionKickTopic,
             PresenceExpirationSubscriber presenceExpirationSubscriber) {
-
-        // Bật Redis keyspace notifications cho expired events
-        // Cần thiết để PresenceExpirationSubscriber nhận được sự kiện key hết TTL
-        RedisConnection conn = connectionFactory.getConnection();
-        try {
-            conn.serverCommands().setConfig("notify-keyspace-events", "Ex");
-            log.info("[Redis] Keyspace notifications enabled (notify-keyspace-events=Ex)");
-        } catch (Exception e) {
-            log.warn("[Redis] Could not set notify-keyspace-events (managed Redis?): {}", e.getMessage());
-        } finally {
-            conn.close();
-        }
-
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(connectionFactory);
-        // Session kick pub/sub (Zalo-style single-tab enforcement)
-        container.addMessageListener(sessionKickListenerAdapter, sessionKickTopic);
-        // Presence expiration: broadcast offline khi user:presence:{userId} hết TTL
-        container.addMessageListener(presenceExpirationSubscriber,
-                new PatternTopic("__keyevent@*__:expired"));
+        container.setErrorHandler(error -> log.warn("[Redis] Listener runtime error: {}", error.getMessage()));
+
+        try (RedisConnection conn = connectionFactory.getConnection()) {
+            // Verify connection first so app can still boot when Redis is unavailable.
+            conn.ping();
+
+            // Bật Redis keyspace notifications cho expired events
+            // Cần thiết để PresenceExpirationSubscriber nhận được sự kiện key hết TTL
+            try {
+                conn.serverCommands().setConfig("notify-keyspace-events", "Ex");
+                log.info("[Redis] Keyspace notifications enabled (notify-keyspace-events=Ex)");
+            } catch (Exception e) {
+                log.warn("[Redis] Could not set notify-keyspace-events (managed Redis?): {}", e.getMessage());
+            }
+
+            // Session kick pub/sub (Zalo-style single-tab enforcement)
+            container.addMessageListener(sessionKickListenerAdapter, sessionKickTopic);
+            // Presence expiration: broadcast offline khi user:presence:{userId} hết TTL
+            container.addMessageListener(presenceExpirationSubscriber,
+                    new PatternTopic("__keyevent@*__:expired"));
+        } catch (Exception e) {
+            // Do not fail entire application startup in local/dev when Redis is down.
+            log.warn(
+                    "[Redis] Redis unavailable. Pub/Sub listeners disabled. App continues without Redis realtime features: {}",
+                    e.getMessage());
+        }
+
         return container;
     }
 }

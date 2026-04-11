@@ -236,6 +236,20 @@ public class AuthenticationController {
         return ResponseEntity.ok(ApiResponse.success("Xác thực email thành công"));
     }
 
+    @Operation(summary = "Send registration OTP", description = "Send a 6-digit OTP for registration pre-verification")
+    @PostMapping("/register/send-otp")
+    public ResponseEntity<ApiResponse<Void>> sendRegistrationOtp(@Valid @RequestBody ResendOtpRequest request) {
+        authenticationService.sendRegistrationOtp(request.getEmail());
+        return ResponseEntity.ok(ApiResponse.success("Đã gửi mã OTP đăng ký"));
+    }
+
+    @Operation(summary = "Verify registration OTP", description = "Verify a 6-digit OTP for registration pre-verification")
+    @PostMapping("/register/verify-otp")
+    public ResponseEntity<ApiResponse<Void>> verifyRegistrationOtp(@Valid @RequestBody VerifyOtpRequest request) {
+        authenticationService.verifyRegistrationOtp(request);
+        return ResponseEntity.ok(ApiResponse.success("Xác thực OTP đăng ký thành công"));
+    }
+
     @Operation(summary = "Resend email OTP", description = "Resend a new 6-digit OTP code to the target email")
     @PostMapping("/resend-otp")
     public ResponseEntity<ApiResponse<Void>> resendOtp(@Valid @RequestBody ResendOtpRequest request) {

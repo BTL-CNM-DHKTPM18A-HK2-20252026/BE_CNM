@@ -88,7 +88,7 @@ public class DataInitializer {
                                                         "TP. Hồ Chí Minh",
                                                         "Sinh viên IUH - Khoa CNTT", "Đại học Công nghiệp TP.HCM (IUH)",
                                                         "20/04/2004",
-                                                        "/default/image1.jpg", "0399614016" },
+                                                        "/default/image1.jpg", "0399614015" },
                                         { "Lê Mẫn Nghi", "nghi.le@gmail.com", "Nữ", "Đà Lạt, Lâm Đồng",
                                                         "Yêu thích du lịch và lập trình", "Đại học Công nghiệp TP.HCM",
                                                         "15/08/2004",

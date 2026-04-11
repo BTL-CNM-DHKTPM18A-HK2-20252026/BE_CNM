@@ -297,6 +297,16 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     }
 
     @Override
+    public void sendRegistrationOtp(String email) {
+        emailVerificationService.sendRegistrationOtp(email);
+    }
+
+    @Override
+    public void verifyRegistrationOtp(VerifyOtpRequest request) {
+        emailVerificationService.verifyRegistrationOtp(request.getEmail(), request.getOtp());
+    }
+
+    @Override
     public void sendPasswordResetOtp(String email) {
         emailVerificationService.sendPasswordResetOtp(email);
     }

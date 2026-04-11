@@ -3,7 +3,6 @@ package iuh.fit.service.user;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -21,6 +20,7 @@ import iuh.fit.entity.UserDetail;
 import iuh.fit.entity.UserSetting;
 import iuh.fit.enums.AccountStatus;
 import iuh.fit.enums.PrivacyLevel;
+import iuh.fit.enums.VerificationType;
 import iuh.fit.exception.AppException;
 import iuh.fit.exception.ErrorCode;
 import iuh.fit.mapper.UserMapper;
@@ -29,7 +29,6 @@ import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserSettingRepository;
 import iuh.fit.repository.UserVerificationRepository;
 import iuh.fit.service.conversation.ConversationService;
-import iuh.fit.service.auth.EmailVerificationService;
 import iuh.fit.service.search.SearchService;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
@@ -49,7 +48,6 @@ public class UserServiceImpl implements UserService {
     UserMapper userMapper;
     ConversationService conversationService;
     SearchService searchService;
-    EmailVerificationService emailVerificationService;
     UserVerificationRepository userVerificationRepository;
 
     @Override
@@ -65,6 +63,19 @@ public class UserServiceImpl implements UserService {
 
         // Normalize gmail if provided
         String normalizedGmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase(Locale.ROOT) : null;
+        boolean hasGmail = normalizedGmail != null && !normalizedGmail.isEmpty();
+
+        if (hasGmail && userDetailRepository.findByGmail(normalizedGmail).isPresent()) {
+            throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
+        }
+
+        boolean isEmailVerified = !hasGmail || userVerificationRepository.existsByEmailAndTypeAndIsUsedTrue(
+                normalizedGmail,
+                VerificationType.REGISTRATION);
+
+        if (hasGmail && !isEmailVerified) {
+            throw new AppException(ErrorCode.EMAIL_NOT_VERIFIED);
+        }
 
         // Generate user ID
         String userId = UUID.randomUUID().toString();
@@ -78,7 +89,7 @@ public class UserServiceImpl implements UserService {
                 .salt(salt)
                 .accountStatus(AccountStatus.ACTIVE)
                 .isTwoFactorEnabled(false)
-                .isVerified(normalizedGmail != null ? false : true)
+                .isVerified(isEmailVerified)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .isDeleted(false)
@@ -136,11 +147,6 @@ public class UserServiceImpl implements UserService {
         userSettingRepository.save(userSetting);
         log.info("UserSetting created for userId: {}", userId);
 
-        // Send OTP for registration if gmail is provided (async, don't block response)
-        if (normalizedGmail != null && !normalizedGmail.isEmpty()) {
-            sendRegistrationOtpAsync(normalizedGmail);
-        }
-
         initializePostRegistrationResources(userAuth, userDetail);
 
         // --- CÁCH 1: KHÔNG XÀI MAPPER (Thủ công) ---
@@ -173,6 +179,19 @@ public class UserServiceImpl implements UserService {
         }
 
         String normalizedGmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase(Locale.ROOT) : null;
+        boolean hasGmail = normalizedGmail != null && !normalizedGmail.isEmpty();
+
+        if (hasGmail && userDetailRepository.findByGmail(normalizedGmail).isPresent()) {
+            throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
+        }
+
+        boolean isEmailVerified = !hasGmail || userVerificationRepository.existsByEmailAndTypeAndIsUsedTrue(
+                normalizedGmail,
+                VerificationType.REGISTRATION);
+
+        if (hasGmail && !isEmailVerified) {
+            throw new AppException(ErrorCode.EMAIL_NOT_VERIFIED);
+        }
 
         // 2. Tạo ID chuyên biệt
         String userId = UUID.randomUUID().toString();
@@ -183,7 +202,7 @@ public class UserServiceImpl implements UserService {
                 .phoneNumber(phoneNumber)
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .accountStatus(AccountStatus.ACTIVE)
-                .isVerified(normalizedGmail != null ? false : true)
+                .isVerified(isEmailVerified)
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -204,10 +223,6 @@ public class UserServiceImpl implements UserService {
         userAuthRepository.save(userAuth);
         userDetailRepository.save(userDetail);
         userSettingRepository.save(userSetting);
-
-        if (normalizedGmail != null && !normalizedGmail.isEmpty()) {
-            sendRegistrationOtpAsync(normalizedGmail);
-        }
 
         initializePostRegistrationResources(userAuth, userDetail);
 
@@ -453,16 +468,6 @@ public class UserServiceImpl implements UserService {
         return userAuthRepository.findById(userId)
                 .map(u -> u.getPinCode() != null && passwordEncoder.matches(rawPin, u.getPinCode()))
                 .orElse(false);
-    }
-
-    private void sendRegistrationOtpAsync(String gmail) {
-        CompletableFuture.runAsync(() -> {
-            try {
-                emailVerificationService.sendVerificationOtp(gmail);
-            } catch (RuntimeException ex) {
-                log.warn("Failed to send registration OTP to {}: {}", gmail, ex.getMessage());
-            }
-        });
     }
 
     private void initializePostRegistrationResources(UserAuth userAuth, UserDetail userDetail) {

@@ -50,8 +50,8 @@ public class MessageCacheService {
     /** Maximum number of recent messages cached per conversation. */
     public static final int MAX_CACHED = 50;
 
-    /** Sliding TTL: 30 phút — reset mỗi lần đọc/ghi. */
-    private static final long CACHE_TTL_MINUTES = 30;
+    /** Sliding TTL: 60 phút — tối ưu RAM cho 100k users, reset mỗi lần đọc/ghi. */
+    private static final long CACHE_TTL_MINUTES = 60;
 
     private static final String KEY_PREFIX = "chat:messages:";
 

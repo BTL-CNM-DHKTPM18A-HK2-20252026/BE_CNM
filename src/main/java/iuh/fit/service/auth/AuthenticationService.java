@@ -87,6 +87,20 @@ public interface AuthenticationService {
     void resendEmailOtp(String email);
 
     /**
+     * Send OTP for registration flow before creating account.
+     *
+     * @param email target email
+     */
+    void sendRegistrationOtp(String email);
+
+    /**
+     * Verify OTP for registration flow before creating account.
+     *
+     * @param request email and otp payload
+     */
+    void verifyRegistrationOtp(VerifyOtpRequest request);
+
+    /**
      * Send OTP for forgot-password flow.
      *
      * @param email target email
