@@ -144,6 +144,7 @@ services:
       - REDIS_HOST=redis
       - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - ELASTICSEARCH_URIS=http://elasticsearch:9200
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD:-changeme}
       # All secrets come from .env file on the EC2
       - MONGODB_DATABASE=${MONGODB_DATABASE}
       - REDIS_PASSWORD=${REDIS_PASSWORD}

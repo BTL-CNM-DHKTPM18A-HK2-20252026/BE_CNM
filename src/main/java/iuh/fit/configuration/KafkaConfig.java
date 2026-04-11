@@ -71,6 +71,9 @@ public class KafkaConfig {
         props.put(ProducerConfig.ACKS_CONFIG, "1");
         props.put(ProducerConfig.RETRIES_CONFIG, 3);
         props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, false);
+        props.put(ProducerConfig.RECONNECT_BACKOFF_MS_CONFIG, 1000L);
+        props.put(ProducerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG, 10000L);
+        props.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, 500L);
         props.put(JsonSerializer.ADD_TYPE_INFO_HEADERS, false);
         return new DefaultKafkaProducerFactory<>(props);
     }
@@ -97,6 +100,8 @@ public class KafkaConfig {
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "fruvia-message-group");
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.RECONNECT_BACKOFF_MS_CONFIG, 1000L);
+        props.put(ConsumerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG, 10000L);
         return new DefaultKafkaConsumerFactory<>(props, new StringDeserializer(), deserializer);
     }
 

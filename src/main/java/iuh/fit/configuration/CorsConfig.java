@@ -1,7 +1,6 @@
 package iuh.fit.configuration;
 
 import java.util.Arrays;
-import java.util.List;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -45,9 +44,6 @@ public class CorsConfig {
 
         // Allowed origins (Web + Mobile)
         configuration.setAllowedOrigins(Arrays.asList(allowedOrigins));
-
-        // For mobile apps that don't send origin header
-        configuration.setAllowedOriginPatterns(List.of("*"));
 
         // Allowed HTTP methods
         configuration.setAllowedMethods(Arrays.asList(allowedMethods));
