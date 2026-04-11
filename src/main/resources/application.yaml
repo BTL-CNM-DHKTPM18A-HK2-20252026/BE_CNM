@@ -77,11 +77,11 @@ server:
     context-path: ${SERVER_CONTEXT_PATH:/api/v1}
   tomcat:
     threads:
-      max: ${TOMCAT_MAX_THREADS:400}
-      min-spare: ${TOMCAT_MIN_SPARE_THREADS:50}
-    accept-count: ${TOMCAT_ACCEPT_COUNT:200}
+      max: ${TOMCAT_MAX_THREADS:100}
+      min-spare: ${TOMCAT_MIN_SPARE_THREADS:10}
+    accept-count: ${TOMCAT_ACCEPT_COUNT:50}
     connection-timeout: ${TOMCAT_CONNECTION_TIMEOUT:20000}
-    max-connections: ${TOMCAT_MAX_CONNECTIONS:8192}
+    max-connections: ${TOMCAT_MAX_CONNECTIONS:1024}
 
 jwt:
   access-token:
