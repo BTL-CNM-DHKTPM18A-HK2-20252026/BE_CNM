@@ -74,6 +74,8 @@ public class AiChatService {
     private static final String AI_CONVERSATION_NAME = "Fruvia AI";
     private static final Pattern DIRECT_IMAGE_COMMAND_PATTERN = Pattern
             .compile("^\\s*[/／⁄∕](image|image_pro|sketch|wallpaper)\\b(.*)$", Pattern.CASE_INSENSITIVE);
+    private static final int CONTINUATION_MAX_ROUNDS = 2;
+    private static final int CONTINUATION_MAX_TOKENS = 220;
 
     private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
@@ -216,6 +218,10 @@ public class AiChatService {
                 }
             }
 
+            if (completion != null) {
+                completion = completeInterruptedResponse(promptMessages, completion, selectedModel, language);
+            }
+
             long latency = System.currentTimeMillis() - startedAt;
 
             String assistantContent;
@@ -317,6 +323,202 @@ public class AiChatService {
                 return;
             }
         }
+    }
+
+    private AiCompletionResult completeInterruptedResponse(
+            List<Map<String, String>> basePromptMessages,
+            AiCompletionResult initialCompletion,
+            String selectedModel,
+            String language) {
+        if (initialCompletion == null || !StringUtils.hasText(initialCompletion.getContent())) {
+            return initialCompletion;
+        }
+
+        String mergedContent = initialCompletion.getContent().trim();
+        int promptTokens = Math.max(0, initialCompletion.getPromptTokens());
+        int completionTokens = Math.max(0, initialCompletion.getCompletionTokens());
+        int totalTokens = Math.max(0, initialCompletion.getTotalTokens());
+        String finishReason = initialCompletion.getFinishReason();
+
+        for (int round = 1; round <= CONTINUATION_MAX_ROUNDS; round++) {
+            if (!shouldContinueResponse(mergedContent, finishReason)) {
+                break;
+            }
+
+            List<Map<String, String>> continuationPrompt = new ArrayList<>(basePromptMessages);
+            continuationPrompt.add(createPromptMessage("assistant", mergedContent));
+            continuationPrompt.add(createPromptMessage("user", buildContinuationInstruction(language)));
+
+            try {
+                AiCompletionResult continuation = blackboxAiClient.complete(
+                        continuationPrompt,
+                        selectedModel,
+                        CONTINUATION_MAX_TOKENS);
+
+                if (continuation == null || !StringUtils.hasText(continuation.getContent())) {
+                    break;
+                }
+
+                String addition = trimContinuationPrefix(continuation.getContent());
+                if (!StringUtils.hasText(addition)) {
+                    break;
+                }
+
+                mergedContent = mergeWithOverlap(mergedContent, addition);
+                promptTokens += Math.max(0, continuation.getPromptTokens());
+                completionTokens += Math.max(0, continuation.getCompletionTokens());
+                totalTokens += Math.max(0, continuation.getTotalTokens());
+                finishReason = continuation.getFinishReason();
+            } catch (Exception ex) {
+                log.warn("AI continuation failed at round {}: {}", round, ex.getMessage());
+                break;
+            }
+        }
+
+        int effectiveTotal = totalTokens > 0 ? totalTokens : promptTokens + completionTokens;
+        return AiCompletionResult.builder()
+                .content(mergedContent)
+                .promptTokens(promptTokens)
+                .completionTokens(completionTokens)
+                .totalTokens(effectiveTotal)
+                .providerRequestId(initialCompletion.getProviderRequestId())
+                .model(initialCompletion.getModel())
+                .finishReason(finishReason)
+                .build();
+    }
+
+    private boolean shouldContinueResponse(String content, String finishReason) {
+        if (!StringUtils.hasText(content)) {
+            return false;
+        }
+
+        if (isLikelyTruncatedByFinishReason(finishReason)) {
+            return true;
+        }
+
+        String trimmed = content.trim();
+        if (trimmed.length() < 24) {
+            return false;
+        }
+
+        if (hasUnclosedPair(trimmed, '(', ')')
+                || hasUnclosedPair(trimmed, '[', ']')
+                || hasUnclosedPair(trimmed, '{', '}')) {
+            return true;
+        }
+
+        if (countOccurrences(trimmed, "**") % 2 != 0 || countOccurrences(trimmed, "```") % 2 != 0) {
+            return true;
+        }
+
+        char lastChar = trimmed.charAt(trimmed.length() - 1);
+        if (",:;(-/".indexOf(lastChar) >= 0 || lastChar == '*' || lastChar == '#') {
+            return true;
+        }
+
+        String normalized = normalizeForMatch(trimmed);
+        String[] tokens = normalized.split("\\s+");
+        if (tokens.length == 0) {
+            return false;
+        }
+
+        String lastToken = tokens[tokens.length - 1];
+        return Set.of(
+                "va", "hoac", "nhung", "vi", "tai", "muc", "gia", "xu", "huong",
+                "and", "or", "but", "because", "with", "at", "around", "about", "trend")
+                .contains(lastToken);
+    }
+
+    private boolean isLikelyTruncatedByFinishReason(String finishReason) {
+        if (!StringUtils.hasText(finishReason)) {
+            return false;
+        }
+
+        String normalized = finishReason.trim().toLowerCase(Locale.ROOT);
+        return normalized.contains("length")
+                || normalized.contains("max_tokens")
+                || normalized.contains("token_limit")
+                || normalized.contains("max");
+    }
+
+    private boolean hasUnclosedPair(String text, char open, char close) {
+        int balance = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == open) {
+                balance++;
+            } else if (c == close) {
+                balance = Math.max(0, balance - 1);
+            }
+        }
+        return balance > 0;
+    }
+
+    private int countOccurrences(String text, String token) {
+        if (!StringUtils.hasText(text) || !StringUtils.hasText(token)) {
+            return 0;
+        }
+
+        int count = 0;
+        int index = 0;
+        while ((index = text.indexOf(token, index)) >= 0) {
+            count++;
+            index += token.length();
+        }
+        return count;
+    }
+
+    private String buildContinuationInstruction(String language) {
+        if ("vi".equals(resolveResponseLanguage(language))) {
+            return "Cau tra loi truoc vua bi ngat giua chung. Hay viet tiep ngay tai vi tri dang do, khong lap lai noi dung da viet, va ket thuc tron y trong 1-2 cau.";
+        }
+
+        return "Your previous answer was cut off mid-sentence. Continue exactly from where it stopped, do not repeat previous text, and finish the thought naturally in 1-2 sentences.";
+    }
+
+    private String trimContinuationPrefix(String addition) {
+        if (!StringUtils.hasText(addition)) {
+            return addition;
+        }
+
+        String cleaned = addition.trim();
+        cleaned = cleaned.replaceFirst("(?i)^(ti[ếe]p\\s*t[ụu]c|continue|continued|hoan\\s*tat)\\s*[:\\-]\\s*", "");
+        return cleaned.trim();
+    }
+
+    private String mergeWithOverlap(String original, String addition) {
+        if (!StringUtils.hasText(original)) {
+            return addition == null ? "" : addition.trim();
+        }
+        if (!StringUtils.hasText(addition)) {
+            return original.trim();
+        }
+
+        String base = original.trim();
+        String extra = addition.trim();
+        if (base.endsWith(extra)) {
+            return base;
+        }
+
+        int maxOverlap = Math.min(Math.min(base.length(), extra.length()), 120);
+        for (int overlap = maxOverlap; overlap >= 20; overlap--) {
+            String baseSuffix = base.substring(base.length() - overlap);
+            String extraPrefix = extra.substring(0, overlap);
+            if (baseSuffix.equalsIgnoreCase(extraPrefix)) {
+                extra = extra.substring(overlap).trim();
+                break;
+            }
+        }
+
+        if (!StringUtils.hasText(extra)) {
+            return base;
+        }
+
+        char first = extra.charAt(0);
+        if (Character.isWhitespace(first) || ".,!?;:)]}".indexOf(first) >= 0 || base.endsWith("\n")) {
+            return base + extra;
+        }
+        return base + " " + extra;
     }
 
     private void broadcastAiTyping(String conversationId, boolean typing) {
