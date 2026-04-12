@@ -139,6 +139,16 @@ jobs:
               echo "BACKEND_IMAGE=${IMAGE_TAG}" >> .env
             fi
 
+            echo "==> Updating CORS_ALLOWED_ORIGINS in .env"
+            CORS_ORIGINS="${{ secrets.CORS_ALLOWED_ORIGINS }}"
+            if [ -n "${CORS_ORIGINS}" ]; then
+              if grep -q "^CORS_ALLOWED_ORIGINS=" .env; then
+                sed -i "s|^CORS_ALLOWED_ORIGINS=.*|CORS_ALLOWED_ORIGINS=${CORS_ORIGINS}|" .env
+              else
+                echo "CORS_ALLOWED_ORIGINS=${CORS_ORIGINS}" >> .env
+              fi
+            fi
+
             echo "==> Restarting backend container only..."
             docker compose up -d --no-deps --pull never backend
 
