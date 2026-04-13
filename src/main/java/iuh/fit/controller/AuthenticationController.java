@@ -145,6 +145,17 @@ public class AuthenticationController {
             log.warn("Failed to record device info: {}", e.getMessage());
         }
 
+        // Mobile clients send X-Platform header and cannot handle cookies
+        String platform = httpRequest.getHeader("X-Platform");
+        boolean isMobile = "mobile".equalsIgnoreCase(platform);
+
+        if (isMobile) {
+            // Return refresh token in response body for mobile
+            return ResponseEntity.ok()
+                    .body(ApiResponse.success(response, "Đăng nhập thành công"));
+        }
+
+        // Web clients: set refresh token as HttpOnly cookie
         ResponseCookie refreshTokenCookie = buildRefreshTokenCookie(response.getRefreshToken());
         response.setRefreshToken(null);
 
@@ -153,15 +164,24 @@ public class AuthenticationController {
                 .body(ApiResponse.success(response, "Đăng nhập thành công"));
     }
 
-    @Operation(summary = "Refresh access token", description = "Issue a new access token from refresh token cookie")
+    @Operation(summary = "Refresh access token", description = "Issue a new access token from refresh token cookie or request body")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Refresh successful", content = @Content(schema = @Schema(implementation = AuthenticationResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid refresh token", content = @Content)
     })
     @PostMapping("/refresh")
-    public ResponseEntity<ApiResponse<AuthenticationResponse>> refreshToken(HttpServletRequest request)
+    public ResponseEntity<ApiResponse<AuthenticationResponse>> refreshToken(
+            @RequestBody(required = false) java.util.Map<String, String> body,
+            HttpServletRequest request)
             throws JOSEException, ParseException {
-        String refreshToken = extractRefreshTokenFromCookies(request);
+        // Try from request body first (mobile), then fall back to cookie (web)
+        String refreshToken = null;
+        if (body != null && body.containsKey("refresh_token")) {
+            refreshToken = body.get("refresh_token");
+        }
+        if (refreshToken == null || refreshToken.isBlank()) {
+            refreshToken = extractRefreshTokenFromCookies(request);
+        }
         AuthenticationResponse response = authenticationService.refreshAccessToken(refreshToken);
         return ResponseEntity.ok(ApiResponse.success(response, "Làm mới access token thành công"));
     }

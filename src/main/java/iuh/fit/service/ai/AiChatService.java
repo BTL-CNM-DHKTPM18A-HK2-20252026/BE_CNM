@@ -75,7 +75,7 @@ public class AiChatService {
     private static final Pattern DIRECT_IMAGE_COMMAND_PATTERN = Pattern
             .compile("^\\s*[/／⁄∕](image|image_pro|sketch|wallpaper)\\b(.*)$", Pattern.CASE_INSENSITIVE);
     private static final int CONTINUATION_MAX_ROUNDS = 2;
-    private static final int CONTINUATION_MAX_TOKENS = 220;
+    private static final int CONTINUATION_MAX_TOKENS = 320;
 
     private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
@@ -411,8 +411,16 @@ public class AiChatService {
             return true;
         }
 
+        if (looksLikeStandaloneUrl(trimmed)) {
+            return false;
+        }
+
         char lastChar = trimmed.charAt(trimmed.length() - 1);
         if (",:;(-/".indexOf(lastChar) >= 0 || lastChar == '*' || lastChar == '#') {
+            return true;
+        }
+
+        if (isLikelyIncompleteEnding(trimmed)) {
             return true;
         }
 
@@ -439,6 +447,49 @@ public class AiChatService {
                 || normalized.contains("max_tokens")
                 || normalized.contains("token_limit")
                 || normalized.contains("max");
+    }
+
+    private boolean isLikelyIncompleteEnding(String text) {
+        if (!StringUtils.hasText(text)) {
+            return false;
+        }
+
+        String trimmed = text.trim();
+        if (trimmed.length() < 60) {
+            return false;
+        }
+
+        char lastChar = trimmed.charAt(trimmed.length() - 1);
+        if (isNaturalTerminalChar(lastChar)) {
+            return false;
+        }
+
+        // Avoid over-triggering on single token snippets (e.g. IDs/short labels)
+        String normalized = normalizeForMatch(trimmed);
+        String[] tokens = normalized.split("\\s+");
+        if (tokens.length < 6) {
+            return false;
+        }
+
+        // If the response already has some structure and ends without terminal
+        // punctuation, it is likely truncated.
+        return trimmed.contains("\n")
+                || trimmed.contains(":")
+                || countOccurrences(trimmed, ".") >= 1
+                || countOccurrences(trimmed, "!") >= 1
+                || countOccurrences(trimmed, "?") >= 1;
+    }
+
+    private boolean isNaturalTerminalChar(char c) {
+        return ".!?;:…)]}>'\"`”’」。！？".indexOf(c) >= 0;
+    }
+
+    private boolean looksLikeStandaloneUrl(String text) {
+        if (!StringUtils.hasText(text)) {
+            return false;
+        }
+        String trimmed = text.trim();
+        return trimmed.matches("(?i)^https?://\\S+$");
     }
 
     private boolean hasUnclosedPair(String text, char open, char close) {

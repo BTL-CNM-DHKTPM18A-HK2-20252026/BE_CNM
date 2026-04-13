@@ -29,9 +29,7 @@ public class ConversationMember {
     @Id
     @Builder.Default
     String id = UUID.randomUUID().toString();
-
     String conversationId; // Reference to Conversations
-
     String userId; // Reference to UserAuth
     MemberRole role; // ADMIN, DEPUTY, MEMBER
     LocalDateTime joinedAt;

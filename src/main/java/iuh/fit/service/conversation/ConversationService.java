@@ -43,7 +43,6 @@ import java.util.stream.Stream;
 @RequiredArgsConstructor
 @Slf4j
 public class ConversationService {
-
     private final ConversationRepository conversationRepository;
     private final ConversationMemberRepository conversationMemberRepository;
     private final MessageRepository messageRepository;
@@ -53,7 +52,6 @@ public class ConversationService {
     private final iuh.fit.repository.UserDetailRepository userDetailRepository;
     private final UserAuthRepository userAuthRepository;
     private final PasswordEncoder passwordEncoder;
-
     /**
      * Tìm cuộc hội thoại P2P giữa 2 người. Trả về null nếu chưa có (Lazy Creation).
      */
@@ -62,7 +60,6 @@ public class ConversationService {
         List<String> sortedParticipants = Stream.of(userId, friendId)
                 .sorted()
                 .collect(Collectors.toList());
-
         return conversationRepository.findPrivateConversation(sortedParticipants)
                 .map(conv -> {
                     enrichWithLastMessage(conv);

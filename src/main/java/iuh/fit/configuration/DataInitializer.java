@@ -176,16 +176,13 @@ public class DataInitializer {
                                 String avatarUrl = userData[7];
                                 String phoneNumber = userData[8];
                                 Date dob = new SimpleDateFormat("dd/MM/yyyy").parse(dobString);
-
                                 if (!mongoTemplate.exists(Query.query(
                                                 Criteria.where("phoneNumber").is(phoneNumber)), UserAuth.class)) {
 
                                         // Tạo UserAuth
                                         UserAuth userAuth = UserAuth.builder()
                                                         .phoneNumber(phoneNumber)
-                                                        .passwordHash(passwordEncoder.encode("TestUser123@")) // Sử dụng
-                                                                                                              // hash ở
-                                                                                                              // đây
+                                                        .passwordHash(passwordEncoder.encode("TestUser123@")) // Sử dụng hash ở đây
                                                         .accountStatus(AccountStatus.ACTIVE)
                                                         .createdAt(LocalDateTime.now())
                                                         .isDeleted(false)

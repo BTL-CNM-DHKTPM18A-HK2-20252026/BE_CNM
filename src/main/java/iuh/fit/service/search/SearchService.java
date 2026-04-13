@@ -30,6 +30,7 @@ import iuh.fit.document.UserDocument;
 import iuh.fit.entity.Conversations;
 import iuh.fit.entity.Friendship;
 import iuh.fit.entity.Message;
+import iuh.fit.enums.FriendshipStatus;
 import iuh.fit.entity.SearchHistory;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
@@ -620,6 +621,21 @@ public class SearchService {
             friendIds.add(f.getRequesterId().equals(userId) ? f.getReceiverId() : f.getRequesterId());
         }
 
+        // 1b. Get pending sent/received IDs
+        Set<String> pendingSentIds = new HashSet<>();
+        List<Friendship> sentRequests = friendshipRepository.findByRequesterIdAndStatus(userId,
+                FriendshipStatus.PENDING);
+        for (Friendship f : sentRequests) {
+            pendingSentIds.add(f.getReceiverId());
+        }
+
+        Set<String> pendingReceivedIds = new HashSet<>();
+        List<Friendship> receivedRequests = friendshipRepository.findByReceiverIdAndStatus(userId,
+                FriendshipStatus.PENDING);
+        for (Friendship f : receivedRequests) {
+            pendingReceivedIds.add(f.getRequesterId());
+        }
+
         // 2. Search users via ES/MongoDB
         Page<SearchResult<UserDocument>> allUsers = searchUsers(query, page, size);
 
@@ -632,15 +648,27 @@ public class SearchService {
             if (doc == null || doc.getUserId().equals(userId))
                 continue;
 
+            String otherUserId = doc.getUserId();
+            String status;
+            if (friendIds.contains(otherUserId)) {
+                status = "ACCEPTED";
+            } else if (pendingSentIds.contains(otherUserId)) {
+                status = "PENDING_SENT";
+            } else if (pendingReceivedIds.contains(otherUserId)) {
+                status = "PENDING_RECEIVED";
+            } else {
+                status = "NONE";
+            }
+
             GlobalSearchResult.FriendSearchItem item = GlobalSearchResult.FriendSearchItem.builder()
                     .userId(doc.getUserId())
                     .displayName(doc.getDisplayName())
                     .phoneNumber(doc.getPhoneNumber())
                     .avatarUrl(doc.getAvatarUrl())
-                    .friendshipStatus(friendIds.contains(doc.getUserId()) ? "ACCEPTED" : "NONE")
+                    .friendshipStatus(status)
                     .build();
 
-            if (friendIds.contains(doc.getUserId())) {
+            if (friendIds.contains(otherUserId)) {
                 friendResults.add(item);
             } else {
                 globalUserResults.add(item);
