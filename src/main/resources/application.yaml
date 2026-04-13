@@ -24,7 +24,7 @@ spring:
       port: ${MONGODB_PORT:27017}
       database: ${MONGODB_DATABASE:fruvia_db}
       auto-index-creation: true
-      ddl-auto: create-drop
+      ddl-auto: update
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}

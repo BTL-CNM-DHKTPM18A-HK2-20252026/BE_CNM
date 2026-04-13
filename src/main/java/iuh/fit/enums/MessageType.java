@@ -6,6 +6,7 @@ package iuh.fit.enums;
 public enum MessageType {
     TEXT, // Text message
     IMAGE, // Image message
+    IMAGE_GROUP, // Multiple images in one message (album/grid)
     VIDEO, // Video message
     MEDIA, // Other media types
     VOICE, // Voice message

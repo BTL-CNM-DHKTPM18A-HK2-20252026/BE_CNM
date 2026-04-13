@@ -29,9 +29,11 @@ public class SessionKickPublisher {
      * @param userId         ID user cần kick
      * @param socketId       Socket ID của phiên cũ cần đóng
      * @param targetServerId Server ID đang giữ phiên cũ (để server khớp mới xử lý)
+     * @param tabId          Tab ID của phiên cũ (để client xác định đúng tab bị
+     *                       kick)
      */
-    public void publishKick(String userId, String socketId, String targetServerId) {
-        String message = userId + "|" + socketId + "|" + targetServerId;
+    public void publishKick(String userId, String socketId, String targetServerId, String tabId) {
+        String message = userId + "|" + socketId + "|" + targetServerId + "|" + tabId;
         try {
             stringRedisTemplate.convertAndSend(sessionKickTopic.getTopic(), message);
             log.info("[SessionKick] Published kick: userId={}, socket={}, targetServer={}",

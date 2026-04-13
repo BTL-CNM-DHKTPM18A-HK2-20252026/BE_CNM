@@ -257,6 +257,18 @@ public class MessageService {
         message = messageRepository.save(message);
         log.info("Message sent: {} in conversation: {}", message.getMessageId(), convId);
 
+        // Save attachments for IMAGE_GROUP
+        if (type == MessageType.IMAGE_GROUP && request.getMediaUrls() != null
+                && !request.getMediaUrls().isEmpty()) {
+            for (String url : request.getMediaUrls()) {
+                MessageAttachment attachment = MessageAttachment.builder()
+                        .messageId(message.getMessageId())
+                        .url(url)
+                        .build();
+                messageAttachmentRepository.save(attachment);
+            }
+        }
+
         // ── Write-behind pattern ────────────────────────────────────────────────
         // 1. Hot cache: push to Redis (50 most recent per conversation)
         messageCacheService.pushMessage(message);
@@ -267,6 +279,7 @@ public class MessageService {
         // Update conversation last message denormalized fields
         String snippet = switch (message.getMessageType()) {
             case IMAGE -> "[Hình ảnh]";
+            case IMAGE_GROUP -> "[Album ảnh]";
             case VIDEO -> "[Video]";
             case MEDIA -> "[File]";
             case VOICE -> "[Tin nhắn thoại]";
