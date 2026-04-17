@@ -77,6 +77,9 @@ public class PinnedMessageService {
                 PinnedMessage pinned = PinnedMessage.builder()
                                 .messageId(messageId)
                                 .conversationId(conversationId)
+                                .content(message.getContent())
+                                .messageType(message.getMessageType() != null ? message.getMessageType().name() : null)
+                                .mediaUrl(resolvePinnedMediaUrl(message))
                                 .pinnedByUserId(userId)
                                 .pinnedAt(LocalDateTime.now())
                                 .build();
@@ -182,32 +185,58 @@ public class PinnedMessageService {
                 return pinnedMessages.stream()
                                 .map(pin -> {
                                         Message msg = messageRepository.findById(pin.getMessageId()).orElse(null);
-                                        if (msg == null)
-                                                return null;
                                         return buildResponse(pin, msg, pin.getPinnedByUserId());
                                 })
-                                .filter(r -> r != null)
                                 .collect(Collectors.toList());
         }
 
         private PinnedMessageResponse buildResponse(PinnedMessage pin, Message message, String pinnedByUserId) {
-                UserDetail sender = userDetailRepository.findById(message.getSenderId()).orElse(null);
+                String senderId = message != null ? message.getSenderId() : null;
+                UserDetail sender = senderId != null ? userDetailRepository.findById(senderId).orElse(null) : null;
                 UserDetail pinnedBy = userDetailRepository.findById(pinnedByUserId).orElse(null);
+
+                String resolvedContent = pin.getContent();
+                if ((resolvedContent == null || resolvedContent.isBlank()) && message != null) {
+                        resolvedContent = message.getContent();
+                }
+
+                String resolvedMessageType = pin.getMessageType();
+                if ((resolvedMessageType == null || resolvedMessageType.isBlank())
+                                && message != null && message.getMessageType() != null) {
+                        resolvedMessageType = message.getMessageType().name();
+                }
+
+                String resolvedMediaUrl = pin.getMediaUrl();
+                if ((resolvedMediaUrl == null || resolvedMediaUrl.isBlank()) && message != null) {
+                        resolvedMediaUrl = resolvePinnedMediaUrl(message);
+                }
 
                 return PinnedMessageResponse.builder()
                                 .id(pin.getId())
                                 .messageId(pin.getMessageId())
                                 .conversationId(pin.getConversationId())
-                                .senderId(message.getSenderId())
+                                .senderId(senderId)
                                 .senderName(sender != null ? sender.getDisplayName() : "Unknown")
                                 .senderAvatarUrl(sender != null ? sender.getAvatarUrl() : null)
-                                .content(message.getContent())
-                                .messageType(message.getMessageType().name())
+                                .content(resolvedContent)
+                                .messageType(resolvedMessageType)
+                                .mediaUrl(resolvedMediaUrl)
                                 .pinnedAt(pin.getPinnedAt())
-                                .messageCreatedAt(message.getCreatedAt())
+                                .messageCreatedAt(message != null ? message.getCreatedAt() : null)
                                 .pinnedByUserId(pinnedByUserId)
                                 .pinnedByUserName(pinnedBy != null ? pinnedBy.getDisplayName() : "Unknown")
                                 .build();
+        }
+
+        private String resolvePinnedMediaUrl(Message message) {
+                if (message == null || message.getMessageType() == null) {
+                        return null;
+                }
+
+                return switch (message.getMessageType()) {
+                        case IMAGE, VIDEO -> message.getContent();
+                        default -> null;
+                };
         }
 
         private Message createSystemMessage(String conversationId, String actorId, String content, LocalDateTime now) {
