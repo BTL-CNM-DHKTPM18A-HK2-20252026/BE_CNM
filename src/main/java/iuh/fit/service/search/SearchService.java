@@ -1,10 +1,14 @@
 package iuh.fit.service.search;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import iuh.fit.enums.FriendshipStatus;
+import iuh.fit.repository.*;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.Page;
@@ -34,6 +38,7 @@ import iuh.fit.enums.FriendshipStatus;
 import iuh.fit.entity.SearchHistory;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
+
 import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.MessageBucketRepository;
@@ -64,6 +69,7 @@ public class SearchService {
     private final UserDetailRepository userDetailRepository;
     private final UserAuthRepository userAuthRepository;
     private final SearchHistoryRepository searchHistoryRepository;
+    private final FriendshipRepository friendshipRepository;
     private final ElasticsearchOperations elasticsearchOperations;
     private final FriendshipRepository friendshipRepository;
     private final ConversationRepository conversationRepository;
@@ -318,10 +324,12 @@ public class SearchService {
 
     // ── Search users (with highlighting + edge_ngram phone) ───────────────────
 
-    public Page<SearchResult<UserDocument>> searchUsers(String query, int page, int size) {
+    public Page<SearchResult<UserDocument>> searchUsers(String query, String currentUserId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
+        List<SearchResult<UserDocument>> results = new ArrayList<>();
+        long totalElements = 0;
 
-        // Try Elasticsearch first
+        // 1. Thử lấy từ Elasticsearch trước
         if (isElasticsearchAvailable()) {
             try {
                 Highlight highlight = new Highlight(List.of(
@@ -331,73 +339,93 @@ public class SearchService {
                         new HighlightField("gmail")));
 
                 NativeQuery nativeQuery = NativeQuery.builder()
-                        .withQuery(q -> q
-                                .bool(b -> b
-                                        .should(s -> s
-                                                .match(m -> m.field("displayName").query(query).fuzziness("AUTO")))
-                                        .should(s -> s
-                                                .match(m -> m.field("firstName").query(query).fuzziness("AUTO")))
-                                        .should(s -> s
-                                                .match(m -> m.field("lastName").query(query).fuzziness("AUTO")))
-                                        .should(s -> s.match(m -> m.field("gmail").query(query).fuzziness("AUTO")))
-                                        .minimumShouldMatch("1")))
+                        .withQuery(q -> q.bool(b -> b
+                                .should(s -> s.match(m -> m.field("displayName").query(query).fuzziness("AUTO")))
+                                .should(s -> s.match(m -> m.field("firstName").query(query).fuzziness("AUTO")))
+                                .should(s -> s.match(m -> m.field("lastName").query(query).fuzziness("AUTO")))
+                                .should(s -> s.match(m -> m.field("email").query(query).fuzziness("AUTO")))
+                                .minimumShouldMatch("1")))
                         .withHighlightQuery(new HighlightQuery(highlight, UserDocument.class))
                         .withPageable(pageable)
                         .build();
 
                 SearchHits<UserDocument> searchHits = elasticsearchOperations.search(nativeQuery, UserDocument.class);
+                totalElements = searchHits.getTotalHits();
 
-                if (searchHits.getTotalHits() > 0) {
-                    List<SearchResult<UserDocument>> results = searchHits.getSearchHits().stream()
+                if (totalElements > 0) {
+                    results = searchHits.getSearchHits().stream()
                             .map(hit -> SearchResult.<UserDocument>builder()
                                     .document(hit.getContent())
                                     .highlights(hit.getHighlightFields())
                                     .build())
-                            .toList();
-                    return new PageImpl<>(results, pageable, searchHits.getTotalHits());
+                            .collect(Collectors.toList());
                 }
             } catch (Exception e) {
                 markElasticsearchDown(e);
                 log.warn("ES searchUsers failed, falling back to MongoDB: {}", e.getMessage());
             }
         }
+    // 2. MongoDB fallback nếu ES không có kết quả
+        if (results.isEmpty()) {
+            String escapedQuery = java.util.regex.Pattern.quote(query);
+            Page<UserDetail> byName = userDetailRepository.searchByDisplayName(escapedQuery, pageable);
+            java.util.LinkedHashMap<String, UserDetail> userMap = new java.util.LinkedHashMap<>();
+            byName.getContent().forEach(u -> userMap.put(u.getUserId(), u));
 
-        // MongoDB fallback — search by displayName, then union with phone matches
-        log.debug("searchUsers MongoDB fallback for query='{}'", query);
-        String escapedQuery = java.util.regex.Pattern.quote(query);
+            List<UserAuth> byEmail = userAuthRepository.searchByEmail(escapedQuery);
+            if (!byEmail.isEmpty()) {
+                List<String> extraIds = byEmail.stream()
+                        .map(UserAuth::getUserId)
+                        .filter(id -> !userMap.containsKey(id))
+                        .toList();
+                if (!extraIds.isEmpty()) {
+                    userDetailRepository.findByUserIdIn(extraIds).forEach(u -> userMap.put(u.getUserId(), u));
+                }
 
-        // Search by displayName
-        Page<UserDetail> byName = userDetailRepository.searchByDisplayName(escapedQuery, pageable);
-        java.util.LinkedHashMap<String, UserDetail> userMap = new java.util.LinkedHashMap<>();
-        byName.getContent().forEach(u -> userMap.put(u.getUserId(), u));
-
-        // Search by phone number — collect user IDs and fetch UserDetail
-        List<UserAuth> byPhone = userAuthRepository.searchByPhoneNumber(escapedQuery);
-        if (!byPhone.isEmpty()) {
-            List<String> extraIds = byPhone.stream()
-                    .map(UserAuth::getUserId)
-                    .filter(id -> !userMap.containsKey(id))
-                    .toList();
-            if (!extraIds.isEmpty()) {
-                userDetailRepository.findByUserIdIn(extraIds).forEach(u -> userMap.put(u.getUserId(), u));
             }
+
+            results = userMap.values().stream()
+                    .limit(size)
+                    .map(user -> {
+                        UserAuth auth = userAuthRepository.findById(user.getUserId()).orElse(null);
+                        UserDocument doc = UserDocument.builder()
+                                .userId(user.getUserId())
+                                .displayName(user.getDisplayName())
+                                .email(auth != null ? auth.getEmail() : null)
+                                .avatarUrl(user.getAvatarUrl())
+                                .build();
+                        return SearchResult.<UserDocument>builder().document(doc).build();
+                    })
+                    .collect(Collectors.toList());
+            totalElements = results.size();
+        }
+  // 3. GÁN TRẠNG THÁI QUAN HỆ (Dù dữ liệu từ nguồn nào cũng chạy qua đây)
+        if (currentUserId != null && !results.isEmpty()) {
+            results.forEach(rs -> {
+                String targetUserId = rs.getDocument().getUserId();
+                rs.setFriendshipStatus(determineFriendshipStatus(currentUserId, targetUserId));
+            });
         }
 
-        List<SearchResult<UserDocument>> results = userMap.values().stream()
-                .limit(size)
-                .map(user -> {
-                    UserAuth auth = userAuthRepository.findById(user.getUserId()).orElse(null);
-                    UserDocument doc = UserDocument.builder()
-                            .userId(user.getUserId())
-                            .displayName(user.getDisplayName())
-                            .gmail(user.getGmail())
-                            .avatarUrl(user.getAvatarUrl())
-                            .build();
-                    return SearchResult.<UserDocument>builder().document(doc).build();
-                })
-                .toList();
+        return new PageImpl<>(results, pageable, totalElements);
+    }
 
-        return new PageImpl<>(results, pageable, results.size());
+
+    private String determineFriendshipStatus(String currentUserId, String targetUserId) {
+        if (currentUserId.equals(targetUserId)) return "SELF";
+
+        // Tìm kiếm quan hệ không phân biệt ai là người gửi, ai là người nhận
+        return friendshipRepository.findByRequesterIdAndReceiverId(currentUserId, targetUserId)
+                .or(() -> friendshipRepository.findByRequesterIdAndReceiverId(targetUserId, currentUserId))
+                .map(f -> {
+                    if (f.getStatus() == FriendshipStatus.ACCEPTED) return "FRIEND";
+                    if (f.getStatus() == FriendshipStatus.PENDING) {
+                        // Nếu requesterId là mình -> Mình đã gửi (SENT)
+                        // Nếu không phải mình (tức mình là receiver) -> Mình nhận được (RECEIVED)
+                        return f.getRequesterId().equals(currentUserId) ? "PENDING_SENT" : "PENDING_RECEIVED";
+                    }
+                    return "NONE";
+                }).orElse("NONE");
     }
 
     // ── Auto-reindex on startup ───────────────────────────────────────────────
@@ -698,7 +726,9 @@ public class SearchService {
                 ? searchMessagesByUserId(query, conversationIds, page, size)
                 : Page.empty();
 
-        // 6. Documents (kept for backward compatibility)
+        Page<SearchResult<UserDocument>> users = searchUsers(query, userId, page, size);
+
+
         Page<SearchResult<DocumentDocument>> documents = searchDocuments(query, userId, page, size);
 
         return GlobalSearchResult.builder()
@@ -771,19 +801,34 @@ public class SearchService {
 
     // ── Search history tracking ───────────────────────────────────────────────
 
+//    @Async
+//    public void trackSearch(String userId, String query, String searchType, String conversationId, int resultCount) {
+//        try {
+//            searchHistoryRepository.save(SearchHistory.builder()
+//                    .userId(userId)
+//                    .query(query)
+//                    .searchType(searchType)
+//                    .conversationId(conversationId)
+//                    .resultCount(resultCount)
+//                    .build());
+//        } catch (Exception e) {
+//            log.warn("Failed to track search history: {}", e.getMessage());
+//        }
+//    }
+
     @Async
-    public void trackSearch(String userId, String query, String searchType, String conversationId, int resultCount) {
-        try {
-            searchHistoryRepository.save(SearchHistory.builder()
-                    .userId(userId)
-                    .query(query)
-                    .searchType(searchType)
-                    .conversationId(conversationId)
-                    .resultCount(resultCount)
-                    .build());
-        } catch (Exception e) {
-            log.warn("Failed to track search history: {}", e.getMessage());
-        }
+    public void trackInteraction(String userId, String targetId, String name, String avatar, String type) {
+        // Nếu đã tồn tại lịch sử với người này, xóa cái cũ để cái mới lên đầu
+        searchHistoryRepository.deleteByUserIdAndTargetId(userId, targetId);
+
+        searchHistoryRepository.save(SearchHistory.builder()
+                .userId(userId)
+                .targetId(targetId)
+                .targetName(name)
+                .targetAvatar(avatar)
+                .targetType(type)
+                .searchedAt(LocalDateTime.now())
+                .build());
     }
 
     public List<SearchHistory> getSearchHistory(String userId, int limit) {
@@ -792,5 +837,61 @@ public class SearchService {
 
     public void clearSearchHistory(String userId) {
         searchHistoryRepository.deleteByUserId(userId);
+    }
+
+    public boolean deleteSearchHistoryItem(String historyId, String userId) {
+        // 1. Tìm kiếm bản ghi trong DB
+        Optional<SearchHistory> historyOpt = searchHistoryRepository.findById(historyId);
+
+        if (historyOpt.isPresent()) {
+            SearchHistory history = historyOpt.get();
+
+            // 2. Kiểm tra xem bản ghi này có thuộc về user đang đăng nhập không
+            if (history.getUserId().equals(userId)) {
+                searchHistoryRepository.deleteById(historyId);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    //ĐỒNG BỘ ELASTICSEARCH VỚI VỚI DATABASE
+    @EventListener(ApplicationReadyEvent.class)
+    public void handleContextRefresh() {
+        try {
+            log.info("--- ĐANG BẮT ĐẦU LÀM SẠCH VÀ ĐỒNG BỘ LẠI ELASTICSEARCH ---");
+
+            // Bước 1: Xóa toàn bộ Index cũ (Để xóa sạch các ID "ma" không tồn tại trong Mongo)
+            var indexOps = elasticsearchOperations.indexOps(UserDocument.class);
+            indexOps.delete();
+            indexOps.create();
+
+            // Bước 2: Nạp lại toàn bộ dữ liệu chuẩn từ MongoDB
+            List<UserDetail> users = userDetailRepository.findAll();
+            users.forEach(this::syncUserToElasticsearch);
+
+            log.info("--- ĐÃ ĐỒNG BỘ THÀNH CÔNG {} NGƯỜI DÙNG ---", users.size());
+        } catch (Exception e) {
+            log.error("Lỗi khi tự động reindex: {}", e.getMessage());
+        }
+    }
+
+    public void syncUserToElasticsearch(UserDetail user) {
+        try {
+            // Lấy thông tin email từ UserAuth vì UserDetail không chứa email
+            UserAuth auth = userAuthRepository.findById(user.getUserId()).orElse(null);
+
+            UserDocument doc = UserDocument.builder()
+                    .userId(user.getUserId()) // ID phải khớp để không bị "User ma"
+                    .displayName(user.getDisplayName())
+                    .avatarUrl(user.getAvatarUrl())
+                    .email(auth != null ? auth.getEmail() : null)
+                    .build();
+
+            elasticsearchOperations.save(doc); // Lưu vào Elasticsearch
+            log.info("Đã đồng bộ User lên ES: {}", user.getDisplayName());
+        } catch (Exception e) {
+            log.error("Lỗi đồng bộ User {}: {}", user.getUserId(), e.getMessage());
+        }
     }
 }

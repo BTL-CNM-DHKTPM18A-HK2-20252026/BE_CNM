@@ -4,12 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -72,7 +67,6 @@ public class SearchController {
 
         Page<SearchResult<MessageDocument>> results = searchService.searchMessages(q.trim(), conversationId, page,
                 size);
-        searchService.trackSearch(userId, q.trim(), "messages", conversationId, (int) results.getTotalElements());
         return ResponseEntity.ok(ApiResponse.<Page<SearchResult<MessageDocument>>>builder()
                 .success(true)
                 .message("Search messages successful")
@@ -100,13 +94,25 @@ public class SearchController {
                     .build());
         }
 
-        Page<SearchResult<UserDocument>> results = searchService.searchUsers(q.trim(), page, size);
-        searchService.trackSearch(userId, q.trim(), "users", null, (int) results.getTotalElements());
+        Page<SearchResult<UserDocument>> results = searchService.searchUsers(q.trim(), userId, page, size);
         return ResponseEntity.ok(ApiResponse.<Page<SearchResult<UserDocument>>>builder()
                 .success(true)
                 .message("Search users successful")
                 .data(results)
                 .build());
+    }
+
+    @PostMapping("/history/click")
+    public ResponseEntity<ApiResponse<Void>> recordClick(@RequestBody Map<String, String> body) {
+        String userId = JwtUtils.getCurrentUserId();
+        searchService.trackInteraction(
+                userId,
+                body.get("targetId"),
+                body.get("name"),
+                body.get("avatar"),
+                body.get("type")
+        );
+        return ResponseEntity.ok(ApiResponse.<Void>builder().success(true).build());
     }
 
     @PostMapping("/reindex/messages")
@@ -183,6 +189,31 @@ public class SearchController {
                 .success(true).message("Search history retrieved").data(history).build());
     }
 
+    // Thêm vào SearchController.java
+
+    @DeleteMapping("/history/{id}")
+    @Operation(summary = "Delete a specific search history item by ID")
+    public ResponseEntity<ApiResponse<Void>> deleteSearchHistoryItem(@PathVariable String id) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+
+        boolean deleted = searchService.deleteSearchHistoryItem(id, userId);
+
+        if (deleted) {
+            return ResponseEntity.ok(ApiResponse.<Void>builder()
+                    .success(true)
+                    .message("Search history item deleted")
+                    .build());
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.<Void>builder()
+                            .success(false)
+                            .message("History item not found or unauthorized")
+                            .build());
+        }
+    }
+
     @DeleteMapping("/history")
     @Operation(summary = "Clear search history for current user")
     public ResponseEntity<ApiResponse<String>> clearSearchHistory() {
@@ -238,7 +269,6 @@ public class SearchController {
 
         Page<SearchResult<MessageDocument>> results = searchService.searchMessagesByUserId(q.trim(), conversationIds,
                 page, size);
-        searchService.trackSearch(userId, q.trim(), "my-messages", null, (int) results.getTotalElements());
         return ResponseEntity.ok(ApiResponse.<Page<SearchResult<MessageDocument>>>builder()
                 .success(true).message("Search my messages successful").data(results).build());
     }
@@ -263,7 +293,6 @@ public class SearchController {
                             .build());
 
         Page<SearchResult<DocumentDocument>> results = searchService.searchDocuments(q.trim(), userId, page, size);
-        searchService.trackSearch(userId, q.trim(), "documents", null, (int) results.getTotalElements());
         return ResponseEntity.ok(ApiResponse.<Page<SearchResult<DocumentDocument>>>builder()
                 .success(true).message("Search documents successful").data(results).build());
     }
@@ -290,6 +319,7 @@ public class SearchController {
                 .stream().map(m -> m.getConversationId()).toList();
 
         GlobalSearchResult result = searchService.globalSearch(q.trim(), userId, conversationIds, page, size);
+
 
         int totalResults = (result.getFriends() != null ? result.getFriends().size() : 0)
                 + (result.getConversations() != null ? result.getConversations().size() : 0)
