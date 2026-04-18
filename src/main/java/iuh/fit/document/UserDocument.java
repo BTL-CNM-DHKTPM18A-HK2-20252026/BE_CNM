@@ -34,7 +34,10 @@ public class UserDocument {
     private String lastName;
 
     @Field(type = FieldType.Text, analyzer = "vietnamese_analyzer")
-    private String email;
+    private String gmail;
+
+    @Field(type = FieldType.Keyword)
+    private String phoneNumber;
 
     @Field(type = FieldType.Keyword)
     private String avatarUrl;

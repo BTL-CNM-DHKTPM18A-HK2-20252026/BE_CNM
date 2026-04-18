@@ -51,4 +51,16 @@ public class MessageResponse {
     private String forwardedFromSenderName;
     private List<MessageReactionDto> reactions;
     private List<String> mentions;
+    private List<AttachmentDto> attachments; // For IMAGE_GROUP messages
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Builder
+    public static class AttachmentDto {
+        private String url;
+        private String fileName;
+        private Long fileSize;
+        private String thumbnailUrl;
+    }
 }

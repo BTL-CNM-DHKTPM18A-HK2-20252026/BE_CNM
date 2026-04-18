@@ -95,7 +95,7 @@ public class SessionService {
                 // Nếu tabId khác → kick phiên cũ
                 if (oldTabId != null && !oldTabId.equals(tabId) && oldSocketId != null) {
                     log.info("[Session] Kicking old session: userId={}, oldTab={}, newTab={}", userId, oldTabId, tabId);
-                    sessionKickPublisher.publishKick(userId, oldSocketId, oldServerId);
+                    sessionKickPublisher.publishKick(userId, oldSocketId, oldServerId, oldTabId);
                 }
             }
 

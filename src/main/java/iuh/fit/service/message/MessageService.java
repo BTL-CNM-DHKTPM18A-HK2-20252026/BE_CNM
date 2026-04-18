@@ -257,6 +257,18 @@ public class MessageService {
         message = messageRepository.save(message);
         log.info("Message sent: {} in conversation: {}", message.getMessageId(), convId);
 
+        // Save attachments for IMAGE_GROUP
+        if (type == MessageType.IMAGE_GROUP && request.getMediaUrls() != null
+                && !request.getMediaUrls().isEmpty()) {
+            for (String url : request.getMediaUrls()) {
+                MessageAttachment attachment = MessageAttachment.builder()
+                        .messageId(message.getMessageId())
+                        .url(url)
+                        .build();
+                messageAttachmentRepository.save(attachment);
+            }
+        }
+
         // ── Write-behind pattern ────────────────────────────────────────────────
         // 1. Hot cache: push to Redis (50 most recent per conversation)
         messageCacheService.pushMessage(message);
@@ -265,13 +277,19 @@ public class MessageService {
         // ─────────────────────────────────────────────────────────────────────────
 
         // Update conversation last message denormalized fields
-        String snippet = message.getContent();
-        if (message.getMessageType() == MessageType.IMAGE)
-            snippet = "[Hình ảnh]";
-        else if (message.getMessageType() == MessageType.VIDEO)
-            snippet = "[Video]";
-        else if (message.getMessageType() == MessageType.MEDIA)
-            snippet = "[File]";
+        String snippet = switch (message.getMessageType()) {
+            case IMAGE -> "[Hình ảnh]";
+            case IMAGE_GROUP -> "[Album ảnh]";
+            case VIDEO -> "[Video]";
+            case MEDIA -> "[File]";
+            case VOICE -> "[Tin nhắn thoại]";
+            case SHARE_CONTACT -> "📇 Danh thiếp";
+            case CALL_MISSED -> "[Cuộc gọi nhỡ]";
+            case CALL_REJECTED -> "[Cuộc gọi bị từ chối]";
+            case CALL_ENDED -> "[Cuộc gọi]";
+            case SYSTEM -> message.getContent();
+            default -> message.getContent();
+        };
 
         conv.setLastMessageId(message.getMessageId());
         conv.setLastMessageContent(snippet);
@@ -363,32 +381,82 @@ public class MessageService {
     }
 
     /**
-     * Hybrid read: check Redis cache first for recent messages,
-     * fall back to MongoDB bucket aggregation for older data.
+     * Hybrid read with Smart Fallback:
+     * 1. Try Redis cache first for page 0
+     * 2. If cache has fewer than pageSize items, fetch remainder from DB and merge
+     * 3. Trigger warm-up when cache is empty or critically short
+     * 4. Total count always comes from bucket (authoritative source)
      */
     public Page<MessageResponse> getConversationMessages(String conversationId, Pageable pageable) {
-        // Page 0 = most recent → try Redis first
-        if (pageable.getPageNumber() == 0 && pageable.getPageSize() <= MessageCacheService.MAX_CACHED) {
-            List<Message> cached = messageCacheService.getRecentMessages(
-                    conversationId, pageable.getPageSize());
-            if (!cached.isEmpty()) {
+        int pageSize = pageable.getPageSize();
+        long totalInBucket = messageBucketService.countMessages(conversationId);
+
+        // Page 0 = most recent → try Redis first with smart fallback
+        if (pageable.getPageNumber() == 0 && pageSize <= MessageCacheService.MAX_CACHED) {
+            List<Message> cached = messageCacheService.getRecentMessages(conversationId, pageSize);
+
+            if (!cached.isEmpty() && cached.size() >= pageSize) {
+                // Cache fully satisfies the request
                 List<MessageResponse> responses = cached.stream()
                         .map(messageMapper::toResponse)
                         .collect(Collectors.toList());
-                long total = messageBucketService.countMessages(conversationId);
                 return new org.springframework.data.domain.PageImpl<>(responses, pageable,
-                        Math.max(total, cached.size()));
+                        Math.max(totalInBucket, responses.size()));
             }
+
+            if (!cached.isEmpty() && cached.size() < pageSize && totalInBucket > cached.size()) {
+                // Smart Fallback: cache is short → fetch remainder from DB, merge & dedupe
+                int deficit = pageSize - cached.size();
+                Page<Message> bucketPage = messageBucketService.getConversationMessages(
+                        conversationId, PageRequest.of(0, pageSize));
+                List<Message> bucketMsgs = bucketPage.getContent();
+
+                // Merge: combine cached + bucket, dedupe by messageId, sort DESC
+                java.util.Map<String, Message> merged = new java.util.LinkedHashMap<>();
+                for (Message m : cached) {
+                    merged.put(m.getMessageId(), m);
+                }
+                for (Message m : bucketMsgs) {
+                    merged.putIfAbsent(m.getMessageId(), m);
+                }
+                List<Message> mergedList = new java.util.ArrayList<>(merged.values());
+                mergedList.sort((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()));
+                if (mergedList.size() > pageSize) {
+                    mergedList = mergedList.subList(0, pageSize);
+                }
+
+                // Warm-up cache with the full merged result
+                messageCacheService.warmUp(conversationId, mergedList);
+
+                List<MessageResponse> responses = mergedList.stream()
+                        .map(messageMapper::toResponse)
+                        .collect(Collectors.toList());
+                return new org.springframework.data.domain.PageImpl<>(responses, pageable,
+                        Math.max(totalInBucket, responses.size()));
+            }
+
+            // Cache empty → fall through to DB and trigger warm-up below
         }
 
         // Fall back to bucket (primary DB storage)
         Page<Message> bucketPage = messageBucketService.getConversationMessages(conversationId, pageable);
         if (bucketPage.getTotalElements() > 0) {
+            // Warm-up cache on page 0 when cache was empty
+            if (pageable.getPageNumber() == 0) {
+                messageCacheService.warmUp(conversationId, bucketPage.getContent());
+            }
             return bucketPage.map(messageMapper::toResponse);
         }
         // Fallback for conversations not yet migrated to buckets
-        return messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
+        Page<MessageResponse> legacyPage = messageRepository
+                .findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
                 .map(messageMapper::toResponse);
+        if (pageable.getPageNumber() == 0 && !legacyPage.isEmpty()) {
+            List<Message> legacyMsgs = messageRepository
+                    .findByConversationIdOrderByCreatedAtDesc(conversationId, pageable).getContent();
+            messageCacheService.warmUp(conversationId, legacyMsgs);
+        }
+        return legacyPage;
     }
 
     /**
@@ -415,8 +483,10 @@ public class MessageService {
                 List<MessageResponse> responses = cached.stream()
                         .map(messageMapper::toResponse)
                         .collect(Collectors.toList());
+                // If full page returned, signal there may be more (last=false)
+                long estimatedTotal = (responses.size() >= size) ? (long) size * 2 : responses.size();
                 return new org.springframework.data.domain.PageImpl<>(responses, PageRequest.of(0, size),
-                        responses.size());
+                        estimatedTotal);
             }
         }
 
@@ -427,8 +497,10 @@ public class MessageService {
             List<MessageResponse> responses = bucketMsgs.stream()
                     .map(messageMapper::toResponse)
                     .collect(Collectors.toList());
+            // If full page returned, signal there may be more (last=false)
+            long estimatedTotal = (responses.size() >= size) ? (long) size * 2 : responses.size();
             return new org.springframework.data.domain.PageImpl<>(responses, PageRequest.of(0, size),
-                    responses.size());
+                    estimatedTotal);
         }
 
         // 3. Fallback for conversations not yet migrated to buckets
@@ -436,6 +508,47 @@ public class MessageService {
         return messageRepository.findByConversationIdAndCreatedAtBeforeOrderByCreatedAtDesc(
                 conversationId, beforeMsg.getCreatedAt(), pageable)
                 .map(messageMapper::toResponse);
+    }
+
+    /**
+     * Returns up to {@code halfSize} messages before and {@code halfSize} after the
+     * target message, plus the target itself — sorted ascending by createdAt.
+     * Used for the "jump to searched message" feature.
+     */
+    public List<MessageResponse> getMessagesAround(String conversationId, String targetId, int halfSize) {
+        Message targetMsg = messageBucketService.findMessageById(targetId)
+                .orElseGet(() -> messageRepository.findById(targetId).orElse(null));
+        if (targetMsg == null) {
+            return List.of();
+        }
+
+        LocalDateTime targetTime = targetMsg.getCreatedAt();
+
+        // Messages before (returned desc by getMessagesBefore, so reverse to asc)
+        List<Message> beforeDesc = messageBucketService.getMessagesBefore(conversationId, targetTime, halfSize);
+        if (beforeDesc.isEmpty()) {
+            Pageable p = PageRequest.of(0, halfSize);
+            beforeDesc = messageRepository
+                    .findByConversationIdAndCreatedAtBeforeOrderByCreatedAtDesc(conversationId, targetTime, p)
+                    .getContent();
+        }
+        List<Message> beforeAsc = new java.util.ArrayList<>(beforeDesc);
+        java.util.Collections.reverse(beforeAsc);
+
+        // Messages after (asc)
+        List<Message> afterAsc = messageBucketService.getMessagesAfter(conversationId, targetTime, halfSize);
+        if (afterAsc.isEmpty()) {
+            Pageable p = PageRequest.of(0, halfSize);
+            afterAsc = messageRepository
+                    .findByConversationIdAndCreatedAtAfterOrderByCreatedAtAsc(conversationId, targetTime, p);
+        }
+
+        List<Message> all = new java.util.ArrayList<>();
+        all.addAll(beforeAsc);
+        all.add(targetMsg);
+        all.addAll(afterAsc);
+
+        return all.stream().map(messageMapper::toResponse).collect(Collectors.toList());
     }
 
     public List<MessageResponse> getConversationMedia(String conversationId) {
@@ -595,30 +708,41 @@ public class MessageService {
         log.info("Message locally deleted for user {}: {}", userId, messageId);
     }
 
-    @Transactional
     public void addReaction(String messageId, String userId, ReactionType reactionType) {
+        // Tìm message trong bucket (primary storage) → fallback legacy collection
         Message message = messageBucketService.findMessageById(messageId)
-                .orElseThrow(() -> new RuntimeException("Message not found"));
+                .or(() -> messageRepository.findById(messageId))
+                .orElseThrow(() -> ResourceNotFoundException.message(messageId));
 
-        // New reaction (can have multiple reaction types per user)
-        // Build new reaction directly with explicit random UUID
-        MessageReaction newReaction = MessageReaction.builder()
-                .id(UUID.randomUUID().toString())
-                .messageId(messageId)
-                .userId(userId)
-                .icon(reactionType)
-                .build();
-        messageReactionRepository.insert(newReaction); // Force insert instead of save
-        log.info("Added reaction {} (ID: {}) to message: {} by user: {}", reactionType, newReaction.getId(), messageId,
-                userId);
+        // Toggle: nếu reaction cùng (messageId, userId, icon) đã tồn tại → xóa (toggle
+        // off)
+        // nếu chưa → thêm mới (toggle on)
+        String action;
+        String reactionId;
+        java.util.Optional<MessageReaction> existing = messageReactionRepository
+                .findByMessageIdAndUserIdAndIcon(messageId, userId, reactionType);
+
+        if (existing.isPresent()) {
+            messageReactionRepository.deleteById(existing.get().getId());
+            action = "REMOVE";
+            reactionId = existing.get().getId();
+            log.info("Removed reaction {} from message: {} by user: {}", reactionType, messageId, userId);
+        } else {
+            MessageReaction newReaction = MessageReaction.builder()
+                    .id(UUID.randomUUID().toString())
+                    .messageId(messageId)
+                    .userId(userId)
+                    .icon(reactionType)
+                    .build();
+            messageReactionRepository.save(newReaction);
+            action = "ADD";
+            reactionId = newReaction.getId();
+            log.info("Added reaction {} (ID: {}) to message: {} by user: {}", reactionType, reactionId, messageId,
+                    userId);
+        }
 
         // Broadcast reaction event via websocket
         UserDetail reactor = userDetailRepository.findById(userId).orElse(null);
-        if (reactor == null) {
-            log.warn("USER NOT FOUND in user_detail for ID: {}", userId);
-        } else {
-            log.info("Found reactor: {} (ID: {})", reactor.getDisplayName(), reactor.getUserId());
-        }
 
         Map<String, Object> reactionEvent = new HashMap<>();
         reactionEvent.put("type", "REACTION_UPDATE");
@@ -626,8 +750,8 @@ public class MessageService {
         reactionEvent.put("userId", userId);
         reactionEvent.put("userName", reactor != null ? reactor.getDisplayName() : "Unknown");
         reactionEvent.put("userAvatar", reactor != null ? reactor.getAvatarUrl() : null);
-        reactionEvent.put("reactionId", newReaction.getId());
-        reactionEvent.put("action", "ADD");
+        reactionEvent.put("reactionId", reactionId);
+        reactionEvent.put("action", action);
         reactionEvent.put("reactionType", reactionType);
 
         messagingTemplate.convertAndSend("/topic/chat/" + message.getConversationId(), reactionEvent);

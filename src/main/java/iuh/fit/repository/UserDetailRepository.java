@@ -16,6 +16,8 @@ public interface UserDetailRepository extends MongoRepository<UserDetail, String
 
     Optional<UserDetail> findByUserId(String userId);
 
+    Optional<UserDetail> findByGmail(String gmail);
+
     @Query("{'displayName': {$regex: ?0, $options: 'i'}}")
     Page<UserDetail> searchByDisplayName(String query, Pageable pageable);
 

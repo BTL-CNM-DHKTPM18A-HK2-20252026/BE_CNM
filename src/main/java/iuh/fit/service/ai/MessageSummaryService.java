@@ -67,6 +67,53 @@ public class MessageSummaryService {
             Trả lời bằng ngôn ngữ của các bản tóm tắt.""";
 
     /**
+     * Summarize the N most recent messages in a conversation (regardless of read
+     * status).
+     */
+    public SummarizeResponse summarizeRecent(String conversationId, String userId, int messageCount) {
+        conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("Ban khong phai thanh vien cua cuoc hoi thoai nay"));
+
+        long start = System.currentTimeMillis();
+        int count = Math.min(messageCount, MAX_TOTAL_MESSAGES);
+
+        Page<Message> page = messageRepository.findByConversationIdOrderByCreatedAtDesc(
+                conversationId, PageRequest.of(0, count));
+        List<Message> messages = new ArrayList<>(page.getContent());
+        Collections.reverse(messages);
+
+        if (messages.isEmpty()) {
+            return SummarizeResponse.builder()
+                    .summary("Khong co tin nhan de tom tat.")
+                    .messageCount(0)
+                    .model("none")
+                    .latencyMs(System.currentTimeMillis() - start)
+                    .build();
+        }
+
+        Map<String, String> senderNameCache = new HashMap<>();
+        String summary;
+        String model;
+
+        if (messages.size() <= MAX_MESSAGES_PER_CHUNK) {
+            String messagesText = formatMessages(messages, senderNameCache);
+            AiCompletionResult result = callAiSummarize(SUMMARY_SYSTEM_PROMPT, messagesText);
+            summary = result.getContent();
+            model = result.getModel();
+        } else {
+            summary = mapReduceSummarize(messages, senderNameCache);
+            model = knowledgeModel + " (map-reduce)";
+        }
+
+        return SummarizeResponse.builder()
+                .summary(summary)
+                .messageCount(messages.size())
+                .model(model)
+                .latencyMs(System.currentTimeMillis() - start)
+                .build();
+    }
+
+    /**
      * Summarize unread messages in a conversation for the given user.
      * Uses Map-Reduce pattern for large message counts.
      */

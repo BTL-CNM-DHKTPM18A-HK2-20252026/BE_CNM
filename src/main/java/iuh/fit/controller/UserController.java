@@ -71,7 +71,7 @@ public class UserController {
         })
         @PostMapping
         public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
-                log.info("User registration request received for email: {}", request.getEmail());
+                log.info("User registration request received for phone: {}", request.getPhoneNumber());
                 UserResponse response = userService.register(request);
                 return ResponseEntity.status(HttpStatus.CREATED).body(response);
         }
@@ -223,6 +223,19 @@ public class UserController {
                 log.info("Get user by email request: {}", email);
                 String currentUserId = JwtUtils.getCurrentUserId();
                 UserResponse response = userService.getUserByEmail(email, currentUserId);
+                return ResponseEntity.ok(response);
+        }
+
+        @Operation(summary = "Get user by phone number", description = "Find a user profile using their phone number")
+        @ApiResponses(value = {
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "User found", content = @Content(schema = @Schema(implementation = UserResponse.class))),
+                        @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "User not found", content = @Content)
+        })
+        @GetMapping("/phone/{phoneNumber}")
+        public ResponseEntity<UserResponse> getUserByPhone(@PathVariable String phoneNumber) {
+                log.info("Get user by phone request: {}", phoneNumber);
+                String currentUserId = JwtUtils.getCurrentUserId();
+                UserResponse response = userService.getUserByPhone(phoneNumber, currentUserId);
                 return ResponseEntity.ok(response);
         }
 

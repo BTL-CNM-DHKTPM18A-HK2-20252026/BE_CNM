@@ -30,6 +30,8 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
       timeout: ${REDIS_TIMEOUT:2000ms}
+      repositories:
+        enabled: false
 
   elasticsearch:
     uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
@@ -52,6 +54,9 @@ spring:
       retries: ${KAFKA_PRODUCER_RETRIES:3}
       properties:
         spring.json.add.type.headers: false
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 10000
+        retry.backoff.ms: 500
     consumer:
       group-id: ${KAFKA_CONSUMER_GROUP:fruvia-message-group}
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -61,6 +66,8 @@ spring:
         spring.json.trusted.packages: "iuh.fit.entity,iuh.fit.dto.*"
         spring.json.use.type.headers: false
         spring.json.value.default.type: iuh.fit.entity.Message
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 10000
 
   # Multipart File Upload Configuration
   servlet:
@@ -73,6 +80,13 @@ server:
   port: ${SERVER_PORT:8080}
   servlet:
     context-path: ${SERVER_CONTEXT_PATH:/api/v1}
+  tomcat:
+    threads:
+      max: ${TOMCAT_MAX_THREADS:100}
+      min-spare: ${TOMCAT_MIN_SPARE_THREADS:10}
+    accept-count: ${TOMCAT_ACCEPT_COUNT:50}
+    connection-timeout: ${TOMCAT_CONNECTION_TIMEOUT:20000}
+    max-connections: ${TOMCAT_MAX_CONNECTIONS:1024}
 
 jwt:
   access-token:
@@ -93,7 +107,7 @@ cloudinary:
 
 # CORS Configuration (Web + Mobile App)
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001,http://localhost:5173,http://localhost:8081,http://192.168.1.100:8081}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001,http://localhost:5173,http://localhost:8081,http://192.168.1.100:8081,https://fruvia.id.vn,http://fruvia.id.vn}
   allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,DELETE,PATCH,OPTIONS}
   allowed-headers: ${CORS_ALLOWED_HEADERS:*}
   exposed-headers: ${CORS_EXPOSED_HEADERS:Authorization,Content-Type,X-Total-Count,X-User-Id}
@@ -104,9 +118,10 @@ cors:
 springdoc:
   api-docs:
     path: /v3/api-docs
+    enabled: ${SWAGGER_ENABLED:false}
   swagger-ui:
     path: /swagger-ui
-    enabled: true
+    enabled: ${SWAGGER_ENABLED:false}
     operations-sorter: method
     tags-sorter: alpha
   show-actuator: false

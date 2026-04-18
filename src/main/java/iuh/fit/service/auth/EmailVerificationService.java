@@ -15,11 +15,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import iuh.fit.entity.UserAuth;
+import iuh.fit.entity.UserDetail;
 import iuh.fit.entity.UserVerification;
 import iuh.fit.enums.VerificationType;
 import iuh.fit.exception.AppException;
 import iuh.fit.exception.ErrorCode;
 import iuh.fit.repository.UserAuthRepository;
+import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserVerificationRepository;
 import jakarta.mail.MessagingException;
 import lombok.AccessLevel;
@@ -36,6 +38,7 @@ public class EmailVerificationService {
   static final DateTimeFormatter OTP_EXPIRE_FORMATTER = DateTimeFormatter.ofPattern("HH:mm, dd/MM/yyyy");
 
   final UserAuthRepository userAuthRepository;
+  final UserDetailRepository userDetailRepository;
   final UserVerificationRepository userVerificationRepository;
   final JavaMailSender mailSender;
   final PasswordEncoder passwordEncoder;
@@ -47,14 +50,15 @@ public class EmailVerificationService {
   int otpTtlMinutes;
 
   public void sendVerificationOtp(String email) {
-    UserAuth user = findUserByEmail(email);
+    String normalizedGmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+    UserAuth user = findUserByEmail(normalizedGmail);
 
     if (Boolean.TRUE.equals(user.getIsVerified())) {
       throw new AppException(ErrorCode.EMAIL_ALREADY_VERIFIED);
     }
 
     List<UserVerification> activeOtps = userVerificationRepository.findByEmailAndTypeAndIsUsedFalse(
-        user.getEmail(), VerificationType.EMAIL);
+        normalizedGmail, VerificationType.EMAIL);
 
     String rawOtp = generateSixDigitOtp();
     LocalDateTime now = LocalDateTime.now();
@@ -62,7 +66,7 @@ public class EmailVerificationService {
 
     UserVerification verification = UserVerification.builder()
         .userId(user.getUserId())
-        .email(user.getEmail())
+        .email(normalizedGmail)
         .otpCode(passwordEncoder.encode(rawOtp))
         .type(VerificationType.EMAIL)
         .isUsed(false)
@@ -73,7 +77,49 @@ public class EmailVerificationService {
     userVerificationRepository.save(verification);
 
     try {
-      sendOtpEmail(user.getEmail(), rawOtp, expiresAt);
+      sendOtpEmail(normalizedGmail, rawOtp, expiresAt);
+    } catch (RuntimeException ex) {
+      userVerificationRepository.deleteById(verification.getVerificationId());
+      throw ex;
+    }
+
+    if (!activeOtps.isEmpty()) {
+      activeOtps.forEach(otp -> otp.setIsUsed(true));
+      userVerificationRepository.saveAll(activeOtps);
+    }
+  }
+
+  public void sendRegistrationOtp(String email) {
+    String normalizedGmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+    if (normalizedGmail.isBlank()) {
+      throw new AppException(ErrorCode.INVALID_EMAIL);
+    }
+
+    if (userDetailRepository.findByGmail(normalizedGmail).isPresent()) {
+      throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
+    }
+
+    List<UserVerification> activeOtps = userVerificationRepository.findByEmailAndTypeAndIsUsedFalse(
+        normalizedGmail, VerificationType.REGISTRATION);
+
+    String rawOtp = generateSixDigitOtp();
+    LocalDateTime now = LocalDateTime.now();
+    LocalDateTime expiresAt = now.plusMinutes(otpTtlMinutes);
+
+    UserVerification verification = UserVerification.builder()
+        .userId(null)
+        .email(normalizedGmail)
+        .otpCode(passwordEncoder.encode(rawOtp))
+        .type(VerificationType.REGISTRATION)
+        .isUsed(false)
+        .createdAt(now)
+        .expiresAt(expiresAt)
+        .build();
+
+    userVerificationRepository.save(verification);
+
+    try {
+      sendOtpEmail(normalizedGmail, rawOtp, expiresAt);
     } catch (RuntimeException ex) {
       userVerificationRepository.deleteById(verification.getVerificationId());
       throw ex;
@@ -86,10 +132,11 @@ public class EmailVerificationService {
   }
 
   public void sendPasswordResetOtp(String email) {
-    UserAuth user = findUserByEmail(email);
+    String normalizedGmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+    UserAuth user = findUserByEmail(normalizedGmail);
 
     List<UserVerification> activeOtps = userVerificationRepository.findByEmailAndTypeAndIsUsedFalse(
-        user.getEmail(), VerificationType.PASSWORD_RESET);
+        normalizedGmail, VerificationType.PASSWORD_RESET);
 
     String rawOtp = generateSixDigitOtp();
     LocalDateTime now = LocalDateTime.now();
@@ -97,7 +144,7 @@ public class EmailVerificationService {
 
     UserVerification verification = UserVerification.builder()
         .userId(user.getUserId())
-        .email(user.getEmail())
+        .email(normalizedGmail)
         .otpCode(passwordEncoder.encode(rawOtp))
         .type(VerificationType.PASSWORD_RESET)
         .isUsed(false)
@@ -108,7 +155,7 @@ public class EmailVerificationService {
     userVerificationRepository.save(verification);
 
     try {
-      sendPasswordResetOtpEmail(user.getEmail(), rawOtp, expiresAt);
+      sendPasswordResetOtpEmail(normalizedGmail, rawOtp, expiresAt);
     } catch (RuntimeException ex) {
       userVerificationRepository.deleteById(verification.getVerificationId());
       throw ex;
@@ -121,14 +168,15 @@ public class EmailVerificationService {
   }
 
   public void verifyOtp(String email, String otp) {
-    UserAuth user = findUserByEmail(email);
+    String normalizedGmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+    UserAuth user = findUserByEmail(normalizedGmail);
 
     if (Boolean.TRUE.equals(user.getIsVerified())) {
       throw new AppException(ErrorCode.EMAIL_ALREADY_VERIFIED);
     }
 
     UserVerification verification = userVerificationRepository
-        .findTopByEmailAndTypeAndIsUsedFalseOrderByCreatedAtDesc(user.getEmail(), VerificationType.EMAIL)
+        .findTopByEmailAndTypeAndIsUsedFalseOrderByCreatedAtDesc(normalizedGmail, VerificationType.EMAIL)
         .orElseThrow(() -> new AppException(ErrorCode.OTP_NOT_FOUND));
 
     if (verification.getExpiresAt() == null || LocalDateTime.now().isAfter(verification.getExpiresAt())) {
@@ -147,11 +195,31 @@ public class EmailVerificationService {
     userAuthRepository.save(user);
   }
 
-  public void resetPassword(String email, String otp, String newPassword) {
-    UserAuth user = findUserByEmail(email);
+  public void verifyRegistrationOtp(String email, String otp) {
+    String normalizedGmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
 
     UserVerification verification = userVerificationRepository
-        .findTopByEmailAndTypeAndIsUsedFalseOrderByCreatedAtDesc(user.getEmail(), VerificationType.PASSWORD_RESET)
+        .findTopByEmailAndTypeAndIsUsedFalseOrderByCreatedAtDesc(normalizedGmail, VerificationType.REGISTRATION)
+        .orElseThrow(() -> new AppException(ErrorCode.OTP_NOT_FOUND));
+
+    if (verification.getExpiresAt() == null || LocalDateTime.now().isAfter(verification.getExpiresAt())) {
+      throw new AppException(ErrorCode.OTP_EXPIRED);
+    }
+
+    if (!passwordEncoder.matches(otp, verification.getOtpCode())) {
+      throw new AppException(ErrorCode.INVALID_OTP);
+    }
+
+    verification.setIsUsed(true);
+    userVerificationRepository.save(verification);
+  }
+
+  public void resetPassword(String email, String otp, String newPassword) {
+    String normalizedGmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+    UserAuth user = findUserByEmail(normalizedGmail);
+
+    UserVerification verification = userVerificationRepository
+        .findTopByEmailAndTypeAndIsUsedFalseOrderByCreatedAtDesc(normalizedGmail, VerificationType.PASSWORD_RESET)
         .orElseThrow(() -> new AppException(ErrorCode.OTP_NOT_FOUND));
 
     if (verification.getExpiresAt() == null || LocalDateTime.now().isAfter(verification.getExpiresAt())) {
@@ -171,9 +239,11 @@ public class EmailVerificationService {
   }
 
   private UserAuth findUserByEmail(String email) {
-    String normalizedEmail = email == null ? "" : email.trim();
-    return userAuthRepository.findByEmail(normalizedEmail)
-        .or(() -> userAuthRepository.findByEmail(normalizedEmail.toLowerCase(Locale.ROOT)))
+    String normalizedEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+    // Look up gmail in UserDetail, then find corresponding UserAuth
+    UserDetail userDetail = userDetailRepository.findByGmail(normalizedEmail)
+        .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+    return userAuthRepository.findById(userDetail.getUserId())
         .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
   }
 

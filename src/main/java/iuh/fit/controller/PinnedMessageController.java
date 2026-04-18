@@ -50,7 +50,7 @@ public class PinnedMessageController {
     }
 
     @GetMapping("/conversations/{conversationId}/pinned")
-    @Operation(summary = "Get all pinned messages in a conversation")
+    @Operation(summary = "Get all pinned messages in a conversation (includes content, messageType, mediaUrl)")
     public ResponseEntity<ApiResponse<List<PinnedMessageResponse>>> getPinnedMessages(
             @PathVariable String conversationId) {
         String userId = JwtUtils.getCurrentUserId();

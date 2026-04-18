@@ -31,14 +31,29 @@ import org.springframework.stereotype.Service;
 import iuh.fit.document.DocumentDocument;
 import iuh.fit.document.MessageDocument;
 import iuh.fit.document.UserDocument;
+import iuh.fit.entity.Conversations;
+import iuh.fit.entity.Friendship;
 import iuh.fit.entity.Message;
+import iuh.fit.enums.FriendshipStatus;
 import iuh.fit.entity.SearchHistory;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
+
+import iuh.fit.repository.ConversationRepository;
+import iuh.fit.repository.FriendshipRepository;
+import iuh.fit.repository.MessageBucketRepository;
+import iuh.fit.repository.MessageRepository;
+import iuh.fit.repository.SearchHistoryRepository;
+import iuh.fit.repository.UserAuthRepository;
+import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.elasticsearch.DocumentSearchRepository;
 import iuh.fit.repository.elasticsearch.MessageSearchRepository;
 import iuh.fit.entity.MessageBucket;
+import iuh.fit.response.GlobalSearchResult;
 import iuh.fit.response.SearchResult;
+
+import java.util.HashSet;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -56,6 +71,8 @@ public class SearchService {
     private final SearchHistoryRepository searchHistoryRepository;
     private final FriendshipRepository friendshipRepository;
     private final ElasticsearchOperations elasticsearchOperations;
+    private final FriendshipRepository friendshipRepository;
+    private final ConversationRepository conversationRepository;
 
     // ── Circuit breaker state ─────────────────────────────────────────────────
     private final AtomicBoolean esAvailable = new AtomicBoolean(true);
@@ -127,7 +144,7 @@ public class SearchService {
     // ── Async user indexing (with circuit breaker) ─────────────────────────────
 
     @Async
-    public void indexUser(UserDetail userDetail, String email) {
+    public void indexUser(UserDetail userDetail, String gmail, String phoneNumber) {
         if (!isElasticsearchAvailable()) {
             log.debug("Skipping user indexing — ES circuit breaker is open");
             return;
@@ -138,9 +155,10 @@ public class SearchService {
                 .displayName(userDetail.getDisplayName())
                 .firstName(userDetail.getFirstName())
                 .lastName(userDetail.getLastName())
-                .email(email)
+                .gmail(gmail)
+                .phoneNumber(phoneNumber)
                 .avatarUrl(userDetail.getAvatarUrl())
-                .suggest(buildUserCompletion(userDetail.getDisplayName(), email))
+                .suggest(buildUserCompletion(userDetail.getDisplayName(), phoneNumber))
                 .build();
 
         try {
@@ -318,7 +336,7 @@ public class SearchService {
                         new HighlightField("displayName"),
                         new HighlightField("firstName"),
                         new HighlightField("lastName"),
-                        new HighlightField("email")));
+                        new HighlightField("gmail")));
 
                 NativeQuery nativeQuery = NativeQuery.builder()
                         .withQuery(q -> q.bool(b -> b
@@ -347,8 +365,7 @@ public class SearchService {
                 log.warn("ES searchUsers failed, falling back to MongoDB: {}", e.getMessage());
             }
         }
-
-        // 2. MongoDB fallback nếu ES không có kết quả
+    // 2. MongoDB fallback nếu ES không có kết quả
         if (results.isEmpty()) {
             String escapedQuery = java.util.regex.Pattern.quote(query);
             Page<UserDetail> byName = userDetailRepository.searchByDisplayName(escapedQuery, pageable);
@@ -364,6 +381,7 @@ public class SearchService {
                 if (!extraIds.isEmpty()) {
                     userDetailRepository.findByUserIdIn(extraIds).forEach(u -> userMap.put(u.getUserId(), u));
                 }
+
             }
 
             results = userMap.values().stream()
@@ -381,8 +399,7 @@ public class SearchService {
                     .collect(Collectors.toList());
             totalElements = results.size();
         }
-
-        // 3. GÁN TRẠNG THÁI QUAN HỆ (Dù dữ liệu từ nguồn nào cũng chạy qua đây)
+  // 3. GÁN TRẠNG THÁI QUAN HỆ (Dù dữ liệu từ nguồn nào cũng chạy qua đây)
         if (currentUserId != null && !results.isEmpty()) {
             results.forEach(rs -> {
                 String targetUserId = rs.getDocument().getUserId();
@@ -392,6 +409,7 @@ public class SearchService {
 
         return new PageImpl<>(results, pageable, totalElements);
     }
+
 
     private String determineFriendshipStatus(String currentUserId, String targetUserId) {
         if (currentUserId.equals(targetUserId)) return "SELF";
@@ -514,16 +532,18 @@ public class SearchService {
 
             for (UserDetail user : page.getContent()) {
                 UserAuth auth = userAuthRepository.findById(user.getUserId()).orElse(null);
-                String email = auth != null ? auth.getEmail() : "";
+                String gmail = user.getGmail() != null ? user.getGmail() : "";
+                String phoneNumber = auth != null ? auth.getPhoneNumber() : "";
 
                 UserDocument doc = UserDocument.builder()
                         .userId(user.getUserId())
                         .displayName(user.getDisplayName())
                         .firstName(user.getFirstName())
                         .lastName(user.getLastName())
-                        .email(email)
+                        .gmail(gmail)
+                        .phoneNumber(phoneNumber)
                         .avatarUrl(user.getAvatarUrl())
-                        .suggest(buildUserCompletion(user.getDisplayName(), email))
+                        .suggest(buildUserCompletion(user.getDisplayName(), phoneNumber))
                         .build();
 
                 bulkQueries.add(new IndexQueryBuilder()
@@ -617,22 +637,106 @@ public class SearchService {
         return new PageImpl<>(results, pageable, searchHits.getTotalHits());
     }
 
-    // ── Global search: messages + users + documents ───────────────────────────
+    // ── Global search: friends + conversations + messages + globalUsers ────────
 
-    public iuh.fit.response.GlobalSearchResult globalSearch(
+    public GlobalSearchResult globalSearch(
             String query, String userId, List<String> conversationIds, int page, int size) {
 
+        // 1. Get friend IDs for the current user
+        Set<String> friendIds = new HashSet<>();
+        List<Friendship> friendships = friendshipRepository.findAllAcceptedFriends(userId);
+        for (Friendship f : friendships) {
+            friendIds.add(f.getRequesterId().equals(userId) ? f.getReceiverId() : f.getRequesterId());
+        }
+
+        // 1b. Get pending sent/received IDs
+        Set<String> pendingSentIds = new HashSet<>();
+        List<Friendship> sentRequests = friendshipRepository.findByRequesterIdAndStatus(userId,
+                FriendshipStatus.PENDING);
+        for (Friendship f : sentRequests) {
+            pendingSentIds.add(f.getReceiverId());
+        }
+
+        Set<String> pendingReceivedIds = new HashSet<>();
+        List<Friendship> receivedRequests = friendshipRepository.findByReceiverIdAndStatus(userId,
+                FriendshipStatus.PENDING);
+        for (Friendship f : receivedRequests) {
+            pendingReceivedIds.add(f.getRequesterId());
+        }
+
+        // 2. Search users via ES/MongoDB
+        Page<SearchResult<UserDocument>> allUsers = searchUsers(query, page, size);
+
+        // 3. Split into friends vs global (strangers)
+        List<GlobalSearchResult.FriendSearchItem> friendResults = new ArrayList<>();
+        List<GlobalSearchResult.FriendSearchItem> globalUserResults = new ArrayList<>();
+
+        for (SearchResult<UserDocument> sr : allUsers.getContent()) {
+            UserDocument doc = sr.getDocument();
+            if (doc == null || doc.getUserId().equals(userId))
+                continue;
+
+            String otherUserId = doc.getUserId();
+            String status;
+            if (friendIds.contains(otherUserId)) {
+                status = "ACCEPTED";
+            } else if (pendingSentIds.contains(otherUserId)) {
+                status = "PENDING_SENT";
+            } else if (pendingReceivedIds.contains(otherUserId)) {
+                status = "PENDING_RECEIVED";
+            } else {
+                status = "NONE";
+            }
+
+            GlobalSearchResult.FriendSearchItem item = GlobalSearchResult.FriendSearchItem.builder()
+                    .userId(doc.getUserId())
+                    .displayName(doc.getDisplayName())
+                    .phoneNumber(doc.getPhoneNumber())
+                    .avatarUrl(doc.getAvatarUrl())
+                    .friendshipStatus(status)
+                    .build();
+
+            if (friendIds.contains(otherUserId)) {
+                friendResults.add(item);
+            } else {
+                globalUserResults.add(item);
+            }
+        }
+
+        // 4. Search conversations by name (groups + private chats the user belongs to)
+        String escapedQuery = java.util.regex.Pattern.quote(query);
+        List<Conversations> matchedConversations = conversationRepository
+                .searchByNameAndParticipant(escapedQuery, userId);
+
+        List<GlobalSearchResult.ConversationSearchItem> conversationResults = matchedConversations.stream()
+                .limit(size)
+                .map(conv -> GlobalSearchResult.ConversationSearchItem.builder()
+                        .conversationId(conv.getConversationId())
+                        .conversationType(conv.getConversationType() != null ? conv.getConversationType().name() : null)
+                        .conversationName(conv.getConversationName())
+                        .conversationAvatarUrl(conv.getAvatarUrl())
+                        .lastMessageContent(conv.getLastMessageContent())
+                        .lastMessageTime(
+                                conv.getLastMessageTime() != null ? conv.getLastMessageTime().toString() : null)
+                        .build())
+                .toList();
+
+        // 5. Search messages across all user conversations
         Page<SearchResult<MessageDocument>> messages = conversationIds != null && !conversationIds.isEmpty()
                 ? searchMessagesByUserId(query, conversationIds, page, size)
                 : Page.empty();
 
         Page<SearchResult<UserDocument>> users = searchUsers(query, userId, page, size);
 
+
         Page<SearchResult<DocumentDocument>> documents = searchDocuments(query, userId, page, size);
 
-        return iuh.fit.response.GlobalSearchResult.builder()
+        return GlobalSearchResult.builder()
+                .friends(friendResults)
+                .conversations(conversationResults)
                 .messages(messages)
-                .users(users)
+                .globalUsers(globalUserResults)
+                .users(allUsers)
                 .documents(documents)
                 .build();
     }
@@ -645,7 +749,7 @@ public class SearchService {
 
     // ── Autocomplete (Completion Suggester) ───────────────────────────────────
 
-    private Completion buildUserCompletion(String displayName, String email) {
+    private Completion buildUserCompletion(String displayName, String phoneNumber) {
         List<String> inputs = new ArrayList<>();
         if (displayName != null && !displayName.isBlank()) {
             inputs.add(displayName);
@@ -655,8 +759,8 @@ public class SearchService {
                     inputs.add(part);
             }
         }
-        if (email != null && !email.isBlank())
-            inputs.add(email);
+        if (phoneNumber != null && !phoneNumber.isBlank())
+            inputs.add(phoneNumber);
 
         Completion completion = new Completion(inputs.toArray(new String[0]));
         return completion;
@@ -669,7 +773,7 @@ public class SearchService {
                                 .should(s -> s
                                         .prefix(p -> p.field("displayName").value(prefix)))
                                 .should(s -> s
-                                        .prefix(p -> p.field("email").value(prefix)))
+                                        .prefix(p -> p.field("phoneNumber").value(prefix)))
                                 .minimumShouldMatch("1")))
                 .withPageable(PageRequest.of(0, size))
                 .build();

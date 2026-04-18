@@ -16,4 +16,5 @@ public class AiCompletionResult {
     private int totalTokens;
     private String providerRequestId;
     private String model;
+    private String finishReason;
 }

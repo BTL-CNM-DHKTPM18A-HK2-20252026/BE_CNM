@@ -17,9 +17,9 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -36,33 +36,29 @@ public class SmartReplyService {
     @Value("${ai.model.chat:blackboxai/blackbox-pro}")
     private String chatModel;
 
-    private static final int CONTEXT_SIZE = 10;
-    private static final Duration CACHE_TTL = Duration.ofSeconds(60);
+    private static final int CONTEXT_SIZE = 20;
+    private static final Duration CACHE_TTL = Duration.ofSeconds(120);
     private static final String CACHE_KEY_PREFIX = "ai:smart-reply:";
 
-    private static final String SYSTEM_PROMPT = """
-            Bạn là một trợ lý chat thông minh. Dựa trên lịch sử hội thoại dưới đây, \
-            hãy gợi ý 3 câu trả lời ngắn gọn, tự nhiên và phù hợp với ngữ cảnh nhất cho người dùng.
+    private static final Pattern EMOJI_PATTERN = Pattern.compile(
+            "[\\x{1F600}-\\x{1F64F}\\x{1F300}-\\x{1F5FF}\\x{1F680}-\\x{1F6FF}" +
+                    "\\x{1F700}-\\x{1F77F}\\x{1F780}-\\x{1F7FF}\\x{2600}-\\x{26FF}" +
+                    "\\x{2700}-\\x{27BF}\\x{FE00}-\\x{FE0F}\\x{1F900}-\\x{1F9FF}]",
+            Pattern.UNICODE_CHARACTER_CLASS);
 
-            Trả về kết quả dưới dạng JSON array: ["option 1", "option 2", "option 3"].
-
-            Câu trả lời không quá 10 từ.
-
-            Ngôn ngữ: Tương ứng với ngôn ngữ của hội thoại (Tiếng Việt/Tiếng Anh).
-
-            CHỈ trả về JSON array, KHÔNG giải thích gì thêm.""";
-
-    /**
-     * Generate 3 smart reply suggestions for the given conversation.
-     * Results are cached in Redis for 60 seconds to avoid redundant AI calls.
-     */
     public SmartReplyResponse generateSmartReplies(String conversationId, String userId) {
-        // Verify user is member of conversation
         conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
-                .orElseThrow(() -> new IllegalArgumentException("Bạn không phải thành viên của cuộc hội thoại này"));
+                .orElseThrow(() -> new IllegalArgumentException("Ban khong phai thanh vien cua cuoc hoi thoai nay"));
 
-        // Check Redis cache
-        String cacheKey = CACHE_KEY_PREFIX + conversationId;
+        var page = messageRepository.findByConversationIdOrderByCreatedAtDesc(
+                conversationId, PageRequest.of(0, CONTEXT_SIZE));
+        List<Message> recentMessages = new ArrayList<>(page.getContent());
+        Collections.reverse(recentMessages);
+
+        String lastMsgId = recentMessages.isEmpty() ? "empty"
+                : recentMessages.get(recentMessages.size() - 1).getMessageId();
+        String cacheKey = CACHE_KEY_PREFIX + conversationId + ":" + lastMsgId;
+
         try {
             String cached = stringRedisTemplate.opsForValue().get(cacheKey);
             if (cached != null) {
@@ -78,59 +74,95 @@ public class SmartReplyService {
             log.debug("Smart reply cache miss or error: {}", e.getMessage());
         }
 
-        // Fetch recent messages for context
-        var page = messageRepository.findByConversationIdOrderByCreatedAtDesc(
-                conversationId, PageRequest.of(0, CONTEXT_SIZE));
-        List<Message> recentMessages = new ArrayList<>(page.getContent());
-        Collections.reverse(recentMessages); // oldest first
+        String userName = userDetailRepository.findByUserId(userId)
+                .map(ud -> ud.getDisplayName() != null ? ud.getDisplayName() : "Toi")
+                .orElse("Toi");
 
-        if (recentMessages.isEmpty()) {
-            return SmartReplyResponse.builder()
-                    .suggestions(List.of("Xin chào! 👋", "Bạn có khỏe không?", "Rất vui được gặp bạn!"))
-                    .model("default")
-                    .latencyMs(0)
-                    .build();
-        }
-
-        // Build conversation history string
         StringBuilder history = new StringBuilder();
+        List<String> myOwnMessages = new ArrayList<>();
+
         for (Message msg : recentMessages) {
-            if (msg.getIsDeleted() != null && msg.getIsDeleted())
+            if (Boolean.TRUE.equals(msg.getIsDeleted()))
                 continue;
-            if (msg.getIsRecalled() != null && msg.getIsRecalled())
-                continue;
-            if (!"TEXT".equals(msg.getMessageType()))
+            if (Boolean.TRUE.equals(msg.getIsRecalled()))
                 continue;
 
-            String senderName = resolveSenderName(msg.getSenderId());
-            String role = msg.getSenderId().equals(userId) ? "Tôi" : senderName;
-            history.append(role).append(": ").append(msg.getContent()).append("\n");
+            String type = msg.getMessageType() != null ? msg.getMessageType().name() : "TEXT";
+            String content;
+            if ("TEXT".equals(type)) {
+                content = msg.getContent();
+            } else if ("IMAGE".equals(type) || "MEDIA".equals(type)) {
+                content = "[Anh/File dinh kem]";
+            } else if ("VOICE".equals(type)) {
+                content = "[Tin nhan thoai]";
+            } else if ("STICKER".equals(type)) {
+                content = "[Sticker]";
+            } else {
+                content = "[" + type + "]";
+            }
+
+            boolean isMe = userId.equals(msg.getSenderId());
+            String label = isMe ? userName : resolveSenderName(msg.getSenderId());
+            history.append(label).append(": ").append(content).append("\n");
+
+            if (isMe && "TEXT".equals(type) && content != null && !content.isBlank()) {
+                myOwnMessages.add(content);
+            }
         }
 
         if (history.isEmpty()) {
-            return SmartReplyResponse.builder()
-                    .suggestions(List.of("Xin chào! 👋", "Bạn có khỏe không?", "Rất vui được gặp bạn!"))
-                    .model("default")
-                    .latencyMs(0)
-                    .build();
+            return defaultReply();
         }
 
-        // Call AI
+        String styleHint = analyzeWritingStyle(myOwnMessages);
+
+        String lastNonEmptyContent = "";
+        String lastSender = "";
+        for (int i = recentMessages.size() - 1; i >= 0; i--) {
+            Message msg = recentMessages.get(i);
+            if (Boolean.TRUE.equals(msg.getIsDeleted()) || Boolean.TRUE.equals(msg.getIsRecalled()))
+                continue;
+            if (msg.getMessageType() == null || !"TEXT".equals(msg.getMessageType().name()))
+                continue;
+            lastNonEmptyContent = msg.getContent();
+            lastSender = userId.equals(msg.getSenderId()) ? userName : resolveSenderName(msg.getSenderId());
+            break;
+        }
+
+        String taskContext;
+        if (!lastNonEmptyContent.isEmpty() && !lastSender.equals(userName)) {
+            taskContext = "Tin nhan cuoi la cua " + lastSender + ": \"" + lastNonEmptyContent
+                    + "\"\n" + userName + " can tra loi tin nhan do.";
+        } else if (!lastNonEmptyContent.isEmpty()) {
+            taskContext = "Tin nhan cuoi la cua chinh " + userName + ": \"" + lastNonEmptyContent
+                    + "\"\nChua ai tra loi. Goi y cach " + userName
+                    + " co the nhac, hoi lai, hoac noi them de doi phuong rep (vd: 'alo rep di', 'thay chua?', 'hello?', ...).";
+        } else {
+            taskContext = "Goi y nhung gi " + userName + " co the nhan tiep theo.";
+        }
+
+        String systemPrompt = buildSystemPrompt(userName, styleHint, taskContext);
+
         long start = System.currentTimeMillis();
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", SYSTEM_PROMPT));
-        messages.add(Map.of("role", "user", "content", "Lịch sử hội thoại:\n" + history));
+        messages.add(Map.of("role", "system", "content", systemPrompt));
+        messages.add(Map.of("role", "user", "content",
+                "=== LICH SU HOI THOAI (20 tin nhan gan nhat) ===\n" + history.toString().trim()
+                        + "\n\n" + taskContext
+                        + "\n\nTra ve dung 3 goi y dang JSON array."));
 
         try {
             AiCompletionResult result = aiClient.complete(messages, chatModel, 200);
             long latency = System.currentTimeMillis() - start;
 
             List<String> suggestions = parseJsonArray(result.getContent());
-            if (suggestions.size() < 3) {
-                suggestions = List.of("Ok 👍", "Để mình xem lại nhé", "Mình hiểu rồi");
+            if (suggestions.size() < 2) {
+                suggestions = List.of("Ok dc", "Uh r", "Oke nha");
             }
+            while (suggestions.size() < 3)
+                suggestions.add("...");
+            suggestions = suggestions.subList(0, 3);
 
-            // Cache for 60 seconds
             try {
                 stringRedisTemplate.opsForValue().set(
                         cacheKey, objectMapper.writeValueAsString(suggestions), CACHE_TTL);
@@ -143,19 +175,97 @@ public class SmartReplyService {
                     .model(result.getModel())
                     .latencyMs(latency)
                     .build();
+
         } catch (Exception e) {
             log.error("Smart reply AI call failed: {}", e.getMessage());
             return SmartReplyResponse.builder()
-                    .suggestions(List.of("Ok 👍", "Để mình xem lại nhé", "Mình hiểu rồi"))
+                    .suggestions(List.of("Ok dc", "Uh de t xem", "Oke"))
                     .model("fallback")
                     .latencyMs(System.currentTimeMillis() - start)
                     .build();
         }
     }
 
+    private String buildSystemPrompt(String userName, String styleHint, String taskContext) {
+        return "Ban la mot nguoi ban than dang goi y tra loi chat cho " + userName
+                + ". De xuat dung 3 cau ma " + userName + " co the gui tiep.\n\n"
+                + "PHONG CACH NHAN TIN CUA " + userName + ":\n"
+                + styleHint + "\n\n"
+                + "QUY TAC BAT BUOC:\n"
+                + "1. NOI NHU NGUOI THAT - dung viet tat (ok, dc, ko, oke, r, k, nha, uh, tui, mk, ...), teencode, tieng long neu phong cach ho nhu vay.\n"
+                + "2. KHONG THAO MAI - cam noi kieu 'Rat vui duoc gap ban', 'Cam on ban nhieu', 'Chuc ban mot ngay tot lanh'. Day la chat ban be, KHONG PHAI email cong ty.\n"
+                + "3. Co the hoi tuc, noi bua, treu choc, reaction manh - NHU NGUOI THAT CHAT VOI BAN THAN.\n"
+                + "4. Bat chuoc chinh xac phong cach - neu ho dung emoji thi goi y co emoji, neu nhan ngan 1-3 tu thi goi y cung ngan.\n"
+                + "5. Moi goi y toi da 12 tu. Ngan hon = tot hon.\n"
+                + "6. Dung chu de dang noi - KHONG doi chu de.\n"
+                + "7. Ngon ngu khop voi hoi thoai (Viet/Anh/mix).\n"
+                + "8. NEU tin nhan cuoi la cua chinh " + userName
+                + " (chua ai tra loi), thi goi y: nhac lai, hoi them, hoac noi gi do de doi phuong phan hoi (vd: 'alo?', 'rep di', 'thay chua?', ...).\n"
+                + "9. CHI tra ve JSON array: [\"goi y 1\", \"goi y 2\", \"goi y 3\"]\n"
+                + "10. KHONG giai thich, KHONG them text ngoai array.";
+    }
+
+    private String analyzeWritingStyle(List<String> myMessages) {
+        if (myMessages.isEmpty()) {
+            return "Chua co du lieu - dung phong cach tu nhien, than mat, ngan gon.";
+        }
+
+        double avgWords = myMessages.stream()
+                .mapToInt(m -> m.trim().split("\\s+").length)
+                .average()
+                .orElse(5);
+
+        String lengthStyle;
+        if (avgWords <= 4)
+            lengthStyle = "nhan rat ngan (1-4 tu)";
+        else if (avgWords <= 10)
+            lengthStyle = "nhan ngan vua (5-10 tu)";
+        else
+            lengthStyle = "nhan kha dai (>10 tu)";
+
+        long emojiMsgCount = myMessages.stream()
+                .filter(m -> EMOJI_PATTERN.matcher(m).find())
+                .count();
+        double emojiRatio = (double) emojiMsgCount / myMessages.size();
+        String emojiStyle;
+        if (emojiRatio > 0.5)
+            emojiStyle = "dung emoji thuong xuyen";
+        else if (emojiRatio > 0.15)
+            emojiStyle = "doi khi dung emoji";
+        else
+            emojiStyle = "hiem khi hoac khong dung emoji";
+
+        long casualCount = myMessages.stream()
+                .filter(m -> {
+                    String lower = m.toLowerCase();
+                    return lower.contains("u") || lower.contains("thi") || lower.contains("ma")
+                            || lower.contains("nha") || lower.contains("ne") || lower.contains("a")
+                            || lower.contains("oke") || lower.contains("ok") || lower.contains("haha")
+                            || lower.contains("hihi") || lower.contains("vay") || lower.contains("minh");
+                })
+                .count();
+        double casualRatio = (double) casualCount / myMessages.size();
+        String formalityStyle;
+        if (casualRatio > 0.4)
+            formalityStyle = "phong cach than mat, binh thuong nhu ban be";
+        else if (casualRatio > 0.15)
+            formalityStyle = "kha than thien, khong qua trang trong";
+        else
+            formalityStyle = "lich su / trang trong";
+
+        return "- Do dai: " + lengthStyle + "\n- Emoji: " + emojiStyle + "\n- Phong cach: " + formalityStyle;
+    }
+
+    private SmartReplyResponse defaultReply() {
+        return SmartReplyResponse.builder()
+                .suggestions(List.of("Yo!", "Alo co ai ko?", "Hi nha"))
+                .model("default")
+                .latencyMs(0)
+                .build();
+    }
+
     private List<String> parseJsonArray(String content) {
         try {
-            // Extract JSON array from content (may contain extra text)
             String trimmed = content.trim();
             int start = trimmed.indexOf('[');
             int end = trimmed.lastIndexOf(']');

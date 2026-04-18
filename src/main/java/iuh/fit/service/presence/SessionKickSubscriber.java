@@ -17,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
  * để client tự disconnect.
  *
  * <p>
- * Message format: {@code userId|socketId|targetServerId}
+ * Message format: {@code userId|socketId|targetServerId|tabId}
  */
 @Component
 @RequiredArgsConstructor
@@ -30,9 +30,9 @@ public class SessionKickSubscriber implements MessageListener {
     @Override
     public void onMessage(Message message, byte[] pattern) {
         String payload = new String(message.getBody());
-        String[] parts = payload.split("\\|", 3);
+        String[] parts = payload.split("\\|", 4);
 
-        if (parts.length < 3) {
+        if (parts.length < 4) {
             log.warn("[SessionKick] Invalid message format: {}", payload);
             return;
         }
@@ -40,6 +40,7 @@ public class SessionKickSubscriber implements MessageListener {
         String userId = parts[0];
         String socketId = parts[1];
         String targetServerId = parts[2];
+        String tabId = parts[3];
 
         // Chỉ xử lý nếu message nhắm tới server này
         if (!sessionService.getServerId().equals(targetServerId)) {
@@ -48,15 +49,17 @@ public class SessionKickSubscriber implements MessageListener {
             return;
         }
 
-        log.info("[SessionKick] Executing kick: userId={}, socket={}", userId, socketId);
+        log.info("[SessionKick] Executing kick: userId={}, socket={}, tabId={}", userId, socketId, tabId);
 
-        // Gửi lệnh kick tới client cụ thể qua STOMP user destination
-        // Client nhận từ: /user/queue/session-kick
+        // Gửi qua topic thường thay vì /user/queue — đáng tin cậy hơn vì
+        // không phụ thuộc SimpUserRegistry (có thể chưa cập nhật khi kick).
+        // Client sẽ kiểm tra tabId để biết mình có phải tab bị kick hay không.
         java.util.Map<String, Object> kickPayload = new java.util.HashMap<>();
         kickPayload.put("type", "SESSION_KICKED");
         kickPayload.put("reason", "Tài khoản đã đăng nhập ở thiết bị/tab khác");
         kickPayload.put("socketId", socketId);
+        kickPayload.put("tabId", tabId);
 
-        messagingTemplate.convertAndSendToUser(userId, "/queue/session-kick", kickPayload);
+        messagingTemplate.convertAndSend("/topic/session-kick/" + userId, kickPayload);
     }
 }

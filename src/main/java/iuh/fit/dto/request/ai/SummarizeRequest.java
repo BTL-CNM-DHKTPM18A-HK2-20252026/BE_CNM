@@ -18,4 +18,10 @@ public class SummarizeRequest {
      * If null, summarize from the user's lastReadMessageId.
      */
     private String lastReadMessageId;
+
+    /**
+     * Optional: number of recent messages to summarize (for /summarize-recent).
+     * Defaults to 100 if not provided.
+     */
+    private Integer messageCount;
 }

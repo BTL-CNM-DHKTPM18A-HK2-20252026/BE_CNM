@@ -18,4 +18,6 @@ public interface UserVerificationRepository extends MongoRepository<UserVerifica
 
     Optional<UserVerification> findTopByEmailAndTypeAndIsUsedFalseOrderByCreatedAtDesc(String email,
             VerificationType type);
+
+    boolean existsByEmailAndTypeAndIsUsedTrue(String email, VerificationType type);
 }

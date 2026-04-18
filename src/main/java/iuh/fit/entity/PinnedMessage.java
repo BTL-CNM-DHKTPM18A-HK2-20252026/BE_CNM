@@ -32,6 +32,9 @@ public class PinnedMessage {
     String messageId; // Reference to Message
     String conversationId; // Reference to Conversations
     String type; // Type of pin
+    String content; // Snapshot content at pin time
+    String messageType; // Snapshot message type at pin time
+    String mediaUrl; // Snapshot media URL for IMAGE/VIDEO pin
     String pinnedByUserId; // User who pinned the message
     LocalDateTime pinnedAt;
 }

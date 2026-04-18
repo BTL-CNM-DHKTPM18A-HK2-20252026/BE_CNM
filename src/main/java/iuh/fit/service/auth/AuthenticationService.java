@@ -58,6 +58,14 @@ public interface AuthenticationService {
     boolean checkEmailExists(String email);
 
     /**
+     * Check if a phone number exists in the database
+     * 
+     * @param phoneNumber Phone number to check
+     * @return true if exists, false otherwise
+     */
+    boolean checkPhoneExists(String phoneNumber);
+
+    /**
      * Generate a new QR session UUID and store it in Redis with a short TTL (120s)
      * 
      * @return Generated UUID string
@@ -77,6 +85,20 @@ public interface AuthenticationService {
      * @param email target email
      */
     void resendEmailOtp(String email);
+
+    /**
+     * Send OTP for registration flow before creating account.
+     *
+     * @param email target email
+     */
+    void sendRegistrationOtp(String email);
+
+    /**
+     * Verify OTP for registration flow before creating account.
+     *
+     * @param request email and otp payload
+     */
+    void verifyRegistrationOtp(VerifyOtpRequest request);
 
     /**
      * Send OTP for forgot-password flow.

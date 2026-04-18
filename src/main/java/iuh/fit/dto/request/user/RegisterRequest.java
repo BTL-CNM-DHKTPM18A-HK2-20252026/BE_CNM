@@ -1,6 +1,5 @@
 package iuh.fit.dto.request.user;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -19,8 +18,11 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class RegisterRequest {
 
-    @NotBlank(message = "Email is required")
-    @Email(message = "Email should be valid")
+    @NotBlank(message = "Phone number is required")
+    @Pattern(regexp = "^(0|\\+84)[0-9]{9}$", message = "Phone number must be a valid Vietnamese phone number")
+    String phoneNumber;
+
+    @Pattern(regexp = "^$|^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", message = "Email should be valid")
     String email;
 
     @NotBlank(message = "Password is required")

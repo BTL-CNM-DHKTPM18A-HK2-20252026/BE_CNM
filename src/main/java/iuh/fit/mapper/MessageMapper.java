@@ -3,14 +3,17 @@ package iuh.fit.mapper;
 import iuh.fit.dto.response.message.MessageResponse;
 import iuh.fit.entity.ImageUploadMetadata;
 import iuh.fit.entity.Message;
+import iuh.fit.entity.MessageAttachment;
 import iuh.fit.entity.UserDetail;
 import iuh.fit.enums.MessageType;
 import iuh.fit.repository.ImageUploadMetadataRepository;
+import iuh.fit.repository.MessageAttachmentRepository;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.MessageReactionRepository;
 import iuh.fit.dto.response.message.MessageReactionDto;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -24,6 +27,7 @@ public class MessageMapper {
         private final UserDetailRepository userDetailRepository;
         private final MessageReactionRepository messageReactionRepository;
         private final ImageUploadMetadataRepository imageUploadMetadataRepository;
+        private final MessageAttachmentRepository messageAttachmentRepository;
 
         public MessageResponse toResponse(Message message) {
                 if (message == null) {
@@ -74,6 +78,23 @@ public class MessageMapper {
                         }
                 }
 
+                // Resolve attachments for IMAGE_GROUP
+                List<MessageResponse.AttachmentDto> attachmentDtos = null;
+                if (message.getMessageType() == MessageType.IMAGE_GROUP) {
+                        List<MessageAttachment> attachments = messageAttachmentRepository
+                                        .findByMessageId(message.getMessageId());
+                        if (attachments != null && !attachments.isEmpty()) {
+                                attachmentDtos = attachments.stream()
+                                                .map(att -> MessageResponse.AttachmentDto.builder()
+                                                                .url(att.getUrl())
+                                                                .fileName(att.getFileName())
+                                                                .fileSize(att.getFileSize())
+                                                                .thumbnailUrl(att.getThumbnailUrl())
+                                                                .build())
+                                                .collect(Collectors.toList());
+                        }
+                }
+
                 return MessageResponse.builder()
                                 .messageId(message.getMessageId())
                                 .conversationId(message.getConversationId())
@@ -111,6 +132,7 @@ public class MessageMapper {
                                 .forwardedFromSenderName(forwardedFromSenderName)
                                 .reactions(reactionDtos)
                                 .mentions(message.getMentions())
+                                .attachments(attachmentDtos)
                                 .build();
         }
 

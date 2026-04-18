@@ -71,6 +71,15 @@ public interface UserService {
     UserResponse getUserByEmail(String email, String currentUserId);
 
     /**
+     * Get user information by phone number
+     * 
+     * @param phoneNumber   Phone number to search for
+     * @param currentUserId Optional current user ID to check friendship status
+     * @return UserResponse
+     */
+    UserResponse getUserByPhone(String phoneNumber, String currentUserId);
+
+    /**
      * Set or change the 6-digit PIN for hidden conversations.
      * If a PIN already exists, currentPin must be provided and correct.
      *

@@ -113,6 +113,15 @@ public class MessageController {
         return ResponseEntity.ok(messageService.getConversationMedia(conversationId));
     }
 
+    @GetMapping("/conversation/{conversationId}/around/{messageId}")
+    @Operation(summary = "Get messages around a specific message (for jump-to-message feature)")
+    public ResponseEntity<List<MessageResponse>> getMessagesAround(
+            @PathVariable String conversationId,
+            @PathVariable String messageId,
+            @RequestParam(defaultValue = "40") int size) {
+        return ResponseEntity.ok(messageService.getMessagesAround(conversationId, messageId, size / 2));
+    }
+
     @GetMapping("/conversation/{conversationId}/links")
     @Operation(summary = "Get all shared links in a conversation")
     public ResponseEntity<List<MessageResponse>> getConversationLinks(

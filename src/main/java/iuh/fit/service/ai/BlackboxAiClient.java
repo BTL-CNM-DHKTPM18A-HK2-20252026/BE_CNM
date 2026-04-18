@@ -111,6 +111,12 @@ public class BlackboxAiClient {
                 throw new IllegalStateException("AI response content is empty");
             }
 
+            String finishReason = null;
+            JsonNode choices = root.path("choices");
+            if (choices.isArray() && !choices.isEmpty()) {
+                finishReason = choices.get(0).path("finish_reason").asText(null);
+            }
+
             JsonNode usage = root.path("usage");
             int promptTokens = usage.path("prompt_tokens").asInt(0);
             int completionTokens = usage.path("completion_tokens").asInt(0);
@@ -123,6 +129,7 @@ public class BlackboxAiClient {
                     .totalTokens(totalTokens)
                     .providerRequestId(root.path("id").asText(null))
                     .model(model)
+                    .finishReason(finishReason)
                     .build();
         } catch (Exception ex) {
             log.error("Failed parsing AI response: {}", ex.getMessage());

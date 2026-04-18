@@ -25,7 +25,7 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserDetail {
-    
+
     @Id
     @Builder.Default
     String userId = UUID.randomUUID().toString(); // Same as UserAuth.userId
@@ -41,6 +41,8 @@ public class UserDetail {
     Date dob;
     @Builder.Default
     String gender = "";
+    @Builder.Default
+    String gmail = "";
     @Builder.Default
     String address = "";
     @Builder.Default

@@ -23,7 +23,7 @@ public class UserMapper {
 
         UserProfileResponse.UserProfileResponseBuilder builder = UserProfileResponse.builder()
                 .userId(userAuth.getUserId())
-                .email(userAuth.getEmail())
+                .phoneNumber(userAuth.getPhoneNumber())
                 .createdAt(userAuth.getCreatedAt());
 
         if (userDetail != null) {
@@ -32,7 +32,8 @@ public class UserMapper {
                     .lastName(userDetail.getLastName())
                     .avatarUrl(userDetail.getAvatarUrl())
                     .coverPhotoUrl(userDetail.getCoverPhotoUrl())
-                    .bio(userDetail.getBio());
+                    .bio(userDetail.getBio())
+                    .gmail(userDetail.getGmail());
         }
 
         // Calculate friend count
@@ -59,7 +60,8 @@ public class UserMapper {
 
         UserResponse.UserResponseBuilder builder = UserResponse.builder()
                 .userId(userAuth.getUserId())
-                .email(userAuth.getEmail())
+                .phoneNumber(userAuth.getPhoneNumber())
+                .gmail(userDetail != null ? userDetail.getGmail() : null)
                 .isVerified(userAuth.getIsVerified())
                 .accountStatus(userAuth.getAccountStatus() != null ? userAuth.getAccountStatus().name() : null);
 
