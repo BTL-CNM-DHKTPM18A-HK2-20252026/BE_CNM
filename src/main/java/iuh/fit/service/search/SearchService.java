@@ -34,7 +34,6 @@ import iuh.fit.document.UserDocument;
 import iuh.fit.entity.Conversations;
 import iuh.fit.entity.Friendship;
 import iuh.fit.entity.Message;
-import iuh.fit.enums.FriendshipStatus;
 import iuh.fit.entity.SearchHistory;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
@@ -71,7 +70,6 @@ public class SearchService {
     private final SearchHistoryRepository searchHistoryRepository;
     private final FriendshipRepository friendshipRepository;
     private final ElasticsearchOperations elasticsearchOperations;
-    private final FriendshipRepository friendshipRepository;
     private final ConversationRepository conversationRepository;
 
     // ── Circuit breaker state ─────────────────────────────────────────────────
@@ -365,16 +363,16 @@ public class SearchService {
                 log.warn("ES searchUsers failed, falling back to MongoDB: {}", e.getMessage());
             }
         }
-    // 2. MongoDB fallback nếu ES không có kết quả
+        // 2. MongoDB fallback nếu ES không có kết quả
         if (results.isEmpty()) {
             String escapedQuery = java.util.regex.Pattern.quote(query);
             Page<UserDetail> byName = userDetailRepository.searchByDisplayName(escapedQuery, pageable);
             java.util.LinkedHashMap<String, UserDetail> userMap = new java.util.LinkedHashMap<>();
             byName.getContent().forEach(u -> userMap.put(u.getUserId(), u));
 
-            List<UserAuth> byEmail = userAuthRepository.searchByEmail(escapedQuery);
-            if (!byEmail.isEmpty()) {
-                List<String> extraIds = byEmail.stream()
+            List<UserAuth> byPhone = userAuthRepository.searchByPhoneNumber(escapedQuery);
+            if (!byPhone.isEmpty()) {
+                List<String> extraIds = byPhone.stream()
                         .map(UserAuth::getUserId)
                         .filter(id -> !userMap.containsKey(id))
                         .toList();
@@ -391,7 +389,8 @@ public class SearchService {
                         UserDocument doc = UserDocument.builder()
                                 .userId(user.getUserId())
                                 .displayName(user.getDisplayName())
-                                .email(auth != null ? auth.getEmail() : null)
+                                .gmail(user.getGmail())
+                                .phoneNumber(auth != null ? auth.getPhoneNumber() : null)
                                 .avatarUrl(user.getAvatarUrl())
                                 .build();
                         return SearchResult.<UserDocument>builder().document(doc).build();
@@ -399,7 +398,7 @@ public class SearchService {
                     .collect(Collectors.toList());
             totalElements = results.size();
         }
-  // 3. GÁN TRẠNG THÁI QUAN HỆ (Dù dữ liệu từ nguồn nào cũng chạy qua đây)
+        // 3. GÁN TRẠNG THÁI QUAN HỆ (Dù dữ liệu từ nguồn nào cũng chạy qua đây)
         if (currentUserId != null && !results.isEmpty()) {
             results.forEach(rs -> {
                 String targetUserId = rs.getDocument().getUserId();
@@ -410,15 +409,16 @@ public class SearchService {
         return new PageImpl<>(results, pageable, totalElements);
     }
 
-
     private String determineFriendshipStatus(String currentUserId, String targetUserId) {
-        if (currentUserId.equals(targetUserId)) return "SELF";
+        if (currentUserId.equals(targetUserId))
+            return "SELF";
 
         // Tìm kiếm quan hệ không phân biệt ai là người gửi, ai là người nhận
         return friendshipRepository.findByRequesterIdAndReceiverId(currentUserId, targetUserId)
                 .or(() -> friendshipRepository.findByRequesterIdAndReceiverId(targetUserId, currentUserId))
                 .map(f -> {
-                    if (f.getStatus() == FriendshipStatus.ACCEPTED) return "FRIEND";
+                    if (f.getStatus() == FriendshipStatus.ACCEPTED)
+                        return "FRIEND";
                     if (f.getStatus() == FriendshipStatus.PENDING) {
                         // Nếu requesterId là mình -> Mình đã gửi (SENT)
                         // Nếu không phải mình (tức mình là receiver) -> Mình nhận được (RECEIVED)
@@ -665,7 +665,7 @@ public class SearchService {
         }
 
         // 2. Search users via ES/MongoDB
-        Page<SearchResult<UserDocument>> allUsers = searchUsers(query, page, size);
+        Page<SearchResult<UserDocument>> allUsers = searchUsers(query, userId, page, size);
 
         // 3. Split into friends vs global (strangers)
         List<GlobalSearchResult.FriendSearchItem> friendResults = new ArrayList<>();
@@ -727,7 +727,6 @@ public class SearchService {
                 : Page.empty();
 
         Page<SearchResult<UserDocument>> users = searchUsers(query, userId, page, size);
-
 
         Page<SearchResult<DocumentDocument>> documents = searchDocuments(query, userId, page, size);
 
@@ -801,20 +800,21 @@ public class SearchService {
 
     // ── Search history tracking ───────────────────────────────────────────────
 
-//    @Async
-//    public void trackSearch(String userId, String query, String searchType, String conversationId, int resultCount) {
-//        try {
-//            searchHistoryRepository.save(SearchHistory.builder()
-//                    .userId(userId)
-//                    .query(query)
-//                    .searchType(searchType)
-//                    .conversationId(conversationId)
-//                    .resultCount(resultCount)
-//                    .build());
-//        } catch (Exception e) {
-//            log.warn("Failed to track search history: {}", e.getMessage());
-//        }
-//    }
+    // @Async
+    // public void trackSearch(String userId, String query, String searchType,
+    // String conversationId, int resultCount) {
+    // try {
+    // searchHistoryRepository.save(SearchHistory.builder()
+    // .userId(userId)
+    // .query(query)
+    // .searchType(searchType)
+    // .conversationId(conversationId)
+    // .resultCount(resultCount)
+    // .build());
+    // } catch (Exception e) {
+    // log.warn("Failed to track search history: {}", e.getMessage());
+    // }
+    // }
 
     @Async
     public void trackInteraction(String userId, String targetId, String name, String avatar, String type) {
@@ -855,13 +855,14 @@ public class SearchService {
         return false;
     }
 
-    //ĐỒNG BỘ ELASTICSEARCH VỚI VỚI DATABASE
+    // ĐỒNG BỘ ELASTICSEARCH VỚI VỚI DATABASE
     @EventListener(ApplicationReadyEvent.class)
     public void handleContextRefresh() {
         try {
             log.info("--- ĐANG BẮT ĐẦU LÀM SẠCH VÀ ĐỒNG BỘ LẠI ELASTICSEARCH ---");
 
-            // Bước 1: Xóa toàn bộ Index cũ (Để xóa sạch các ID "ma" không tồn tại trong Mongo)
+            // Bước 1: Xóa toàn bộ Index cũ (Để xóa sạch các ID "ma" không tồn tại trong
+            // Mongo)
             var indexOps = elasticsearchOperations.indexOps(UserDocument.class);
             indexOps.delete();
             indexOps.create();
@@ -885,7 +886,8 @@ public class SearchService {
                     .userId(user.getUserId()) // ID phải khớp để không bị "User ma"
                     .displayName(user.getDisplayName())
                     .avatarUrl(user.getAvatarUrl())
-                    .email(auth != null ? auth.getEmail() : null)
+                    .gmail(user.getGmail())
+                    .phoneNumber(auth != null ? auth.getPhoneNumber() : null)
                     .build();
 
             elasticsearchOperations.save(doc); // Lưu vào Elasticsearch

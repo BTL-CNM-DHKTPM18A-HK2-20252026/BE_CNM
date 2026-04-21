@@ -98,12 +98,13 @@ public class MessageController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
+        String userId = JwtUtils.getCurrentUserId();
         if (beforeId != null && !beforeId.isEmpty()) {
-            return ResponseEntity.ok(messageService.getMessagesBefore(conversationId, beforeId, size));
+            return ResponseEntity.ok(messageService.getMessagesBefore(conversationId, beforeId, size, userId));
         }
 
         Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(messageService.getConversationMessages(conversationId, pageable));
+        return ResponseEntity.ok(messageService.getConversationMessages(conversationId, pageable, userId));
     }
 
     @GetMapping("/conversation/{conversationId}/media")

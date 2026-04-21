@@ -110,8 +110,7 @@ public class SearchController {
                 body.get("targetId"),
                 body.get("name"),
                 body.get("avatar"),
-                body.get("type")
-        );
+                body.get("type"));
         return ResponseEntity.ok(ApiResponse.<Void>builder().success(true).build());
     }
 
@@ -320,12 +319,11 @@ public class SearchController {
 
         GlobalSearchResult result = searchService.globalSearch(q.trim(), userId, conversationIds, page, size);
 
-
         int totalResults = (result.getFriends() != null ? result.getFriends().size() : 0)
                 + (result.getConversations() != null ? result.getConversations().size() : 0)
                 + (result.getMessages() != null ? (int) result.getMessages().getTotalElements() : 0)
                 + (result.getGlobalUsers() != null ? result.getGlobalUsers().size() : 0);
-        searchService.trackSearch(userId, q.trim(), "global", null, totalResults);
+        // searchService.trackSearch(userId, q.trim(), "global", null, totalResults);
 
         return ResponseEntity.ok(ApiResponse.<GlobalSearchResult>builder()
                 .success(true).message("Global search successful").data(result).build());

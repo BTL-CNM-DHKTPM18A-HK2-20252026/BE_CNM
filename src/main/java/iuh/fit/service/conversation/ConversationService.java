@@ -401,6 +401,19 @@ public class ConversationService {
                 ConversationResponse response = conversationMapper.toResponse(conv, allMembers);
                 messagingTemplate.convertAndSend("/topic/group-events/" + m.getUserId(), response);
             }
+
+            // Broadcast system message to all members in chat
+            iuh.fit.entity.UserDetail requesterDetail = userDetailRepository.findByUserId(requesterId).orElse(null);
+            String requesterName = requesterDetail != null ? requesterDetail.getDisplayName() : "Ai đó";
+            
+            List<String> names = new ArrayList<>();
+            for (ConversationMember m : newMembers) {
+                userDetailRepository.findByUserId(m.getUserId()).ifPresent(d -> names.add(d.getDisplayName()));
+            }
+            if (!names.isEmpty()) {
+                String joinedNames = String.join(", ", names);
+                broadcastSystemMessage(conversationId, requesterName + " đã thêm " + joinedNames + " vào nhóm");
+            }
         }
 
         List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
@@ -443,6 +456,13 @@ public class ConversationService {
         // Notify removed member
         messagingTemplate.convertAndSend("/topic/group-events/" + memberToRemoveId,
                 java.util.Map.of("type", "REMOVED", "conversationId", conversationId));
+
+        // Broadcast system message
+        iuh.fit.entity.UserDetail requesterDetail = userDetailRepository.findByUserId(requesterId).orElse(null);
+        iuh.fit.entity.UserDetail targetDetail = userDetailRepository.findByUserId(memberToRemoveId).orElse(null);
+        String rName = requesterDetail != null ? requesterDetail.getDisplayName() : "Ai đó";
+        String tName = targetDetail != null ? targetDetail.getDisplayName() : "Thành viên";
+        broadcastSystemMessage(conversationId, rName + " đã xóa " + tName + " khỏi nhóm");
 
         List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
         enrichWithLastMessage(conv);
@@ -579,6 +599,11 @@ public class ConversationService {
 
         conversationMemberRepository.delete(member);
         log.info("User {} left group {}", userId, conversationId);
+
+        // Broadcast system message
+        iuh.fit.entity.UserDetail detail = userDetailRepository.findByUserId(userId).orElse(null);
+        String name = detail != null ? detail.getDisplayName() : "Ai đó";
+        broadcastSystemMessage(conversationId, name + " đã rời khỏi nhóm");
     }
 
     /**

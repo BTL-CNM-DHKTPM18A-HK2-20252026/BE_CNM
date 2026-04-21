@@ -109,6 +109,7 @@ public class PinnedMessageService {
                 Map<String, Object> pinEvent = new HashMap<>();
                 pinEvent.put("type", "MESSAGE_PIN");
                 pinEvent.put("messageId", messageId);
+                pinEvent.put("replyToMessageId", messageId);
                 pinEvent.put("conversationId", conversationId);
                 pinEvent.put("pinnedBy", userId);
                 pinEvent.put("pinnedByName", response.getPinnedByUserName());
@@ -164,8 +165,14 @@ public class PinnedMessageService {
                 Map<String, Object> unpinEvent = new HashMap<>();
                 unpinEvent.put("type", "MESSAGE_UNPIN");
                 unpinEvent.put("messageId", messageId);
+                unpinEvent.put("replyToMessageId", messageId);
                 unpinEvent.put("conversationId", conversationId);
                 unpinEvent.put("unpinnedBy", userId);
+                unpinEvent.put("unpinnedByName", userDetailRepository.findByUserId(userId)
+                                .map(UserDetail::getDisplayName)
+                                .orElse("Một thành viên"));
+                unpinEvent.put("content", pinned.getContent() != null ? pinned.getContent() : message.getContent());
+                unpinEvent.put("messageType", message.getMessageType());
                 afterCommit(() -> {
                         messageCacheService.pushMessage(savedSystemMessage);
                         messageProducerService.send(savedSystemMessage);
@@ -233,10 +240,12 @@ public class PinnedMessageService {
                         return null;
                 }
 
-                return switch (message.getMessageType()) {
-                        case IMAGE, VIDEO -> message.getContent();
-                        default -> null;
-                };
+                if (message.getMessageType() == MessageType.IMAGE
+                                || message.getMessageType() == MessageType.VIDEO) {
+                        return message.getContent();
+                }
+
+                return null;
         }
 
         private Message createSystemMessage(String conversationId, String actorId, String content, LocalDateTime now) {
