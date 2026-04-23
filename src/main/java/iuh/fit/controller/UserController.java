@@ -113,7 +113,7 @@ public class UserController {
                         }
                 }
 
-                UserResponse response = userService.getUserById(userId);
+                UserResponse response = userService.getUserById(userId, currentUserId);
                 return ResponseEntity.ok(response);
         }
 

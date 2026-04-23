@@ -231,8 +231,8 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public UserResponse getUserById(String userId) {
-        log.info("Getting user by ID: {}", userId);
+    public UserResponse getUserById(String userId, String currentUserId) {
+        log.info("Getting user by ID: {} for viewer: {}", userId, currentUserId);
 
         UserAuth userAuth = userAuthRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
@@ -240,21 +240,7 @@ public class UserServiceImpl implements UserService {
         UserDetail userDetail = userDetailRepository.findByUserId(userId)
                 .orElse(null);
 
-        return UserResponse.builder()
-                .userId(userAuth.getUserId())
-                .phoneNumber(userAuth.getPhoneNumber())
-                .gmail(userDetail != null ? userDetail.getGmail() : null)
-                .displayName(userDetail != null ? userDetail.getDisplayName() : null)
-                .firstName(userDetail != null ? userDetail.getFirstName() : null)
-                .lastName(userDetail != null ? userDetail.getLastName() : null)
-                .avatarUrl(userDetail != null ? userDetail.getAvatarUrl() : null)
-                .accountStatus(userAuth.getAccountStatus().name())
-                .isVerified(userAuth.getIsVerified())
-                .gender(userDetail != null ? userDetail.getGender() : null)
-                .dob(userDetail != null ? userDetail.getDob() : null)
-                .coverPhotoUrl(userDetail != null ? userDetail.getCoverPhotoUrl() : null)
-                .bio(userDetail != null ? userDetail.getBio() : null)
-                .build();
+        return userMapper.toUserResponse(userAuth, userDetail, currentUserId);
     }
 
     @Override

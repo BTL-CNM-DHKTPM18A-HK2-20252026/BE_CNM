@@ -2,7 +2,9 @@ package iuh.fit.mapper;
 
 import iuh.fit.dto.response.conversation.ConversationResponse;
 import iuh.fit.entity.ConversationMember;
+import iuh.fit.entity.ConversationPermission;
 import iuh.fit.entity.Conversations;
+import iuh.fit.dto.response.conversation.ConversationPermissionResponse;
 import iuh.fit.entity.UserDetail;
 import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserDetailRepository;
@@ -20,15 +22,26 @@ public class ConversationMapper {
 
         private final UserDetailRepository userDetailRepository;
         private final MessageRepository messageRepository;
+        private final iuh.fit.repository.FriendshipRepository friendshipRepository;
 
         public ConversationResponse toResponse(Conversations conversation, List<ConversationMember> members) {
-                return toResponse(conversation, members, null);
+                return toResponse(conversation, members, (ConversationPermission) null, null);
         }
 
         public ConversationResponse toResponse(Conversations conversation, List<ConversationMember> members,
                         String currentUserId) {
+                return toResponse(conversation, members, (ConversationPermission) null, currentUserId);
+        }
+
+        public ConversationResponse toResponse(Conversations conversation, List<ConversationMember> members,
+                        ConversationPermission permission) {
+                return toResponse(conversation, members, permission, null);
+        }
+
+        public ConversationResponse toResponse(Conversations conversation, List<ConversationMember> members,
+                        ConversationPermission permission, String currentUserId) {
                 List<ConversationResponse.MemberInfo> memberInfos = members.stream()
-                                .map(this::mapMember)
+                                .map(m -> mapMember(m, currentUserId))
                                 .collect(Collectors.toList());
 
                 Boolean isPinned = null;
@@ -102,21 +115,47 @@ public class ConversationMapper {
                                 .isMarkedUnread(isMarkedUnread)
                                 .unreadCount(unreadCount)
                                 .autoDeleteDuration(conversation.getAutoDeleteDuration())
+                                .invitationLink(conversation.getInvitationLink() != null ? conversation.getInvitationLink() : "fruvi.chat/" + conversation.getConversationId())
+                                .permissions(toPermissionResponse(permission))
                                 .build();
         }
 
-        private ConversationResponse.MemberInfo mapMember(ConversationMember member) {
+        public ConversationPermissionResponse toPermissionResponse(ConversationPermission permission) {
+                if (permission == null)
+                        return null;
+                return ConversationPermissionResponse.builder()
+                                .canEditInfo(permission.getCanEditInfo())
+                                .canPinMessages(permission.getCanPinMessages())
+                                .canCreateNotes(permission.getCanCreateNotes())
+                                .canCreatePolls(permission.getCanCreatePolls())
+                                .canSendMessages(permission.getCanSendMessages())
+                                .isMemberApprovalRequired(permission.getIsMemberApprovalRequired())
+                                .isHighlightAdminMessages(permission.getIsHighlightAdminMessages())
+                                .canNewMembersReadRecentMessages(permission.getCanNewMembersReadRecentMessages())
+                                .build();
+        }
+
+        private ConversationResponse.MemberInfo mapMember(ConversationMember member, String currentUserId) {
                 UserDetail detail = userDetailRepository.findByUserId(member.getUserId()).orElse(null);
+                
+                Boolean isFriend = null;
+                if (currentUserId != null && !currentUserId.equals(member.getUserId())) {
+                        isFriend = friendshipRepository.findByRequesterIdAndReceiverId(currentUserId, member.getUserId())
+                                        .map(f -> f.getStatus() == iuh.fit.enums.FriendshipStatus.ACCEPTED)
+                                        .orElse(false);
+                }
+
                 return ConversationResponse.MemberInfo.builder()
                                 .userId(member.getUserId())
                                 .displayName(detail != null ? detail.getDisplayName() : "Unknown")
                                 .avatarUrl(detail != null ? detail.getAvatarUrl() : null)
                                 .role(member.getRole() != null ? member.getRole().name() : null)
                                 .nickname(member.getNickname())
+                                .isFriend(isFriend)
                                 .build();
         }
 
-        public ConversationResponse.MemberInfo toMemberInfo(ConversationMember member) {
-                return mapMember(member);
+        public ConversationResponse.MemberInfo toMemberInfo(ConversationMember member, String currentUserId) {
+                return mapMember(member, currentUserId);
         }
 }

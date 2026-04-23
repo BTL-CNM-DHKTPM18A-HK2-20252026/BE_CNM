@@ -69,7 +69,11 @@ public class UserMapper {
             builder.displayName(userDetail.getDisplayName())
                     .firstName(userDetail.getFirstName())
                     .lastName(userDetail.getLastName())
-                    .avatarUrl(userDetail.getAvatarUrl());
+                    .avatarUrl(userDetail.getAvatarUrl())
+                    .gender(userDetail.getGender())
+                    .dob(userDetail.getDob())
+                    .coverPhotoUrl(userDetail.getCoverPhotoUrl())
+                    .bio(userDetail.getBio());
         }
 
         // Check friendship status

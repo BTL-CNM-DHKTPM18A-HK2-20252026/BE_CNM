@@ -4,6 +4,7 @@ import iuh.fit.dto.request.conversation.CreateConversationRequest;
 import iuh.fit.dto.request.conversation.UpdateConversationRequest;
 import iuh.fit.dto.response.conversation.ConversationResponse;
 import iuh.fit.entity.ConversationMember;
+import iuh.fit.entity.ConversationPermission;
 import iuh.fit.entity.Conversations;
 import iuh.fit.entity.Friendship;
 import iuh.fit.entity.Message;
@@ -18,6 +19,7 @@ import iuh.fit.exception.InvalidInputException;
 import iuh.fit.exception.ResourceNotFoundException;
 import iuh.fit.mapper.ConversationMapper;
 import iuh.fit.repository.ConversationMemberRepository;
+import iuh.fit.repository.ConversationPermissionRepository;
 import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.MessageRepository;
@@ -27,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.messaging.simp.SimpMessageSendingOperations;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import iuh.fit.utils.JwtUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,8 +53,24 @@ public class ConversationService {
     private final SimpMessageSendingOperations messagingTemplate;
     private final FriendshipRepository friendshipRepository;
     private final iuh.fit.repository.UserDetailRepository userDetailRepository;
+    private final ConversationPermissionRepository conversationPermissionRepository;
     private final UserAuthRepository userAuthRepository;
     private final PasswordEncoder passwordEncoder;
+
+    private static final String[] DEFAULT_GROUP_AVATARS = {
+            "/avatar_group/avtgr1.jpg",
+            "/avatar_group/avtgr2.jpg",
+            "/avatar_group/avtgr3.jpg",
+            "/avatar_group/avtgr4.jpg",
+            "/avatar_group/avtgr5.jpg",
+            "/avatar_group/avtgr6.jpg",
+            "/avatar_group/avtgr7.jpg",
+            "/avatar_group/avtgr8.jpg",
+            "/avatar_group/avtgr9.jpg",
+            "/avatar_group/avtgr10.jpg",
+            "/avatar_group/avtgr11.jpg",
+            "/avatar_group/avtgr12.jpg"
+    };
     /**
      * Tìm cuộc hội thoại P2P giữa 2 người. Trả về null nếu chưa có (Lazy Creation).
      */
@@ -81,12 +100,14 @@ public class ConversationService {
                 .sorted()
                 .collect(Collectors.toList());
 
+        LocalDateTime now = LocalDateTime.now();
         Conversations newConv = Conversations.builder()
                 .conversationId(UUID.randomUUID().toString())
                 .conversationType(ConversationType.PRIVATE)
                 .participants(sortedParticipants)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .createdAt(now)
+                .updatedAt(now)
+                .lastMessageTime(now)
                 .isDeleted(false)
                 .build();
         final Conversations savedConv = conversationRepository.save(newConv);
@@ -121,15 +142,25 @@ public class ConversationService {
             }
         }
 
+        String avatarUrl = request.getConversationAvatarUrl();
+        if (avatarUrl == null || avatarUrl.isBlank()) {
+            int randomIdx = new java.util.Random().nextInt(DEFAULT_GROUP_AVATARS.length);
+            avatarUrl = DEFAULT_GROUP_AVATARS[randomIdx];
+        }
+
+        String groupId = UUID.randomUUID().toString();
+        LocalDateTime now = LocalDateTime.now();
         Conversations group = Conversations.builder()
-                .conversationId(UUID.randomUUID().toString())
+                .conversationId(groupId)
                 .conversationType(ConversationType.GROUP)
                 .conversationName(request.getConversationName())
-                .avatarUrl(request.getConversationAvatarUrl())
+                .avatarUrl(avatarUrl)
                 .creatorId(creatorId)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .createdAt(now)
+                .updatedAt(now)
+                .lastMessageTime(now)
                 .isDeleted(false)
+                .invitationLink("fruvi.chat/" + groupId)
                 .build();
         group = conversationRepository.save(group);
 
@@ -160,10 +191,19 @@ public class ConversationService {
         }
 
         members = conversationMemberRepository.saveAll(members);
+
+        // Create default permissions for group
+        ConversationPermission permissions = ConversationPermission.builder()
+                .conversationId(groupId)
+                .updatedAt(now)
+                .build();
+        conversationPermissionRepository.save(permissions);
+
         log.info("Created new group conversation: {}", group.getConversationName());
 
         enrichWithLastMessage(group);
-        ConversationResponse response = conversationMapper.toResponse(group, members);
+        ConversationResponse response = conversationMapper.toResponse(group, members, permissions);
+        response.setType("CREATED");
 
         // Notify all members via personal topic so their Sidebar updates instantly
         for (String memberId : allMemberIds) {
@@ -192,9 +232,13 @@ public class ConversationService {
                 .findByConversationIdAndUserId(conversationId, userId)
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
 
+        // Check permissions: Admin/Deputy always allowed. Members allowed if canEditInfo is true.
         if (requester.getRole() != MemberRole.ADMIN && requester.getRole() != MemberRole.DEPUTY) {
-            throw new ForbiddenException(ErrorCode.FORBIDDEN,
-                    "Chỉ Admin hoặc Phó nhóm mới có quyền cập nhật thông tin nhóm");
+            ConversationPermission permission = getPermissions(conversationId);
+            if (permission == null || !Boolean.TRUE.equals(permission.getCanEditInfo())) {
+                throw new ForbiddenException(ErrorCode.FORBIDDEN,
+                        "Chỉ Admin hoặc Phó nhóm mới có quyền cập nhật thông tin nhóm");
+            }
         }
 
         if (request.getConversationName() != null) {
@@ -211,8 +255,10 @@ public class ConversationService {
         conv = conversationRepository.save(conv);
 
         List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
+        ConversationPermission permission = conversationPermissionRepository.findByConversationId(conversationId).orElse(null);
         enrichWithLastMessage(conv);
-        ConversationResponse response = conversationMapper.toResponse(conv, allMembers);
+        ConversationResponse response = conversationMapper.toResponse(conv, allMembers, permission);
+        response.setType("UPDATED");
 
         // Notify all members about group info update
         for (ConversationMember member : allMembers) {
@@ -224,6 +270,56 @@ public class ConversationService {
                 conversationId, request.getConversationName(), request.getConversationAvatarUrl(),
                 request.getGroupDescription());
 
+        return response;
+    }
+
+    /**
+     * Cập nhật quyền hạn nhóm (ai có quyền đổi thông tin, ghim tin nhắn, v.v.).
+     * Chỉ ADMIN hoặc DEPUTY mới có quyền.
+     */
+    @Transactional
+    public ConversationResponse updatePermissions(String conversationId, String userId, iuh.fit.dto.request.conversation.UpdatePermissionRequest request) {
+        Conversations conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CONVERSATION_NOT_FOUND));
+
+        if (conv.getConversationType() != ConversationType.GROUP) {
+            throw new InvalidInputException(ErrorCode.INVALID_INPUT, "Chỉ có thể cập nhật quyền hạn cho nhóm chat");
+        }
+
+        ConversationMember requester = conversationMemberRepository
+                .findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
+
+        if (requester.getRole() != MemberRole.ADMIN && requester.getRole() != MemberRole.DEPUTY) {
+            throw new ForbiddenException(ErrorCode.FORBIDDEN, "Chỉ Admin hoặc Phó nhóm mới có quyền cập nhật quyền hạn nhóm");
+        }
+
+        ConversationPermission permission = conversationPermissionRepository.findByConversationId(conversationId)
+                .orElseGet(() -> ConversationPermission.builder().conversationId(conversationId).build());
+
+        if (request.getCanEditInfo() != null) permission.setCanEditInfo(request.getCanEditInfo());
+        if (request.getCanPinMessages() != null) permission.setCanPinMessages(request.getCanPinMessages());
+        if (request.getCanCreateNotes() != null) permission.setCanCreateNotes(request.getCanCreateNotes());
+        if (request.getCanCreatePolls() != null) permission.setCanCreatePolls(request.getCanCreatePolls());
+        if (request.getCanSendMessages() != null) permission.setCanSendMessages(request.getCanSendMessages());
+        if (request.getIsMemberApprovalRequired() != null) permission.setIsMemberApprovalRequired(request.getIsMemberApprovalRequired());
+        if (request.getIsHighlightAdminMessages() != null) permission.setIsHighlightAdminMessages(request.getIsHighlightAdminMessages());
+        if (request.getCanNewMembersReadRecentMessages() != null) permission.setCanNewMembersReadRecentMessages(request.getCanNewMembersReadRecentMessages());
+
+        permission.setUpdatedAt(LocalDateTime.now());
+        permission = conversationPermissionRepository.save(permission);
+
+        List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
+        enrichWithLastMessage(conv);
+        ConversationResponse response = conversationMapper.toResponse(conv, allMembers, permission);
+        response.setType("PERMISSIONS_UPDATED");
+
+        // Notify all members about permissions update
+        for (ConversationMember member : allMembers) {
+            messagingTemplate.convertAndSend("/topic/group-events/" + member.getUserId(), response);
+        }
+
+        log.info("Updated permissions for conversation {}: {}", conversationId, request);
         return response;
     }
 
@@ -240,7 +336,7 @@ public class ConversationService {
 
                     List<ConversationMember> members = conversationMemberRepository
                             .findByConversationId(conv.getConversationId());
-                    return conversationMapper.toResponse(conv, members, userId);
+                    return conversationMapper.toResponse(conv, members, getPermissions(conv.getConversationId()), userId);
                 })
                 .filter(resp -> resp != null)
                 .sorted((c1, c2) -> {
@@ -348,7 +444,7 @@ public class ConversationService {
 
         List<ConversationMember> members = conversationMemberRepository.findByConversationId(conversationId);
         return members.stream()
-                .map(m -> conversationMapper.toMemberInfo(m))
+                .map(m -> conversationMapper.toMemberInfo(m, userId))
                 .collect(Collectors.toList());
     }
 
@@ -369,6 +465,7 @@ public class ConversationService {
         ConversationMember requester = conversationMemberRepository
                 .findByConversationIdAndUserId(conversationId, requesterId)
                 .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của nhóm này"));
+        // Check requester has ADMIN or DEPUTY role
         if (requester.getRole() != MemberRole.ADMIN && requester.getRole() != MemberRole.DEPUTY) {
             throw new RuntimeException("Chỉ Admin hoặc Phó nhóm mới có quyền thêm thành viên");
         }
@@ -398,7 +495,8 @@ public class ConversationService {
             for (ConversationMember m : newMembers) {
                 enrichWithLastMessage(conv);
                 List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
-                ConversationResponse response = conversationMapper.toResponse(conv, allMembers);
+                ConversationResponse response = conversationMapper.toResponse(conv, allMembers, getPermissions(conversationId));
+                response.setType("CREATED");
                 messagingTemplate.convertAndSend("/topic/group-events/" + m.getUserId(), response);
             }
 
@@ -418,7 +516,7 @@ public class ConversationService {
 
         List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
         enrichWithLastMessage(conv);
-        return conversationMapper.toResponse(conv, allMembers);
+        return conversationMapper.toResponse(conv, allMembers, getPermissions(conversationId));
     }
 
     /**
@@ -466,7 +564,7 @@ public class ConversationService {
 
         List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
         enrichWithLastMessage(conv);
-        return conversationMapper.toResponse(conv, allMembers);
+        return conversationMapper.toResponse(conv, allMembers, getPermissions(conversationId));
     }
 
     // ==================== ROLE MANAGEMENT ====================
@@ -512,7 +610,7 @@ public class ConversationService {
 
         // Send system message via WebSocket
         // Gửi thông báo hệ thống qua WebSocket
-        ConversationResponse.MemberInfo targetInfo = conversationMapper.toMemberInfo(target);
+        ConversationResponse.MemberInfo targetInfo = conversationMapper.toMemberInfo(target, requesterId);
         String systemMsg = targetInfo.getDisplayName() + " đã được phong làm " + roleLabel;
         broadcastSystemMessage(conversationId, systemMsg);
 
@@ -552,7 +650,7 @@ public class ConversationService {
 
         log.info("Transferred admin from {} to {} in group {}", requesterId, newAdminId, conversationId);
 
-        ConversationResponse.MemberInfo newAdminInfo = conversationMapper.toMemberInfo(newAdmin);
+        ConversationResponse.MemberInfo newAdminInfo = conversationMapper.toMemberInfo(newAdmin, requesterId);
         String systemMsg = newAdminInfo.getDisplayName() + " đã trở thành Trưởng nhóm mới";
         broadcastSystemMessage(conversationId, systemMsg);
     }
@@ -750,6 +848,10 @@ public class ConversationService {
                     member.setIsMarkedUnread(false);
                     conversationMemberRepository.save(member);
                 });
+    }
+
+    private ConversationPermission getPermissions(String conversationId) {
+        return conversationPermissionRepository.findByConversationId(conversationId).orElse(null);
     }
 
     /**
@@ -1096,7 +1198,7 @@ public class ConversationService {
                     enrichWithLastMessage(conv);
                     List<ConversationMember> members = conversationMemberRepository
                             .findByConversationId(conv.getConversationId());
-                    return conversationMapper.toResponse(conv, members, userId);
+                    return conversationMapper.toResponse(conv, members, getPermissions(conv.getConversationId()), userId);
                 })
                 .filter(resp -> resp != null)
                 .collect(Collectors.toList());
@@ -1174,5 +1276,89 @@ public class ConversationService {
                     return name.contains(lowerKeyword) || lastMsg.contains(lowerKeyword);
                 })
                 .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public ConversationResponse joinGroup(String conversationId, String userId) {
+        Conversations conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CONVERSATION_NOT_FOUND));
+
+        if (conv.getConversationType() != ConversationType.GROUP) {
+            throw new InvalidInputException(ErrorCode.INVALID_INPUT, "Chỉ có thể tham gia nhóm chat qua link");
+        }
+
+        // Check if already a member
+        Optional<ConversationMember> existing = conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId);
+        if (existing.isPresent()) {
+            // Already a member, just return the conversation
+            List<ConversationMember> members = conversationMemberRepository.findByConversationId(conversationId);
+            return conversationMapper.toResponse(conv, members, getPermissions(conversationId), userId);
+        }
+
+        // Create new member
+        ConversationMember newMember = ConversationMember.builder()
+                .id(UUID.randomUUID().toString())
+                .conversationId(conversationId)
+                .userId(userId)
+                .role(MemberRole.MEMBER)
+                .joinedAt(LocalDateTime.now())
+                .build();
+        conversationMemberRepository.save(newMember);
+
+        // Broadcast system message
+        iuh.fit.entity.UserDetail detail = userDetailRepository.findByUserId(userId).orElse(null);
+        String name = detail != null ? detail.getDisplayName() : "Ai đó";
+        broadcastSystemMessage(conversationId, name + " đã tham gia nhóm qua link");
+
+        List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
+        enrichWithLastMessage(conv);
+        ConversationResponse response = conversationMapper.toResponse(conv, allMembers, getPermissions(conversationId), userId);
+        response.setType("CREATED"); // Notify the joining user
+
+        // Notify other members
+        for (ConversationMember m : allMembers) {
+            if (!m.getUserId().equals(userId)) {
+                messagingTemplate.convertAndSend("/topic/group-events/" + m.getUserId(), response);
+            }
+        }
+
+        return response;
+    }
+    public java.util.Map<String, Object> getGroupPreview(String conversationId) {
+        Conversations conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new iuh.fit.exception.ResourceNotFoundException(iuh.fit.exception.ErrorCode.CONVERSATION_NOT_FOUND));
+
+        if (conv.getConversationType() != iuh.fit.enums.ConversationType.GROUP) {
+            throw new iuh.fit.exception.InvalidInputException(iuh.fit.exception.ErrorCode.INVALID_INPUT, "Hội thoại không phải là nhóm");
+        }
+
+        List<iuh.fit.entity.ConversationMember> members = conversationMemberRepository.findByConversationId(conversationId);
+        
+        java.util.Map<String, Object> preview = new java.util.HashMap<>();
+        preview.put("conversationId", conv.getConversationId());
+        preview.put("name", conv.getConversationName());
+        preview.put("avatar", conv.getAvatarUrl());
+        preview.put("memberCount", members.size());
+        
+        // Get some member avatars for the preview
+        List<String> memberAvatars = members.stream()
+                .map(m -> {
+                    iuh.fit.entity.UserDetail detail = userDetailRepository.findByUserId(m.getUserId()).orElse(null);
+                    return detail != null ? detail.getAvatarUrl() : null;
+                })
+                .filter(java.util.Objects::nonNull)
+                .limit(3)
+                .collect(java.util.stream.Collectors.toList());
+        preview.put("memberAvatars", memberAvatars);
+        
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId != null) {
+            boolean isMember = members.stream().anyMatch(m -> m.getUserId().equals(userId));
+            preview.put("isMember", isMember);
+        } else {
+            preview.put("isMember", false);
+        }
+
+        return preview;
     }
 }

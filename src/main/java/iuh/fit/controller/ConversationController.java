@@ -95,6 +95,18 @@ public class ConversationController {
         return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật thông tin nhóm thành công"));
     }
 
+    @PatchMapping("/{conversationId}/permissions")
+    @Operation(summary = "Update group conversation permissions (canEditInfo, canPinMessages, etc.). Admin/Deputy only.")
+    public ResponseEntity<ApiResponse<ConversationResponse>> updatePermissions(
+            @PathVariable String conversationId,
+            @Valid @RequestBody iuh.fit.dto.request.conversation.UpdatePermissionRequest request) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        ConversationResponse response = conversationService.updatePermissions(conversationId, userId, request);
+        return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật quyền hạn nhóm thành công"));
+    }
+
     // ==================== GROUP MEMBER MANAGEMENT ====================
 
     @GetMapping("/{conversationId}/members")
@@ -452,5 +464,26 @@ public class ConversationController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         List<ConversationResponse> results = conversationService.searchHiddenConversations(userId, q, pinCode);
         return ResponseEntity.ok(ApiResponse.success(results, "OK"));
+    }
+
+    @PostMapping("/join/{conversationId}")
+    @Operation(summary = "Join a group conversation via invitation link/ID")
+    public ResponseEntity<ApiResponse<ConversationResponse>> joinGroup(
+            @PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.joinGroup(conversationId, userId),
+                "Tham gia nhóm thành công"));
+    }
+
+    @GetMapping("/join/{conversationId}/preview")
+    @Operation(summary = "Get basic group info for invitation link preview (Public)")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getGroupPreview(
+            @PathVariable String conversationId) {
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.getGroupPreview(conversationId),
+                "Lấy thông tin xem trước nhóm thành công"));
     }
 }

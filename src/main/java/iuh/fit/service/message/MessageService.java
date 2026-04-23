@@ -26,6 +26,7 @@ import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.PinnedMessageRepository;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserSettingRepository;
+import iuh.fit.repository.ConversationPermissionRepository;
 import iuh.fit.entity.UserDetail;
 import iuh.fit.mapper.ConversationMapper;
 import iuh.fit.dto.response.conversation.ConversationResponse;
@@ -76,6 +77,7 @@ import java.util.stream.Collectors;
         private final UserSettingRepository userSettingRepository;
         private final SearchService searchService;
         private final PinnedMessageRepository pinnedMessageRepository;
+        private final ConversationPermissionRepository conversationPermissionRepository;
         private final MessageBucketService messageBucketService;
         private final MessageCacheService messageCacheService;
         private final MessageProducerService messageProducerService;
@@ -205,6 +207,20 @@ import java.util.stream.Collectors;
                         if (!areFriends) {
                             conv.setConversationStatus(ConversationStatus.PENDING);
                         }
+                    }
+                }
+            }
+            // ─────────────────────────────────────────────────────────────────────────
+            // ── Group Messaging Permission Check ──────────────────────────────────────
+            if (conv.getConversationType() == ConversationType.GROUP) {
+                ConversationMember requester = conversationMemberRepository.findByConversationIdAndUserId(convId, senderId)
+                        .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của nhóm này"));
+
+                // Admin/Deputy always allowed. Members allowed if canSendMessages is true.
+                if (requester.getRole() != MemberRole.ADMIN && requester.getRole() != MemberRole.DEPUTY) {
+                    iuh.fit.entity.ConversationPermission permission = conversationPermissionRepository.findByConversationId(convId).orElse(null);
+                    if (permission != null && Boolean.FALSE.equals(permission.getCanSendMessages())) {
+                        throw new RuntimeException("Trưởng nhóm đã tắt tính năng gửi tin nhắn đối với thành viên");
                     }
                 }
             }

@@ -44,7 +44,10 @@ import lombok.extern.slf4j.Slf4j;
 @Tag(name = "File Management", description = "API for managing file uploads (images, videos, documents)")
 public class FileUploadController {
 
-    FileStorageService fileStorageService;
+    final FileStorageService fileStorageService;
+    final iuh.fit.service.s3.S3Service s3Service;
+
+
 
     /**
      * Upload một file
@@ -242,5 +245,43 @@ public class FileUploadController {
         response.put("expiresIn", duration + " seconds");
 
         return ResponseEntity.ok(response);
+    }
+    @GetMapping("/download")
+    public ResponseEntity<Void> downloadFileProxy(
+            @RequestParam("url") String fileUrl,
+            @RequestParam(value = "filename", required = false) String customFileName) {
+        try {
+            log.info("Proxy download request for URL: {}, customFileName: {}", fileUrl, customFileName);
+            
+            String fileName = customFileName;
+            if (fileName == null || fileName.isBlank()) {
+                try {
+                    String path = new java.net.URL(fileUrl).getPath();
+                    fileName = path.substring(path.lastIndexOf("/") + 1);
+                    if (fileName.isEmpty()) fileName = "file";
+                    fileName = java.net.URLDecoder.decode(fileName, java.nio.charset.StandardCharsets.UTF_8);
+                } catch (Exception e) {
+                    fileName = "downloaded_file";
+                }
+            }
+
+            if (fileUrl.contains(".amazonaws.com/")) {
+                // Generate a pre-signed URL with attachment disposition and redirect
+                String downloadUrl = s3Service.generateDownloadUrl(fileUrl, fileName);
+                return ResponseEntity.status(HttpStatus.FOUND)
+                        .location(java.net.URI.create(downloadUrl))
+                        .build();
+            }
+
+            // Fallback: Redirect to original URL if not S3
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(java.net.URI.create(fileUrl))
+                    .build();
+        } catch (Exception e) {
+            log.error("Error proxying download for {}: {}", fileUrl, e.getMessage());
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(java.net.URI.create(fileUrl))
+                    .build();
+        }
     }
 }

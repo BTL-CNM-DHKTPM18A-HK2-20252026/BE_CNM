@@ -120,10 +120,17 @@ public class S3Service {
     private String extractKey(String url) {
         if (url == null)
             return null;
-        int idx = url.indexOf(".com/");
-        if (idx == -1)
+        try {
+            int idx = url.indexOf(".com/");
+            if (idx == -1)
+                return null;
+            String key = url.substring(idx + 5);
+            // Decode the key because the URL has it encoded (e.g. %20 -> space)
+            return java.net.URLDecoder.decode(key, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.error("Failed to decode S3 key from URL: {}", url);
             return null;
-        return url.substring(idx + 5);
+        }
     }
 
     /**
@@ -143,10 +150,32 @@ public class S3Service {
     }
 
     /**
+     * Generates a pre-signed download URL that forces the browser to download the file.
+     * 
+     * @param url The public S3 URL of the file
+     * @param fileName The name to be used for the downloaded file
+     * @return Pre-signed URL string with attachment disposition
+     */
+    public String generateDownloadUrl(String url, String fileName) {
+        String key = extractKey(url);
+        if (key == null || key.isBlank()) return url;
+
+        Date expiration = new Date();
+        expiration.setTime(expiration.getTime() + 1000L * 60 * 15); // 15 minutes
+
+        com.amazonaws.services.s3.model.ResponseHeaderOverrides overrides = new com.amazonaws.services.s3.model.ResponseHeaderOverrides()
+                .withContentDisposition("attachment; filename=\"" + fileName + "\"");
+
+        GeneratePresignedUrlRequest req = new GeneratePresignedUrlRequest(bucketName, key)
+                .withMethod(HttpMethod.GET)
+                .withExpiration(expiration)
+                .withResponseHeaders(overrides);
+
+        return s3Client.generatePresignedUrl(req).toString();
+    }
+
+    /**
      * Deletes multiple S3 objects in parallel using a fixed thread pool.
-     * Each deletion is best-effort; failures are logged but do not abort the batch.
-     *
-     * @param urls list of full S3 URLs to delete
      */
     public void deleteObjectsParallel(List<String> urls) {
         if (urls == null || urls.isEmpty())

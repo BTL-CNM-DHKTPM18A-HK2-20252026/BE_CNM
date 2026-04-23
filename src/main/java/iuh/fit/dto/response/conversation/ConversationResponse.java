@@ -14,6 +14,7 @@ import lombok.NoArgsConstructor;
 @Builder
 public class ConversationResponse {
     private String conversationId;
+    private String type; // For websocket event identification (e.g., UPDATED, CREATED)
     private String conversationType;
     private String conversationName;
     private String conversationAvatarUrl;
@@ -30,6 +31,8 @@ public class ConversationResponse {
     private LocalDateTime mutedUntil; // Null = not muted
     private Boolean isMarkedUnread; // Per-user mark as unread
     private String autoDeleteDuration; // off, 1d, 7d, 30d
+    private String invitationLink;
+    private ConversationPermissionResponse permissions;
 
     @Data
     @AllArgsConstructor
@@ -41,5 +44,6 @@ public class ConversationResponse {
         private String avatarUrl;
         private String role;
         private String nickname;
+        private Boolean isFriend;
     }
 }

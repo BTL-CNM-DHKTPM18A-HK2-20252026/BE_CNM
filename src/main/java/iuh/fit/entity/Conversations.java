@@ -49,6 +49,7 @@ public class Conversations {
     LocalDateTime updatedAt;
     Boolean isDeleted; // Soft-delete flag
     String autoDeleteDuration; // off, 1d, 7d, 30d
+    String invitationLink; // Group invitation link
 
     // AI memory snapshot for long conversations
     String aiSummary;

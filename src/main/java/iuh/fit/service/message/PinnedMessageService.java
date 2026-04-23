@@ -14,6 +14,7 @@ import iuh.fit.enums.MessageType;
 import iuh.fit.mapper.ConversationMapper;
 import iuh.fit.mapper.MessageMapper;
 import iuh.fit.repository.ConversationMemberRepository;
+import iuh.fit.repository.ConversationPermissionRepository;
 import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.PinnedMessageRepository;
@@ -44,6 +45,7 @@ public class PinnedMessageService {
         private final MessageRepository messageRepository;
         private final ConversationRepository conversationRepository;
         private final ConversationMemberRepository conversationMemberRepository;
+        private final ConversationPermissionRepository conversationPermissionRepository;
         private final UserDetailRepository userDetailRepository;
         private final MessageMapper messageMapper;
         private final ConversationMapper conversationMapper;
@@ -57,10 +59,17 @@ public class PinnedMessageService {
                                 .orElseThrow(() -> new RuntimeException("Message not found"));
 
                 String conversationId = message.getConversationId();
-
-                // Verify user is a member of the conversation
-                conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                // Verify user is a member of the conversation and check role/permissions
+                ConversationMember requester = conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
                                 .orElseThrow(() -> new RuntimeException("Not a member of this conversation"));
+
+                // Admin/Deputy always allowed. Members allowed if canPinMessages is true.
+                if (requester.getRole() != iuh.fit.enums.MemberRole.ADMIN && requester.getRole() != iuh.fit.enums.MemberRole.DEPUTY) {
+                        iuh.fit.entity.ConversationPermission permission = conversationPermissionRepository.findByConversationId(conversationId).orElse(null);
+                        if (permission == null || !Boolean.TRUE.equals(permission.getCanPinMessages())) {
+                                throw new RuntimeException("Chỉ Admin hoặc Phó nhóm mới có quyền ghim tin nhắn");
+                        }
+                }
 
                 // Check if already pinned
                 if (pinnedMessageRepository.findByMessageIdAndConversationId(messageId, conversationId).isPresent()) {
@@ -133,9 +142,17 @@ public class PinnedMessageService {
 
                 String conversationId = message.getConversationId();
 
-                // Verify user is a member of the conversation
-                conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                // Verify user is a member of the conversation and check role/permissions
+                ConversationMember requester = conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
                                 .orElseThrow(() -> new RuntimeException("Not a member of this conversation"));
+
+                // Admin/Deputy always allowed. Members allowed if canPinMessages is true.
+                if (requester.getRole() != iuh.fit.enums.MemberRole.ADMIN && requester.getRole() != iuh.fit.enums.MemberRole.DEPUTY) {
+                        iuh.fit.entity.ConversationPermission permission = conversationPermissionRepository.findByConversationId(conversationId).orElse(null);
+                        if (permission == null || !Boolean.TRUE.equals(permission.getCanPinMessages())) {
+                                throw new RuntimeException("Chỉ Admin hoặc Phó nhóm mới có quyền bỏ ghim tin nhắn");
+                        }
+                }
 
                 PinnedMessage pinned = pinnedMessageRepository
                                 .findByMessageIdAndConversationId(messageId, conversationId)

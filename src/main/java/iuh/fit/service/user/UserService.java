@@ -21,10 +21,11 @@ public interface UserService {
     /**
      * Get user by ID
      * 
-     * @param userId User ID
-     * @return User response
+     * @param userId        Target user ID
+     * @param currentUserId Optional current user ID to check friendship status
+     * @return UserResponse
      */
-    UserResponse getUserById(String userId);
+    UserResponse getUserById(String userId, String currentUserId);
 
     /**
      * Get essential user information for current user
