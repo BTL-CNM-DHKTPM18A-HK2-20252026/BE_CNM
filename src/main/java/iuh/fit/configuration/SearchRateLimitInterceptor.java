@@ -22,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class SearchRateLimitInterceptor implements HandlerInterceptor {
 
+
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 

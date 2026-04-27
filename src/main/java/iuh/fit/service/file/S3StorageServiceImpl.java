@@ -25,8 +25,8 @@ import iuh.fit.entity.FileUpload;
 import iuh.fit.enums.FileType;
 import iuh.fit.enums.StorageProvider;
 import iuh.fit.repository.FileUploadRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * S3 Storage Service Implementation using AWS SDK v1
@@ -34,20 +34,15 @@ import org.slf4j.LoggerFactory;
  */
 @Service
 @Primary
+@RequiredArgsConstructor
+@Slf4j
 public class S3StorageServiceImpl implements FileStorageService {
-
-    private static final Logger log = LoggerFactory.getLogger(S3StorageServiceImpl.class);
-
     private final AmazonS3 s3Client;
     private final FileUploadRepository fileUploadRepository;
 
     @Value("${aws.s3.bucket-name}")
     private String bucketName;
 
-    public S3StorageServiceImpl(AmazonS3 s3Client, FileUploadRepository fileUploadRepository) {
-        this.s3Client = s3Client;
-        this.fileUploadRepository = fileUploadRepository;
-    }
 
     @Override
     public FileUploadResponse uploadFile(MultipartFile file, FileUploadRequest request, String userId) {

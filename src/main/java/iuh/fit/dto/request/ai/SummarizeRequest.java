@@ -24,4 +24,12 @@ public class SummarizeRequest {
      * Defaults to 100 if not provided.
      */
     private Integer messageCount;
+
+    // Manual getters/setters to bypass Lombok issues
+    public String getConversationId() { return conversationId; }
+    public void setConversationId(String conversationId) { this.conversationId = conversationId; }
+    public String getLastReadMessageId() { return lastReadMessageId; }
+    public void setLastReadMessageId(String lastReadMessageId) { this.lastReadMessageId = lastReadMessageId; }
+    public Integer getMessageCount() { return messageCount; }
+    public void setMessageCount(Integer messageCount) { this.messageCount = messageCount; }
 }

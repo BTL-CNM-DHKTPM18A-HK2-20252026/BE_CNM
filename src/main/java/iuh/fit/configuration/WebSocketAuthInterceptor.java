@@ -46,6 +46,7 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 @Slf4j
 public class WebSocketAuthInterceptor implements ChannelInterceptor {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(WebSocketAuthInterceptor.class);
 
     @Value("${jwt.access-token.secret}")
     private String accessTokenSecret;

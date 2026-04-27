@@ -42,12 +42,6 @@ import lombok.extern.slf4j.Slf4j;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 @Slf4j
 @Tag(name = "File Management", description = "API for managing file uploads (images, videos, documents)")
-@RestController
-@RequestMapping("/files")
-@RequiredArgsConstructor
-@FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-@Slf4j
-@Tag(name = "File Management", description = "API for managing file uploads (images, videos, documents)")
 public class FileController {
 
     final FileStorageService fileStorageService;

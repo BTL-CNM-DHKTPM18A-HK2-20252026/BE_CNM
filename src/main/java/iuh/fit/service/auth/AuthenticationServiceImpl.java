@@ -44,6 +44,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @FieldDefaults(makeFinal = true, level = AccessLevel.PRIVATE)
 public class AuthenticationServiceImpl implements AuthenticationService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthenticationServiceImpl.class);
 
     private static final String ACCESS_TOKEN_TYPE = "access";
     private static final String REFRESH_TOKEN_TYPE = "refresh";

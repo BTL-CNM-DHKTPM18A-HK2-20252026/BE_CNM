@@ -12,15 +12,16 @@ import co.elastic.clients.elasticsearch.ilm.Phase;
 import co.elastic.clients.elasticsearch.ilm.Phases;
 import co.elastic.clients.elasticsearch.ilm.PutLifecycleRequest;
 import co.elastic.clients.elasticsearch._types.Time;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class ElasticsearchIndexInitializer {
-  private static final Logger log = LoggerFactory.getLogger(ElasticsearchIndexInitializer.class);
 
   private final ElasticsearchClient elasticsearchClient;
+
 
   @EventListener(ApplicationReadyEvent.class)
   public void initIndices() {

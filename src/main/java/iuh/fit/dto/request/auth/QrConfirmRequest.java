@@ -15,4 +15,9 @@ import lombok.experimental.FieldDefaults;
 public class QrConfirmRequest {
     String uuid;
     String userId; // Identity of the mobile user
+
+    public String getUuid() { return uuid; }
+    public void setUuid(String uuid) { this.uuid = uuid; }
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
 }

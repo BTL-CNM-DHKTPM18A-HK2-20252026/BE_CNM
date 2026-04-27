@@ -38,6 +38,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class RedisConfig {
 
+
     /**
      * StringRedisTemplate — dùng cho Layer 1 (Session) và Layer 2 (Presence).
      * Hiệu suất cao nhất vì serialize/deserialize thuần String.

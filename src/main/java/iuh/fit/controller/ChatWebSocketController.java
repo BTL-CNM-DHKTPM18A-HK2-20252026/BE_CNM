@@ -30,6 +30,7 @@ public class ChatWebSocketController {
     private final UserSettingRepository userSettingRepository;
     private final TypingIndicatorService typingIndicatorService;
 
+
     /**
      * Typing indicator: Client sends to /app/chat/{conversationId}/typing
      * Server broadcasts to /topic/chat/{conversationId}/typing

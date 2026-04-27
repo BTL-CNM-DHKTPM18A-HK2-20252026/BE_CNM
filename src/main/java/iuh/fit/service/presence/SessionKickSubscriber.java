@@ -23,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Slf4j
 public class SessionKickSubscriber implements MessageListener {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SessionKickSubscriber.class);
 
     private final SimpMessagingTemplate messagingTemplate;
     private final SessionService sessionService;

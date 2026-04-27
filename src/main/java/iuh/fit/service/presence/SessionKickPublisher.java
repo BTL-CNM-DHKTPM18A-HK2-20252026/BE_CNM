@@ -20,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class SessionKickPublisher {
 
+
     private final StringRedisTemplate stringRedisTemplate;
     private final ChannelTopic sessionKickTopic;
 

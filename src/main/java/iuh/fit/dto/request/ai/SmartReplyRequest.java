@@ -12,4 +12,7 @@ public class SmartReplyRequest {
 
     @NotBlank(message = "conversationId is required")
     private String conversationId;
+
+    public String getConversationId() { return conversationId; }
+    public void setConversationId(String conversationId) { this.conversationId = conversationId; }
 }

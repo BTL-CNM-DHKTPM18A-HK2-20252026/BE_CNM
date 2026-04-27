@@ -47,6 +47,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Slf4j
 public class SessionService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SessionService.class);
 
     private static final String KEY_PREFIX = "user:session:";
     private static final long SESSION_TTL_HOURS = 24;

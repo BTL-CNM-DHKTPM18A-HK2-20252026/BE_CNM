@@ -30,8 +30,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Configuration
+@Slf4j
 public class DataInitializer {
-        private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
 
         private final String ddlAuto;
         private final PasswordEncoder passwordEncoder;

@@ -34,6 +34,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Slf4j
 public class PresenceExpirationSubscriber implements MessageListener {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PresenceExpirationSubscriber.class);
 
     private static final String PRESENCE_KEY_PREFIX = "user:presence:";
 

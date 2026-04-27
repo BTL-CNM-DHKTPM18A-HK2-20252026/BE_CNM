@@ -26,14 +26,15 @@ import iuh.fit.mapper.PostMapper;
 import iuh.fit.repository.PostMediaRepository;
 import iuh.fit.repository.PostReactionRepository;
 import iuh.fit.repository.PostRepository;
+import lombok.Builder;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PostService {
-    private static final Logger log = LoggerFactory.getLogger(PostService.class);
 
     private final PostRepository postRepository;
     private final PostMapper postMapper;

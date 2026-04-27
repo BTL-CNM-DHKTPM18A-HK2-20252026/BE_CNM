@@ -8,13 +8,21 @@ import iuh.fit.mapper.StoryMapper;
 import iuh.fit.repository.StoryRepository;
 import iuh.fit.repository.StoryViewRepository;
 import iuh.fit.service.friend.FriendService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class StoryService {
-    private static final Logger log = LoggerFactory.getLogger(StoryService.class);
     
     private final StoryRepository storyRepository;
     private final StoryViewRepository storyViewRepository;

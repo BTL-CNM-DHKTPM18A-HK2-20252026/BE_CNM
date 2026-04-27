@@ -32,9 +32,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import iuh.fit.utils.JwtUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -46,8 +43,8 @@ import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ConversationService {
-    private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
     private final ConversationRepository conversationRepository;
     private final ConversationMemberRepository conversationMemberRepository;
     private final MessageRepository messageRepository;
@@ -58,6 +55,7 @@ public class ConversationService {
     private final ConversationPermissionRepository conversationPermissionRepository;
     private final UserAuthRepository userAuthRepository;
     private final PasswordEncoder passwordEncoder;
+
 
     private static final String[] DEFAULT_GROUP_AVATARS = {
             "/avatar_group/avtgr1.jpg",

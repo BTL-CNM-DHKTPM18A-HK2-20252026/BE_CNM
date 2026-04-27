@@ -64,6 +64,7 @@ public class PresenceService {
     private final UserAuthRepository userAuthRepository;
     private final UserSettingRepository userSettingRepository;
 
+
     // Fallback cache when Redis is down: userId -> expiresAtEpochMillis
     private final ConcurrentMap<String, Long> localPresenceCache = new ConcurrentHashMap<>();
     private final AtomicBoolean redisHealthy = new AtomicBoolean(true);

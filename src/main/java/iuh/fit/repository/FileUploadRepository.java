@@ -20,6 +20,11 @@ public interface FileUploadRepository extends MongoRepository<FileUpload, String
     List<FileUpload> findByUploadedBy(String uploadedBy);
 
     /**
+     * Tìm file theo uploadedBy, sắp xếp theo thời gian upload mới nhất
+     */
+    List<FileUpload> findByUploadedByOrderByUploadedAtDesc(String uploadedBy);
+
+    /**
      * Tìm file theo loại file
      */
     List<FileUpload> findByFileType(FileType fileType);

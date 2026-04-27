@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class MessageSummaryService {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MessageSummaryService.class);
 
     private final MessageRepository messageRepository;
     private final ConversationMemberRepository conversationMemberRepository;

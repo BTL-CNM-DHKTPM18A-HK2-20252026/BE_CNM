@@ -22,41 +22,28 @@ import lombok.NoArgsConstructor;
 @JsonInclude(Include.NON_NULL)
 public class ErrorResponse {
     
-    /**
-     * HTTP status code (400, 401, 404, 500...)
-     */
     private int status;
-    
-    /**
-     * Error code cụ thể để frontend identify lỗi
-     * VD: USER_NOT_FOUND, INVALID_TOKEN, MESSAGE_TOO_LONG
-     */
     private String errorCode;
-    
-    /**
-     * Message mô tả lỗi bằng tiếng Việt (hiển thị cho user)
-     */
     private String message;
     
-    /**
-     * Timestamp khi lỗi xảy ra
-     */
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime timestamp;
-    
-    /**
-     * API path gây ra lỗi
-     */
     private String path;
-    
-    /**
-     * Chi tiết bổ sung (tùy chọn, chỉ hiển thị trong dev mode)
-     */
     private Object details;
 
-    /**
-     * Constructor đơn giản cho errors không cần details
-     */
+    public int getStatus() { return status; }
+    public void setStatus(int status) { this.status = status; }
+    public String getErrorCode() { return errorCode; }
+    public void setErrorCode(String errorCode) { this.errorCode = errorCode; }
+    public String getMessage() { return message; }
+    public void setMessage(String message) { this.message = message; }
+    public LocalDateTime getTimestamp() { return timestamp; }
+    public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
+    public String getPath() { return path; }
+    public void setPath(String path) { this.path = path; }
+    public Object getDetails() { return details; }
+    public void setDetails(Object details) { this.details = details; }
+
     public ErrorResponse(int status, String errorCode, String message, String path) {
         this.status = status;
         this.errorCode = errorCode;
@@ -65,9 +52,6 @@ public class ErrorResponse {
         this.path = path;
     }
 
-    /**
-     * Constructor đầy đủ với details
-     */
     public ErrorResponse(int status, String errorCode, String message, String path, Object details) {
         this.status = status;
         this.errorCode = errorCode;
@@ -75,5 +59,21 @@ public class ErrorResponse {
         this.timestamp = LocalDateTime.now();
         this.path = path;
         this.details = details;
+    }
+
+    public static ErrorResponseBuilder builder() {
+        return new ErrorResponseBuilder();
+    }
+
+    public static class ErrorResponseBuilder {
+        private final ErrorResponse response = new ErrorResponse();
+
+        public ErrorResponseBuilder status(int status) { response.setStatus(status); return this; }
+        public ErrorResponseBuilder errorCode(String errorCode) { response.setErrorCode(errorCode); return this; }
+        public ErrorResponseBuilder message(String message) { response.setMessage(message); return this; }
+        public ErrorResponseBuilder timestamp(LocalDateTime timestamp) { response.setTimestamp(timestamp); return this; }
+        public ErrorResponseBuilder path(String path) { response.setPath(path); return this; }
+        public ErrorResponseBuilder details(Object details) { response.setDetails(details); return this; }
+        public ErrorResponse build() { return response; }
     }
 }

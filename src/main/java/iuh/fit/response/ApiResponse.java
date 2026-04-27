@@ -23,132 +23,103 @@ import java.time.LocalDateTime;
 @JsonInclude(Include.NON_NULL)
 public class ApiResponse<T> {
     
-    /**
-     * Trạng thái success của request
-     * true: Request thành công
-     * false: Request thất bại (có error)
-     */
     private boolean success;
-    
-    /**
-     * Message mô tả kết quả (tiếng Việt)
-     * VD: "Lấy thông tin user thành công", "Tạo tin nhắn thành công"
-     */
     private String message;
-    
-    /**
-     * Dữ liệu trả về (chỉ có khi success = true)
-     */
     private T data;
-    
-    /**
-     * Thông tin error (chỉ có khi success = false)
-     */
     private ErrorInfo error;
     
-    /**
-     * Timestamp của response
-     */
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime timestamp;
-    
-    /**
-     * Metadata bổ sung (pagination, filtering info...)
-     */
     private Object metadata;
+
+    // Manual getters/setters to bypass Lombok issues
+    public boolean isSuccess() { return success; }
+    public void setSuccess(boolean success) { this.success = success; }
+    public String getMessage() { return message; }
+    public void setMessage(String message) { this.message = message; }
+    public T getData() { return data; }
+    public void setData(T data) { this.data = data; }
+    public ErrorInfo getError() { return error; }
+    public void setError(ErrorInfo error) { this.error = error; }
+    public LocalDateTime getTimestamp() { return timestamp; }
+    public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
+    public Object getMetadata() { return metadata; }
+    public void setMetadata(Object metadata) { this.metadata = metadata; }
 
     // ==================== STATIC FACTORY METHODS ====================
     
-    /**
-     * Tạo success response với data
-     */
     public static <T> ApiResponse<T> success(T data) {
-        return ApiResponse.<T>builder()
-            .success(true)
-            .message("Thành công")
-            .data(data)
-            .timestamp(LocalDateTime.now())
-            .build();
+        ApiResponse<T> response = new ApiResponse<>();
+        response.setSuccess(true);
+        response.setMessage("Thành công");
+        response.setData(data);
+        response.setTimestamp(LocalDateTime.now());
+        return response;
     }
     
-    /**
-     * Tạo success response với data và custom message
-     */
     public static <T> ApiResponse<T> success(T data, String message) {
-        return ApiResponse.<T>builder()
-            .success(true)
-            .message(message)
-            .data(data)
-            .timestamp(LocalDateTime.now())
-            .build();
+        ApiResponse<T> response = success(data);
+        response.setMessage(message);
+        return response;
     }
     
-    /**
-     * Tạo success response với data, message và metadata
-     */
     public static <T> ApiResponse<T> success(T data, String message, Object metadata) {
-        return ApiResponse.<T>builder()
-            .success(true)
-            .message(message)
-            .data(data)
-            .metadata(metadata)
-            .timestamp(LocalDateTime.now())
-            .build();
+        ApiResponse<T> response = success(data, message);
+        response.setMetadata(metadata);
+        return response;
     }
     
-    /**
-     * Tạo success response không có data (VD: DELETE operations)
-     */
     public static <T> ApiResponse<T> success(String message) {
-        return ApiResponse.<T>builder()
-            .success(true)
-            .message(message)
-            .timestamp(LocalDateTime.now())
-            .build();
+        ApiResponse<T> response = new ApiResponse<>();
+        response.setSuccess(true);
+        response.setMessage(message);
+        response.setTimestamp(LocalDateTime.now());
+        return response;
     }
     
-    /**
-     * Tạo error response với error code và message
-     */
     public static <T> ApiResponse<T> error(String errorCode, String message) {
-        return ApiResponse.<T>builder()
-            .success(false)
-            .message(message)
-            .error(new ErrorInfo(errorCode, null))
-            .timestamp(LocalDateTime.now())
-            .build();
+        ApiResponse<T> response = new ApiResponse<>();
+        response.setSuccess(false);
+        response.setMessage(message);
+        response.setError(new ErrorInfo(errorCode, null));
+        response.setTimestamp(LocalDateTime.now());
+        return response;
     }
     
-    /**
-     * Tạo error response với error code, message và details
-     */
     public static <T> ApiResponse<T> error(String errorCode, String message, Object details) {
-        return ApiResponse.<T>builder()
-            .success(false)
-            .message(message)
-            .error(new ErrorInfo(errorCode, details))
-            .timestamp(LocalDateTime.now())
-            .build();
+        ApiResponse<T> response = error(errorCode, message);
+        response.getError().setDetails(details);
+        return response;
     }
 
-    // ==================== INNER CLASS ====================
-    
-    /**
-     * Thông tin lỗi trong response
-     */
+    // Manual static builder
+    public static <T> ApiResponseBuilder<T> builder() {
+        return new ApiResponseBuilder<>();
+    }
+
+    public static class ApiResponseBuilder<T> {
+        private final ApiResponse<T> response = new ApiResponse<>();
+
+        public ApiResponseBuilder<T> success(boolean success) { response.setSuccess(success); return this; }
+        public ApiResponseBuilder<T> message(String message) { response.setMessage(message); return this; }
+        public ApiResponseBuilder<T> data(T data) { response.setData(data); return this; }
+        public ApiResponseBuilder<T> error(ErrorInfo error) { response.setError(error); return this; }
+        public ApiResponseBuilder<T> timestamp(LocalDateTime timestamp) { response.setTimestamp(timestamp); return this; }
+        public ApiResponseBuilder<T> metadata(Object metadata) { response.setMetadata(metadata); return this; }
+        public ApiResponse<T> build() { return response; }
+    }
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     @JsonInclude(Include.NON_NULL)
     public static class ErrorInfo {
-        /**
-         * Error code (VD: USER_NOT_FOUND, INVALID_TOKEN)
-         */
         private String code;
-        
-        /**
-         * Chi tiết bổ sung về lỗi
-         */
         private Object details;
+
+        public String getCode() { return code; }
+        public void setCode(String code) { this.code = code; }
+        public Object getDetails() { return details; }
+        public void setDetails(Object details) { this.details = details; }
     }
 }

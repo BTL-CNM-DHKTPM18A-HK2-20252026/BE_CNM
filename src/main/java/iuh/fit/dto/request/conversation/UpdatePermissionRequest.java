@@ -18,4 +18,14 @@ public class UpdatePermissionRequest {
     private Boolean isMemberApprovalRequired;
     private Boolean isHighlightAdminMessages;
     private Boolean canNewMembersReadRecentMessages;
+
+    // Manual getters to bypass Lombok processing issues on some environments
+    public Boolean getCanEditInfo() { return canEditInfo; }
+    public Boolean getCanPinMessages() { return canPinMessages; }
+    public Boolean getCanCreateNotes() { return canCreateNotes; }
+    public Boolean getCanCreatePolls() { return canCreatePolls; }
+    public Boolean getCanSendMessages() { return canSendMessages; }
+    public Boolean getIsMemberApprovalRequired() { return isMemberApprovalRequired; }
+    public Boolean getIsHighlightAdminMessages() { return isHighlightAdminMessages; }
+    public Boolean getCanNewMembersReadRecentMessages() { return canNewMembersReadRecentMessages; }
 }
