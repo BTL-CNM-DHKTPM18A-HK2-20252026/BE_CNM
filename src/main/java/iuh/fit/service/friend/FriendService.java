@@ -213,4 +213,10 @@ public class FriendService {
         messagingTemplate.convertAndSendToUser(blockerId, "/queue/friend-updates", "BLOCKED");
         messagingTemplate.convertAndSendToUser(blockedId, "/queue/friend-updates", "BLOCKED");
     }
+    public List<String> getFriendsIds(String userId) {
+        List<Friendship> friendships = friendshipRepository.findAllAcceptedFriends(userId);
+        return friendships.stream().map(f -> 
+            f.getRequesterId().equals(userId) ? f.getReceiverId() : f.getRequesterId()
+        ).collect(Collectors.toList());
+    }
 }

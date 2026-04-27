@@ -75,4 +75,23 @@ public interface FileStorageService {
      * @return URL tạm thời
      */
     String getTemporaryUrl(String fileId, int duration);
+
+    /**
+     * Tạo Pre-signed URL để upload file trực tiếp từ client (dùng S3 pattern)
+     *
+     * @param fileName    Tên file gốc
+     * @param contentType Loại file (mime type)
+     * @param folderPath  Thư mục lưu trữ
+     * @return Thông tin Pre-signed URL
+     */
+    FileUploadResponse generateUploadUrl(String fileName, String contentType, String folderPath);
+
+    /**
+     * Lưu metadata của file sau khi upload thành công (dùng cho S3 pattern)
+     *
+     * @param request DTO chứa thông tin file đã upload
+     * @param userId   ID người upload
+     * @return FileUploadResponse đã lưu
+     */
+    FileUploadResponse saveFileMetadata(iuh.fit.dto.request.file.FileUploadCompleteRequest request, String userId);
 }

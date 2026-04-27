@@ -17,11 +17,12 @@ public class CommentResponse {
     private String postId;
     private String userId;
     private String userName;
-    private String userAvatarUrl;
+    private String userAvatar;
     private String content;
     private String parentCommentId;
-    private Integer likeCount;
     private List<CommentResponse> replies;
+    private int likeCount;
+    private String currentUserReaction;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

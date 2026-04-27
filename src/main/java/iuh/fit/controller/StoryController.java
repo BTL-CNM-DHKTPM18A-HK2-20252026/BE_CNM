@@ -44,6 +44,15 @@ public class StoryController {
             @RequestParam List<String> friendIds) {
         return ResponseEntity.ok(storyService.getActiveStories(userId, friendIds));
     }
+
+    @GetMapping("/feed")
+    @Operation(summary = "Get story feed (friends + self)")
+    public ResponseEntity<List<StoryResponse>> getStoryFeed(
+            @RequestHeader("X-User-Id") String userId,
+            @RequestParam(required = false) List<String> friendIds) {
+        if (friendIds == null) friendIds = List.of();
+        return ResponseEntity.ok(storyService.getStoryFeed(userId, friendIds));
+    }
     
     @GetMapping("/user/{userId}")
     @Operation(summary = "Get user's active stories")

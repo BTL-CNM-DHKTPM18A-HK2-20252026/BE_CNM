@@ -10,11 +10,12 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class CreateStoryRequest {
     
-    @NotBlank(message = "Media URL is required")
     private String mediaUrl;
     
     private String caption;
     
+    private String background;
+    
     @NotBlank(message = "Media type is required")
-    private String mediaType; // IMAGE or VIDEO
+    private String mediaType; // IMAGE, VIDEO, or TEXT
 }

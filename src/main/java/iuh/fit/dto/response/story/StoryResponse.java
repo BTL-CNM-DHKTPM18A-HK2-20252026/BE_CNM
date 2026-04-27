@@ -19,6 +19,7 @@ public class StoryResponse {
     private String mediaUrl;
     private String mediaType;
     private String caption;
+    private String background;
     private Integer viewCount;
     private Boolean isViewedByMe;
     private LocalDateTime createdAt;

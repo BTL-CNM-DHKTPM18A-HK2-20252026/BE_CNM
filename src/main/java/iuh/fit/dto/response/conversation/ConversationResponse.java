@@ -20,6 +20,8 @@ public class ConversationResponse {
     private String conversationAvatarUrl;
     private String lastMessageContent;
     private LocalDateTime lastMessageTime;
+    private String lastMessageSenderId;
+    private String lastMessageSenderName;
     private Integer unreadCount;
     private Boolean isPinned;
     private LocalDateTime pinnedAt;

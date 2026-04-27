@@ -20,7 +20,7 @@ public class SendMessageRequest {
     private String recipientId;
 
     @NotBlank(message = "Message content is required")
-    @Size(max = 5000, message = "Message content must not exceed 5000 characters")
+    @Size(max = 50000, message = "Message content must not exceed 50000 characters")
     private String content;
 
     private String messageType; // Enum string: TEXT, IMAGE, VIDEO, MEDIA

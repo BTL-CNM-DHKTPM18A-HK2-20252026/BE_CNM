@@ -102,6 +102,8 @@ public class ConversationMapper {
                                 .conversationAvatarUrl(conversation.getAvatarUrl())
                                 .lastMessageContent(conversation.getLastMessageContent())
                                 .lastMessageTime(conversation.getLastMessageTime())
+                                .lastMessageSenderId(conversation.getLastMessageSenderId())
+                                .lastMessageSenderName(conversation.getLastMessageSenderName())
                                 .isPinned(isPinned)
                                 .pinnedAt(pinnedAt)
                                 .members(memberInfos)

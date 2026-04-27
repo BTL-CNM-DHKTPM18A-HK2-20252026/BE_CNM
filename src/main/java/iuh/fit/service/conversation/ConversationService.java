@@ -32,6 +32,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import iuh.fit.utils.JwtUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -44,8 +46,8 @@ import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class ConversationService {
+    private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
     private final ConversationRepository conversationRepository;
     private final ConversationMemberRepository conversationMemberRepository;
     private final MessageRepository messageRepository;
@@ -113,13 +115,15 @@ public class ConversationService {
         final Conversations savedConv = conversationRepository.save(newConv);
 
         // Thêm member
-        List<ConversationMember> members = sortedParticipants.stream().map(uid -> ConversationMember.builder()
-                .id(UUID.randomUUID().toString())
-                .conversationId(savedConv.getConversationId())
-                .userId(uid)
-                .joinedAt(LocalDateTime.now())
-                .role(MemberRole.MEMBER)
-                .build()).collect(Collectors.toList());
+        List<ConversationMember> members = sortedParticipants.stream()
+                .map((String uid) -> ConversationMember.builder()
+                        .id(UUID.randomUUID().toString())
+                        .conversationId(savedConv.getConversationId())
+                        .userId(uid)
+                        .joinedAt(LocalDateTime.now())
+                        .role(MemberRole.MEMBER)
+                        .build())
+                .collect(Collectors.toList());
 
         conversationMemberRepository.saveAll(members);
 
@@ -339,7 +343,7 @@ public class ConversationService {
                     return conversationMapper.toResponse(conv, members, getPermissions(conv.getConversationId()), userId);
                 })
                 .filter(resp -> resp != null)
-                .sorted((c1, c2) -> {
+                .sorted((ConversationResponse c1, ConversationResponse c2) -> {
                     // Pinned conversations first, then by time
                     boolean p1 = Boolean.TRUE.equals(c1.getIsPinned());
                     boolean p2 = Boolean.TRUE.equals(c2.getIsPinned());

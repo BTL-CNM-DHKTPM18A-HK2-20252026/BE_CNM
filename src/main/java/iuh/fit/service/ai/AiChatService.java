@@ -923,6 +923,16 @@ public class AiChatService {
         conversation.setLastMessageId(message.getMessageId());
         conversation.setLastMessageContent(message.getContent());
         conversation.setLastMessageTime(message.getCreatedAt());
+        conversation.setLastMessageSenderId(message.getSenderId());
+        
+        if (AI_SENDER_ID.equals(message.getSenderId())) {
+            conversation.setLastMessageSenderName(AI_CONVERSATION_NAME);
+        } else {
+            userDetailRepository.findByUserId(message.getSenderId())
+                .map(UserDetail::getDisplayName)
+                .ifPresent(conversation::setLastMessageSenderName);
+        }
+        
         conversation.setUpdatedAt(message.getCreatedAt());
         conversationRepository.save(conversation);
     }

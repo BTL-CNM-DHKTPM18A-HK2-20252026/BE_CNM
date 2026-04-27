@@ -271,7 +271,7 @@ import java.util.stream.Collectors;
             }
 
             message = messageRepository.save(message);
-            log.info("Message sent: {} in conversation: {}", message.getMessageId(), convId);
+            log.info("Message saved to legacy DB: {} (type={})", message.getMessageId(), type);
 
             // Save attachments for IMAGE_GROUP
             if (type == MessageType.IMAGE_GROUP && request.getMediaUrls() != null
@@ -310,6 +310,13 @@ import java.util.stream.Collectors;
             conv.setLastMessageId(message.getMessageId());
             conv.setLastMessageContent(snippet);
             conv.setLastMessageTime(message.getCreatedAt());
+            conv.setLastMessageSenderId(senderId);
+            
+            UserDetail senderDetail = userDetailRepository.findByUserId(senderId).orElse(null);
+            if (senderDetail != null) {
+                conv.setLastMessageSenderName(senderDetail.getDisplayName());
+            }
+            
             conv.setUpdatedAt(message.getCreatedAt());
             conversationRepository.save(conv);
 
@@ -382,7 +389,7 @@ import java.util.stream.Collectors;
 
             // Send mention notifications to mentioned users (group chats only)
             if (message.getMentions() != null && !message.getMentions().isEmpty()) {
-                UserDetail senderDetail = userDetailRepository.findByUserId(senderId).orElse(null);
+                senderDetail = userDetailRepository.findByUserId(senderId).orElse(null);
                 String senderName = senderDetail != null ? senderDetail.getDisplayName() : "Ai đó";
                 String groupName = conv.getConversationName() != null ? conv.getConversationName() : "";
                 for (String mentionedUserId : message.getMentions()) {
