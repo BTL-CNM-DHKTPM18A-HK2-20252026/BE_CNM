@@ -169,6 +169,11 @@ public class SearchService {
     // ── Search messages (with highlighting) ──────────────────────────────────
 
     public Page<SearchResult<MessageDocument>> searchMessages(String query, String conversationId, int page, int size) {
+        return searchMessages(query, conversationId, page, size, null, null, null);
+    }
+
+    public Page<SearchResult<MessageDocument>> searchMessages(String query, String conversationId, int page, int size,
+            String filterSenderId, java.time.LocalDateTime fromDate, java.time.LocalDateTime toDate) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         // Try Elasticsearch first
@@ -208,22 +213,54 @@ public class SearchService {
             }
         }
 
-        // MongoDB fallback — regex search (case-insensitive)
+        // MongoDB fallback — search in message_bucket (primary storage)
         log.debug("searchMessages MongoDB fallback for query='{}' conversationId='{}'", query, conversationId);
-        String escapedQuery = java.util.regex.Pattern.quote(query);
-        Page<iuh.fit.entity.Message> mongoResults = messageRepository.searchByConversationIdAndContent(
-                conversationId, escapedQuery, pageable);
+        boolean hasQuery = query != null && !query.isBlank();
+        java.util.regex.Pattern regexPattern = hasQuery
+                ? java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(query),
+                        java.util.regex.Pattern.CASE_INSENSITIVE)
+                : null;
 
-        List<SearchResult<MessageDocument>> results = mongoResults.getContent().stream()
+        List<MessageBucket> matchingBuckets = hasQuery
+                ? messageBucketRepository.findBucketsByConversationIdAndMessageContent(conversationId,
+                        java.util.regex.Pattern.quote(query))
+                : messageBucketRepository.findByConversationId(conversationId);
+
+        List<Message> allMatching = matchingBuckets.stream()
+                .flatMap(bucket -> bucket.getMessages().stream()
+                        .filter(msg -> msg.getContent() != null
+                                && !Boolean.TRUE.equals(msg.getIsDeleted())
+                                && (regexPattern == null || regexPattern.matcher(msg.getContent()).find())
+                                && (filterSenderId == null || filterSenderId.equals(msg.getSenderId()))
+                                && (fromDate == null
+                                        || (msg.getCreatedAt() != null && !msg.getCreatedAt().isBefore(fromDate)))
+                                && (toDate == null
+                                        || (msg.getCreatedAt() != null && !msg.getCreatedAt().isAfter(toDate))))
+                        .peek(msg -> {
+                            if (msg.getConversationId() == null) {
+                                msg.setConversationId(bucket.getConversationId());
+                            }
+                        }))
+                .sorted(java.util.Comparator.comparing(Message::getCreatedAt,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+                .toList();
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), allMatching.size());
+        List<Message> pageMessages = start < allMatching.size() ? allMatching.subList(start, end) : List.of();
+
+        List<SearchResult<MessageDocument>> results = pageMessages.stream()
                 .map(msg -> {
-                    String senderName = userDetailRepository.findByUserId(msg.getSenderId())
-                            .map(u -> u.getDisplayName())
-                            .orElse("Unknown");
+                    iuh.fit.entity.UserDetail userDetail = userDetailRepository.findByUserId(msg.getSenderId())
+                            .orElse(null);
+                    String senderName = userDetail != null ? userDetail.getDisplayName() : "Unknown";
+                    String senderAvatar = userDetail != null ? userDetail.getAvatarUrl() : null;
                     MessageDocument doc = MessageDocument.builder()
                             .messageId(msg.getMessageId())
                             .conversationId(msg.getConversationId())
                             .senderId(msg.getSenderId())
                             .senderName(senderName)
+                            .senderAvatar(senderAvatar)
                             .content(msg.getContent())
                             .messageType(msg.getMessageType() != null ? msg.getMessageType().name() : null)
                             .createdAt(msg.getCreatedAt())
@@ -234,7 +271,7 @@ public class SearchService {
                 })
                 .toList();
 
-        return new PageImpl<>(results, pageable, mongoResults.getTotalElements());
+        return new PageImpl<>(results, pageable, allMatching.size());
     }
 
     // ── Search messages across all conversations of a user ────────────────────
@@ -290,14 +327,34 @@ public class SearchService {
             }
         }
 
-        // MongoDB fallback — regex search across all user conversations
+        // MongoDB fallback — search in message_bucket across all user conversations
         log.debug("searchMessagesByUserId MongoDB fallback for query='{}' across {} conversations", query,
                 conversationIds.size());
-        String escapedQuery = java.util.regex.Pattern.quote(query);
-        Page<Message> mongoResults = messageRepository.searchByConversationIdsAndContent(
-                conversationIds, escapedQuery, pageable);
+        java.util.regex.Pattern regexPattern = java.util.regex.Pattern.compile(
+                java.util.regex.Pattern.quote(query), java.util.regex.Pattern.CASE_INSENSITIVE);
 
-        List<SearchResult<MessageDocument>> results = mongoResults.getContent().stream()
+        List<MessageBucket> matchingBuckets = messageBucketRepository
+                .findBucketsByConversationIdsAndMessageContent(conversationIds, java.util.regex.Pattern.quote(query));
+
+        List<Message> allMatching = matchingBuckets.stream()
+                .flatMap(bucket -> bucket.getMessages().stream()
+                        .filter(msg -> msg.getContent() != null
+                                && !Boolean.TRUE.equals(msg.getIsDeleted())
+                                && regexPattern.matcher(msg.getContent()).find())
+                        .peek(msg -> {
+                            if (msg.getConversationId() == null) {
+                                msg.setConversationId(bucket.getConversationId());
+                            }
+                        }))
+                .sorted(java.util.Comparator.comparing(Message::getCreatedAt,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
+                .toList();
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), allMatching.size());
+        List<Message> pageMessages = start < allMatching.size() ? allMatching.subList(start, end) : List.of();
+
+        List<SearchResult<MessageDocument>> results = pageMessages.stream()
                 .map(msg -> {
                     String senderName = userDetailRepository.findByUserId(msg.getSenderId())
                             .map(u -> u.getDisplayName())
@@ -317,7 +374,7 @@ public class SearchService {
                 })
                 .toList();
 
-        return new PageImpl<>(results, pageable, mongoResults.getTotalElements());
+        return new PageImpl<>(results, pageable, allMatching.size());
     }
 
     // ── Search users (with highlighting + edge_ngram phone) ───────────────────

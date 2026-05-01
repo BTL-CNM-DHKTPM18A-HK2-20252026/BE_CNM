@@ -1,4 +1,4 @@
-package iuh.fit.mapper;
+﻿package iuh.fit.mapper;
 
 import iuh.fit.dto.response.message.MessageResponse;
 import iuh.fit.entity.ImageUploadMetadata;
@@ -22,7 +22,7 @@ import org.springframework.stereotype.Component;
 public class MessageMapper {
 
         private static final String AI_SENDER_ID = "FRUVIA_AI_ASSISTANT";
-        private static final String AI_SENDER_NAME = "Fruvia AI";
+        private static final String AI_SENDER_NAME = "Fruvia Chatbot";
 
         private final UserDetailRepository userDetailRepository;
         private final MessageReactionRepository messageReactionRepository;

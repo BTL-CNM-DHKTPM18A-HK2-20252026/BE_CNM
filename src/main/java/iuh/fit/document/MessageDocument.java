@@ -37,6 +37,9 @@ public class MessageDocument {
     @Field(type = FieldType.Keyword)
     private String messageType;
 
+    @Field(type = FieldType.Keyword)
+    private String senderAvatar;
+
     @Field(type = FieldType.Integer)
     private Integer bucketSequenceNumber;
 

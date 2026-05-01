@@ -46,6 +46,8 @@ import lombok.extern.slf4j.Slf4j;
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
 public class UserServiceImpl implements UserService {
 
+    private static final String S3_PUBLIC_BASE = "https://fruvia-chat-storage.s3.ap-southeast-1.amazonaws.com/public";
+
     UserAuthRepository userAuthRepository;
     UserDetailRepository userDetailRepository;
     UserSettingRepository userSettingRepository;
@@ -108,7 +110,7 @@ public class UserServiceImpl implements UserService {
 
         // Assign random default avatar (image1.jpg to image8.jpg)
         int defaultAvatarIndex = (int) (Math.random() * 8) + 1;
-        String defaultAvatar = "/default/image" + defaultAvatarIndex + ".jpg";
+        String defaultAvatar = S3_PUBLIC_BASE + "/avatar/image" + defaultAvatarIndex + ".jpg";
 
         // Assign deterministic default cover photo (image1-3) based on userId char-code
         // hash

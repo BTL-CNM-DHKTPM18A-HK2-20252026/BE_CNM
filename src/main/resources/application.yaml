@@ -24,7 +24,7 @@ spring:
       port: ${MONGODB_PORT:27017}
       database: ${MONGODB_DATABASE:fruvia_db}
       auto-index-creation: true
-      ddl-auto: update
+      ddl-auto: create-drop
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
@@ -136,6 +136,7 @@ aws:
     secret-key: ${AWS_SECRET_ACCESS_KEY:}
     region: ${AWS_REGION:ap-southeast-1}
     bucket-name: ${AWS_S3_BUCKET_NAME:your-bucket-name}
+    public-url: ${AWS_S3_PUBLIC_URL:https://fruvia-chat-storage.s3.ap-southeast-1.amazonaws.com/public}
 
 ai:
   timeout-ms: ${AI_TIMEOUT_MS:30000}

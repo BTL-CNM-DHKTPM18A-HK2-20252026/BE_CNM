@@ -1,4 +1,4 @@
-package iuh.fit.controller;
+﻿package iuh.fit.controller;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -57,7 +57,7 @@ public class MessageController {
     }
 
     @PostMapping("/ai")
-    @Operation(summary = "Send a message to Fruvia AI and persist both user/assistant messages")
+    @Operation(summary = "Send a message to Fruvia Chatbot and persist both user/assistant messages")
     public ResponseEntity<ApiResponse<AiChatResponse>> chatWithAi(
             @Valid @RequestBody ChatWithAiRequest request) {
         String userId = JwtUtils.getCurrentUserId();

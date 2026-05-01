@@ -38,19 +38,25 @@ public class SearchController {
             @RequestParam String q,
             @RequestParam String conversationId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String senderId,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime fromDate,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime toDate) {
 
         String userId = JwtUtils.getCurrentUserId();
         if (userId == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 
-        // Validate query param
-        String validationError = validateQuery(q);
-        if (validationError != null) {
-            return ResponseEntity.badRequest().body(ApiResponse.<Page<SearchResult<MessageDocument>>>builder()
-                    .success(false)
-                    .message(validationError)
-                    .build());
+        // Allow empty query only when a filter is present
+        boolean hasFilter = (senderId != null && !senderId.isBlank()) || fromDate != null || toDate != null;
+        if (!hasFilter) {
+            String validationError = validateQuery(q);
+            if (validationError != null) {
+                return ResponseEntity.badRequest().body(ApiResponse.<Page<SearchResult<MessageDocument>>>builder()
+                        .success(false)
+                        .message(validationError)
+                        .build());
+            }
         }
 
         // Check conversation membership — prevent unauthorized access to other users'
@@ -66,7 +72,7 @@ public class SearchController {
         }
 
         Page<SearchResult<MessageDocument>> results = searchService.searchMessages(q.trim(), conversationId, page,
-                size);
+                size, senderId, fromDate, toDate);
         return ResponseEntity.ok(ApiResponse.<Page<SearchResult<MessageDocument>>>builder()
                 .success(true)
                 .message("Search messages successful")

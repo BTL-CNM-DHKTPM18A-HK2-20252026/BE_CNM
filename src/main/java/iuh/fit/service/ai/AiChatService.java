@@ -1,4 +1,4 @@
-package iuh.fit.service.ai;
+﻿package iuh.fit.service.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import iuh.fit.document.MessageDocument;
@@ -71,7 +71,7 @@ import java.util.stream.Collectors;
 public class AiChatService {
 
     private static final String AI_SENDER_ID = "FRUVIA_AI_ASSISTANT";
-    private static final String AI_CONVERSATION_NAME = "Fruvia AI";
+    private static final String AI_CONVERSATION_NAME = "Fruvia Chatbot";
     private static final Pattern DIRECT_IMAGE_COMMAND_PATTERN = Pattern
             .compile("^\\s*[/／⁄∕](image|image_pro|sketch|wallpaper)\\b(.*)$", Pattern.CASE_INSENSITIVE);
     private static final int CONTINUATION_MAX_ROUNDS = 2;
@@ -280,7 +280,7 @@ public class AiChatService {
 
             assistantMessage = messageRepository.save(assistantMessage);
             if (completion != null) {
-                searchService.indexMessage(assistantMessage, "Fruvia AI");
+                searchService.indexMessage(assistantMessage, "Fruvia Chatbot");
             }
 
             updateConversationLastMessage(conversation, assistantMessage);
@@ -656,7 +656,7 @@ public class AiChatService {
                     .build();
             assistantMessage = messageRepository.save(assistantMessage);
 
-            searchService.indexMessage(assistantMessage, "Fruvia AI");
+            searchService.indexMessage(assistantMessage, "Fruvia Chatbot");
 
             updateConversationLastMessage(conversation, assistantMessage);
 
@@ -915,6 +915,41 @@ public class AiChatService {
                             .role(MemberRole.MEMBER)
                             .joinedAt(now)
                             .build());
+
+                    // Gửi tin nhắn chào mừng từ AI khi tạo conversation mới
+                    String userName = userDetailRepository.findByUserId(userId)
+                            .map(UserDetail::getDisplayName)
+                            .orElse(null);
+                    String welcomeContent = (userName != null && !userName.isBlank())
+                            ? "Chào mừng bạn trở lại **" + userName
+                                    + "**! 👋\n\nTôi là **Fruvia Chatbot** — trợ lý thông minh của bạn. Hãy hỏi tôi bất cứ điều gì nhé! 😊"
+                            : "Xin chào! 👋\n\nTôi là **Fruvia Chatbot** — trợ lý thông minh của bạn. Hãy hỏi tôi bất cứ điều gì nhé! 😊";
+                    Message welcomeMessage = Message.builder()
+                            .messageId(UUID.randomUUID().toString())
+                            .conversationId(created.getConversationId())
+                            .senderId(AI_SENDER_ID)
+                            .role(AiRole.ASSISTANT)
+                            .messageType(MessageType.TEXT)
+                            .content(welcomeContent)
+                            .isDeleted(false)
+                            .isEdited(false)
+                            .isRecalled(false)
+                            .aiGenerated(true)
+                            .aiStatus(AiMessageStatus.COMPLETED)
+                            .promptTokens(0)
+                            .completionTokens(estimateTokenCount(welcomeContent))
+                            .totalTokens(estimateTokenCount(welcomeContent))
+                            .createdAt(now)
+                            .updatedAt(now)
+                            .build();
+                    welcomeMessage = messageRepository.save(welcomeMessage);
+                    created.setLastMessageId(welcomeMessage.getMessageId());
+                    created.setLastMessageContent(welcomeContent);
+                    created.setLastMessageTime(now);
+                    created.setLastMessageSenderId(AI_SENDER_ID);
+                    created.setLastMessageSenderName(AI_CONVERSATION_NAME);
+                    created = conversationRepository.save(created);
+
                     return created;
                 });
     }
@@ -924,15 +959,15 @@ public class AiChatService {
         conversation.setLastMessageContent(message.getContent());
         conversation.setLastMessageTime(message.getCreatedAt());
         conversation.setLastMessageSenderId(message.getSenderId());
-        
+
         if (AI_SENDER_ID.equals(message.getSenderId())) {
             conversation.setLastMessageSenderName(AI_CONVERSATION_NAME);
         } else {
             userDetailRepository.findByUserId(message.getSenderId())
-                .map(UserDetail::getDisplayName)
-                .ifPresent(conversation::setLastMessageSenderName);
+                    .map(UserDetail::getDisplayName)
+                    .ifPresent(conversation::setLastMessageSenderName);
         }
-        
+
         conversation.setUpdatedAt(message.getCreatedAt());
         conversationRepository.save(conversation);
     }

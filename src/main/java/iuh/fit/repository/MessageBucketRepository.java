@@ -1,5 +1,6 @@
 package iuh.fit.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.mongodb.repository.MongoRepository;
@@ -32,4 +33,25 @@ public interface MessageBucketRepository extends MongoRepository<MessageBucket, 
      * Delete all buckets for a conversation (used by clearConversationAll).
      */
     void deleteByConversationId(String conversationId);
+
+    /**
+     * Find all buckets for a conversation (no content filter).
+     */
+    List<MessageBucket> findByConversationId(String conversationId);
+
+    /**
+     * Find buckets containing messages matching a content regex in a conversation.
+     * Used by SearchService MongoDB fallback.
+     */
+    @Query("{ 'conversationId': ?0, 'messages': { $elemMatch: { 'content': { $regex: ?1, $options: 'i' }, 'isDeleted': { $ne: true } } } }")
+    List<MessageBucket> findBucketsByConversationIdAndMessageContent(String conversationId, String contentRegex);
+
+    /**
+     * Find buckets containing messages matching a content regex across multiple
+     * conversations.
+     * Used by SearchService MongoDB fallback.
+     */
+    @Query("{ 'conversationId': { $in: ?0 }, 'messages': { $elemMatch: { 'content': { $regex: ?1, $options: 'i' }, 'isDeleted': { $ne: true } } } }")
+    List<MessageBucket> findBucketsByConversationIdsAndMessageContent(List<String> conversationIds,
+            String contentRegex);
 }

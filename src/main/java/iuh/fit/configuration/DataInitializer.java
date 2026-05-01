@@ -33,6 +33,8 @@ import org.slf4j.LoggerFactory;
 @Slf4j
 public class DataInitializer {
 
+        private static final String S3_PUBLIC_BASE = "https://fruvia-chat-storage.s3.ap-southeast-1.amazonaws.com/public";
+
         private final String ddlAuto;
         private final PasswordEncoder passwordEncoder;
         private final ConversationService conversationService;
@@ -91,81 +93,81 @@ public class DataInitializer {
                                                         "TP. Hồ Chí Minh",
                                                         "Sinh viên IUH - Khoa CNTT", "Đại học Công nghiệp TP.HCM (IUH)",
                                                         "20/04/2004",
-                                                        "/default/image1.jpg", "0399614015" },
+                                                        "/avatar/image1.jpg", "0399614015" },
                                         { "Lê Mẫn Nghi", "nghi.le@gmail.com", "Nữ", "Đà Lạt, Lâm Đồng",
                                                         "Yêu thích du lịch và lập trình", "Đại học Công nghiệp TP.HCM",
                                                         "15/08/2004",
-                                                        "/default/image2.jpg", "                " },
+                                                        "/avatar/image2.jpg", "                " },
                                         { "Trần Hồng Nhiên", "nhien.tran@gmail.com", "Nữ", "Cần Thơ",
                                                         "Chuyên gia về thiết kế UI/UX", "Đại học Công nghiệp TP.HCM",
                                                         "10/10/2004",
-                                                        "/default/image3.jpg", "0901000003" },
+                                                        "/avatar/image3.jpg", "0901000003" },
                                         { "Nguyễn Ngọc Hồng Minh", "minh.nguyen@gmail.com", "Nữ", "Hà Nội",
                                                         "Data Scientist đam mê AI", "Đại học Công nghiệp TP.HCM",
                                                         "05/12/2004",
-                                                        "/default/image4.jpg", "0901000004" },
+                                                        "/avatar/image4.jpg", "0901000004" },
                                         { "Phan Thanh Tùng", "tung.phan@gmail.com", "Nam", "Hải Phòng",
                                                         "Fullstack Developer", "Đại học Công nghiệp TP.HCM",
-                                                        "12/03/2004", "/default/image5.jpg", "0901000005" },
+                                                        "12/03/2004", "/avatar/image5.jpg", "0901000005" },
                                         { "Đặng Minh Quân", "quan.dang@gmail.com", "Nam", "Huế",
                                                         "Mobile Developer",
                                                         "Đại học Công nghiệp TP.HCM", "25/06/2004",
-                                                        "/default/image6.jpg", "0901000006" },
+                                                        "/avatar/image6.jpg", "0901000006" },
                                         { "Hoàng Thị Thu Hà", "ha.hoang@gmail.com", "Nữ", "Nam Định",
                                                         "QA Engineer",
                                                         "Đại học Công nghiệp TP.HCM", "08/09/2004",
-                                                        "/default/image7.jpg", "0901000007" },
+                                                        "/avatar/image7.jpg", "0901000007" },
                                         { "Bùi Văn Tâm", "tam.bui@gmail.com", "Nam", "Thanh Hóa",
                                                         "DevOps Engineer",
                                                         "Đại học Công nghiệp TP.HCM", "14/11/2004",
-                                                        "/default/image8.jpg", "0901000008" },
+                                                        "/avatar/image8.jpg", "0901000008" },
                                         { "Bảo Châu", "chau.ngo@gmail.com", "Nữ", "Hưng Yên",
                                                         "UI/UX Designer",
                                                         "Đại học Công nghiệp TP.HCM", "20/01/2005",
-                                                        "/default/image1.jpg", "0901000009" },
+                                                        "/avatar/image1.jpg", "0901000009" },
                                         { "Phạm Anh Tuấn", "tuan.pham@gmail.com", "Nam", "Quảng Ninh",
                                                         "Backend Developer",
                                                         "Đại học Công nghiệp TP.HCM", "05/02/2004",
-                                                        "/default/image2.jpg", "0901000010" },
+                                                        "/avatar/image2.jpg", "0901000010" },
                                         { "Vũ Việt Hoàng", "hoang.vu@gmail.com", "Nam", "Thái Bình",
                                                         "Product Manager",
                                                         "Đại học Công nghiệp TP.HCM", "10/03/2004",
-                                                        "/default/image3.jpg", "0901000011" },
+                                                        "/avatar/image3.jpg", "0901000011" },
                                         { "Đỗ Thùy Linh", "linh.do@gmail.com", "Nữ", "Vĩnh Phúc",
                                                         "Content Creator",
                                                         "Đại học Công nghiệp TP.HCM", "15/04/2004",
-                                                        "/default/image4.jpg", "0901000012" },
+                                                        "/avatar/image4.jpg", "0901000012" },
                                         { "Dương Hoàng Anh", "anh.duong@gmail.com", "Nam", "Bắc Ninh",
                                                         "Security Researcher",
                                                         "Đại học Công nghiệp TP.HCM", "20/05/2004",
-                                                        "/default/image5.jpg", "0901000013" },
+                                                        "/avatar/image5.jpg", "0901000013" },
                                         { "Lý Gia Hân", "han.ly@gmail.com", "Nữ", "Long An",
                                                         "Data Analyst",
                                                         "Đại học Công nghiệp TP.HCM", "25/06/2004",
-                                                        "/default/image6.jpg", "0901000014" },
+                                                        "/avatar/image6.jpg", "0901000014" },
                                         { "Trịnh Công Sơn", "son.trinh@gmail.com", "Nam", "Thừa Thiên Huế",
                                                         "Software Architect", "Đại học Công nghiệp TP.HCM",
-                                                        "30/07/2004", "/default/image7.jpg", "0901000015" },
+                                                        "30/07/2004", "/avatar/image7.jpg", "0901000015" },
                                         { "Võ Hoàng Yến", "yen.vo@gmail.com", "Nữ", "Vũng Tàu",
                                                         "Project Manager",
                                                         "Đại học Công nghiệp TP.HCM", "05/08/2004",
-                                                        "/default/image8.jpg", "0901000016" },
+                                                        "/avatar/image8.jpg", "0901000016" },
                                         { "Mai Phương Thúy", "thuy.mai@gmail.com", "Nữ", "Khánh Hòa",
                                                         "Business Analyst",
                                                         "Đại học Công nghiệp TP.HCM", "10/09/2004",
-                                                        "/default/image1.jpg", "0901000017" },
+                                                        "/avatar/image1.jpg", "0901000017" },
                                         { "Đinh Tiến Dũng", "dung.dinh@gmail.com", "Nam", "Nghệ An",
                                                         "Database Administrator", "Đại học Công nghiệp TP.HCM",
                                                         "15/10/2004",
-                                                        "/default/image2.jpg", "0901000018" },
+                                                        "/avatar/image2.jpg", "0901000018" },
                                         { "Hồ Xuân Hương", "huong.ho@gmail.com", "Nữ", "Quảng Bình",
                                                         "System Admin",
                                                         "Đại học Công nghiệp TP.HCM", "20/11/2004",
-                                                        "/default/image3.jpg", "0901000019" },
+                                                        "/avatar/image3.jpg", "0901000019" },
                                         { "Trương Vĩnh Ký", "ky.truong@gmail.com", "Nam", "Bến Tre",
                                                         "Network Engineer",
                                                         "Đại học Công nghiệp TP.HCM", "25/12/2004",
-                                                        "/default/image4.jpg", "0901000020" }
+                                                        "/avatar/image4.jpg", "0901000020" }
                         };
 
                         for (String[] userData : defaultUsers) {
@@ -191,6 +193,7 @@ public class DataInitializer {
                                                         .accountStatus(AccountStatus.ACTIVE)
                                                         .createdAt(LocalDateTime.now())
                                                         .isDeleted(false)
+                                                        .isVerified(true)
                                                         .build();
 
                                         UserAuth savedAuth = mongoTemplate.save(userAuth);
@@ -209,7 +212,8 @@ public class DataInitializer {
                                                         .dob(dob)
                                                         .education(education)
                                                         .workplace("IUH - Industrial University of Ho Chi Minh City")
-                                                        .avatarUrl(avatarUrl)
+                                                        .avatarUrl(S3_PUBLIC_BASE + avatarUrl)
+                                                        .coverPhotoUrl(S3_PUBLIC_BASE + "/background_profile/image" + ((fullName.chars().sum() % 12) + 1) + ".jpg")
                                                         .lastUpdateProfile(LocalDateTime.now())
                                                         .build();
 
