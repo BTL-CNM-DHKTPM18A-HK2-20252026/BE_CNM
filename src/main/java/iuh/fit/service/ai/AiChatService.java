@@ -1,4 +1,4 @@
-﻿package iuh.fit.service.ai;
+package iuh.fit.service.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import iuh.fit.document.MessageDocument;
@@ -15,6 +15,7 @@ import iuh.fit.entity.Message;
 import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
 import iuh.fit.entity.UserSetting;
+import iuh.fit.utils.InputSanitizer;
 import iuh.fit.enums.AiMessageStatus;
 import iuh.fit.enums.AiRole;
 import iuh.fit.enums.ConversationStatus;
@@ -90,7 +91,7 @@ public class AiChatService {
     private final SimpMessageSendingOperations messagingTemplate;
     private final SearchService searchService;
     private final StorageService storageService;
-    private final BlackboxAiClient blackboxAiClient;
+    private final AiCompletionProvider blackboxAiClient;
     private final AiImageWorkflowService aiImageWorkflowService;
     private final AiSystemPromptLibrary systemPromptLibrary;
     private final AiRouterService aiRouterService;
@@ -121,7 +122,8 @@ public class AiChatService {
         LocalDateTime now = LocalDateTime.now();
         Conversations conversation = resolveConversation(userId, request.getConversationId(), now);
 
-        Message userMessage = createUserMessage(conversation.getConversationId(), userId, request.getContent(), now);
+        Message userMessage = createUserMessage(conversation.getConversationId(), userId,
+                InputSanitizer.sanitize(request.getContent()), now);
         updateConversationLastMessage(conversation, userMessage);
 
         String senderName = userDetailRepository.findByUserId(userId)
@@ -158,7 +160,11 @@ public class AiChatService {
             List<Message> slidingWindow = buildSlidingWindow(recentMessages);
             String summary = updateSummaryIfNeeded(conversation, recentMessages, slidingWindow);
             List<String> ragContexts = getRagContexts(conversation.getConversationId(), request);
-            boolean fullAccessGranted = Boolean.TRUE.equals(request.getFullAccessGranted());
+            // P0 Security: verify fullAccessGranted server-side from DB, not from client
+            // payload
+            boolean fullAccessGranted = userSettingRepository.findByUserId(userId)
+                    .map(s -> Boolean.TRUE.equals(s.getAiFullAccessGranted()))
+                    .orElse(false);
             String fullAccessContext = fullAccessGranted
                     ? buildFullAccessContext(userId, conversation.getConversationId(), request.getLanguage())
                     : null;
@@ -185,9 +191,17 @@ public class AiChatService {
             String errorMessage = null;
 
             long startedAt = System.currentTimeMillis();
+            // P2: choose maxTokens by task type for quality/cost balance
+            String taskType = (routerResult != null) ? routerResult.getTaskType() : AiRouterResult.TASK_CORE_CHAT;
+            int dynamicMaxTokens = switch (taskType) {
+                case AiRouterResult.TASK_REASONING_CODE -> 4096;
+                case AiRouterResult.TASK_IMAGE_GEN -> 200;
+                case AiRouterResult.TASK_KNOWLEDGE -> 2048;
+                default -> 1024;
+            };
             for (int attempt = 1; attempt <= Math.max(1, maxRetries + 1); attempt++) {
                 try {
-                    completion = blackboxAiClient.complete(promptMessages, selectedModel);
+                    completion = blackboxAiClient.complete(promptMessages, selectedModel, dynamicMaxTokens);
                     break;
                 } catch (Exception ex) {
                     boolean timeout = blackboxAiClient.isTimeout(ex);

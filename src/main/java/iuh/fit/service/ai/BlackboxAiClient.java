@@ -23,7 +23,7 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class BlackboxAiClient {
+public class BlackboxAiClient implements AiCompletionProvider {
 
     private final ObjectMapper objectMapper;
 

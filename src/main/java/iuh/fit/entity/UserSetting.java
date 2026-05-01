@@ -56,4 +56,8 @@ public class UserSetting {
 
     @Builder.Default
     Boolean accountLocked = false;
+
+    // AI assistant settings
+    @Builder.Default
+    Boolean aiFullAccessGranted = false;
 }

@@ -25,7 +25,7 @@ import java.util.Map;
 @Slf4j
 public class AiRouterService {
 
-    private final BlackboxAiClient blackboxAiClient;
+    private final AiCompletionProvider blackboxAiClient;
     private final ObjectMapper objectMapper;
 
     @Value("${ai.router.model:blackboxai/minimax-free}")
@@ -44,31 +44,30 @@ public class AiRouterService {
     private String modelImage;
 
     private static final String ROUTER_SYSTEM_PROMPT = """
-            Role: Bạn là Bộ não điều phối (AI Router) cấp cao cho hệ thống Fruvia Chat. \
-            Nhiệm vụ của bạn là phân tích tin nhắn của người dùng và quyết định xem Task này thuộc loại nào \
-            để gọi Model chuyên biệt tương ứng.
+            Role: You are the high-level AI Router for the Fruvia Chat system. \
+            Your job is to analyse the user's message and decide which specialised model and task type to use.
 
-            Danh sách Model & Task quy định:
+            Available models and task types:
 
-            MODEL_CHAT -> Dùng cho: Trò chuyện thông thường, tư vấn tâm lý, viết lách, giải thích khái niệm tự nhiên, chào hỏi.
-            MODEL_REASONING -> Dùng cho: Giải toán khó, lập trình phức tạp, lỗi logic nặng, yêu cầu suy luận đa bước, debug code.
-            MODEL_KNOWLEDGE -> Dùng cho: Tóm tắt lịch sử chat dài, đọc file tài liệu đính kèm, tra cứu kiến thức bách khoa, tóm tắt nội dung dài.
-            MODEL_IMAGE -> Dùng cho: Tất cả yêu cầu tạo hình ảnh, vẽ logo, phác thảo UI, tạo ảnh, vẽ tranh, minh họa.
+            MODEL_CHAT        -> For: general conversation, emotional support, writing assistance, concept explanation, greetings.
+            MODEL_REASONING   -> For: hard math, complex programming, multi-step logical reasoning, code debugging.
+            MODEL_KNOWLEDGE   -> For: summarising long chat history, reading attached documents, encyclopaedic knowledge lookup, long-form summarisation.
+            MODEL_IMAGE       -> For: any image generation request, logo design, UI sketch, drawing, illustration.
 
-            Quy trình:
-            Bước 1: Quét từ khóa và ý định (Intent) của người dùng.
-            Bước 2: Phân loại vào 1 trong 4 Task trên.
-            Bước 3: Trả về kết quả JSON (không giải thích thêm, không markdown, chỉ JSON thuần).
+            Process:
+            Step 1: Scan the user's keywords and intent.
+            Step 2: Classify into exactly one of the four task types above.
+            Step 3: Return a single JSON object — no explanation, no markdown, pure JSON only.
 
-            Cấu trúc đầu ra JSON bắt buộc:
-            {"selected_model":"Tên model","task_type":"CORE_CHAT|REASONING_CODE|KNOWLEDGE|IMAGE_GEN","reason":"Lý do ngắn","refined_prompt":"Prompt tối ưu hóa"}
+            Required output format:
+            {"selected_model":"<model_name>","task_type":"CORE_CHAT|REASONING_CODE|KNOWLEDGE|IMAGE_GEN","reason":"<short reason>","refined_prompt":"<optimised prompt>"}
 
-            Quy tắc refined_prompt:
-            - Với IMAGE_GEN: refined_prompt PHẢI bằng tiếng Anh, mô tả chi tiết hình ảnh cần tạo (subject, style, color, composition, resolution).
-            - Với CORE_CHAT: giữ nguyên ngôn ngữ gốc của người dùng.
-            - Với REASONING_CODE và KNOWLEDGE: tối ưu prompt cho model chuyên biệt.
+            Rules for refined_prompt:
+            - IMAGE_GEN: MUST be in English, describe the image in detail (subject, style, colour, composition, resolution).
+            - CORE_CHAT: keep the user's original language.
+            - REASONING_CODE and KNOWLEDGE: optimise the prompt for the specialist model.
 
-            QUAN TRỌNG: Trả về ĐÚNG 1 JSON object, KHÔNG có markdown code block, KHÔNG có text thừa.
+            IMPORTANT: Return EXACTLY one JSON object, NO markdown code block, NO extra text.
             """;
 
     /**
