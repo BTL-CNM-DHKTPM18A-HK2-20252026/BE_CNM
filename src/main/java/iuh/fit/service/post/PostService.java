@@ -53,10 +53,25 @@ public class PostService {
                 .hideLikes(Boolean.TRUE.equals(request.getHideLikes()))
                 .turnOffComments(Boolean.TRUE.equals(request.getTurnOffComments()))
                 .commentCount(0)
+                .shareCount(0)
+                .sharedPostId(request.getSharedPostId())
                 .isDeleted(false)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
+
+        // If sharing, increment original post's share count
+        if (request.getSharedPostId() != null && !request.getSharedPostId().isBlank()) {
+            try {
+                postRepository.findById(request.getSharedPostId()).ifPresent(original -> {
+                    original.setShareCount(original.getShareCount() == null ? 1 : original.getShareCount() + 1);
+                    postRepository.save(original);
+                    log.info("Incremented share count for original post: {}", original.getPostId());
+                });
+            } catch (Exception e) {
+                log.warn("Failed to increment share count for post: {}", request.getSharedPostId());
+            }
+        }
 
         // Determine Post Type and handle Media/Links
         PostType type = PostType.TEXT;

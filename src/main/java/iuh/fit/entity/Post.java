@@ -42,6 +42,7 @@ public class Post {
     Boolean isDeleted;
     String location; // Location tag
     Integer commentCount; // Denormalized for performance
+    Integer shareCount; // Denormalized for performance
 
     @Builder.Default
     Boolean hideLikes = false;
@@ -56,4 +57,6 @@ public class Post {
     PostType type = PostType.TEXT;
 
     LinkMetadata linkMetadata; // For link previews
+
+    String sharedPostId; // ID of the original post being shared
 }

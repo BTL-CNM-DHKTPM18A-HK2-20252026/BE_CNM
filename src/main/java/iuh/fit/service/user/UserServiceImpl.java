@@ -23,7 +23,12 @@ import iuh.fit.enums.PrivacyLevel;
 import iuh.fit.enums.VerificationType;
 import iuh.fit.exception.AppException;
 import iuh.fit.exception.ErrorCode;
+import iuh.fit.enums.FriendshipStatus;
+import iuh.fit.exception.ForbiddenException;
 import iuh.fit.mapper.UserMapper;
+import iuh.fit.repository.ConversationMemberRepository;
+import iuh.fit.repository.FriendshipRepository;
+import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserAuthRepository;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserSettingRepository;
@@ -44,6 +49,9 @@ public class UserServiceImpl implements UserService {
     UserAuthRepository userAuthRepository;
     UserDetailRepository userDetailRepository;
     UserSettingRepository userSettingRepository;
+    FriendshipRepository friendshipRepository;
+    MessageRepository messageRepository;
+    ConversationMemberRepository conversationMemberRepository;
     PasswordEncoder passwordEncoder;
     UserMapper userMapper;
     ConversationService conversationService;
@@ -236,6 +244,27 @@ public class UserServiceImpl implements UserService {
 
         UserAuth userAuth = userAuthRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        // Privacy guards — only when a different user is viewing
+        if (currentUserId != null && !currentUserId.equals(userId)) {
+            UserSetting targetSetting = userSettingRepository.findById(userId).orElse(null);
+            if (targetSetting != null && Boolean.TRUE.equals(targetSetting.getAccountLocked())) {
+                throw new ForbiddenException(ErrorCode.USER_ACCOUNT_LOCKED);
+            }
+            if (targetSetting != null && Boolean.TRUE.equals(targetSetting.getBlockStrangerProfileView())) {
+                boolean areFriends = friendshipRepository
+                        .findByRequesterIdAndReceiverId(currentUserId, userId)
+                        .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED)
+                        .isPresent()
+                        || friendshipRepository
+                                .findByRequesterIdAndReceiverId(userId, currentUserId)
+                                .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED)
+                                .isPresent();
+                if (!areFriends) {
+                    throw new ForbiddenException(ErrorCode.USER_PROFILE_PRIVATE);
+                }
+            }
+        }
 
         UserDetail userDetail = userDetailRepository.findByUserId(userId)
                 .orElse(null);
@@ -454,6 +483,33 @@ public class UserServiceImpl implements UserService {
         return userAuthRepository.findById(userId)
                 .map(u -> u.getPinCode() != null && passwordEncoder.matches(rawPin, u.getPinCode()))
                 .orElse(false);
+    }
+
+    @Override
+    public java.util.Map<String, Object> getAiTokenUsageToday(String userId) {
+        java.time.LocalDateTime startOfDay = java.time.LocalDate.now().atStartOfDay();
+        java.util.List<String> conversationIds = conversationMemberRepository.findByUserId(userId)
+                .stream()
+                .map(iuh.fit.entity.ConversationMember::getConversationId)
+                .collect(java.util.stream.Collectors.toList());
+
+        long totalTokens = 0;
+        int requestCount = 0;
+        if (!conversationIds.isEmpty()) {
+            java.util.List<iuh.fit.entity.Message> aiMessages = messageRepository
+                    .findAiMessagesByConversationIdsAfter(conversationIds, startOfDay);
+            for (iuh.fit.entity.Message msg : aiMessages) {
+                if (msg.getTotalTokens() != null)
+                    totalTokens += msg.getTotalTokens();
+                requestCount++;
+            }
+        }
+
+        java.util.Map<String, Object> usage = new java.util.HashMap<>();
+        usage.put("totalTokensToday", totalTokens);
+        usage.put("requestCount", requestCount);
+        usage.put("date", java.time.LocalDate.now().toString());
+        return usage;
     }
 
     private void initializePostRegistrationResources(UserAuth userAuth, UserDetail userDetail) {

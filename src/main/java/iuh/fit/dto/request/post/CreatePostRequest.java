@@ -30,4 +30,6 @@ public class CreatePostRequest {
     private Boolean turnOffComments;
 
     private String linkUrl; // URL for link posts
+
+    private String sharedPostId; // ID of the original post being shared
 }

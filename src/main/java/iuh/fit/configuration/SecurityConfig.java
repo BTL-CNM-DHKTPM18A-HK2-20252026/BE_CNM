@@ -5,6 +5,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -12,6 +13,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
@@ -23,13 +26,17 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import lombok.RequiredArgsConstructor;
 
 @Configuration
 @EnableMethodSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
 
     @Value("${jwt.access-token.secret}")
     private String accessTokenSecret;
+
+    private final RedisTemplate<String, String> redisTemplate;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -49,9 +56,11 @@ public class SecurityConfig {
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html", "/webjars/**")
                         .permitAll()
 
-                        // === File endpoints (Temporarily public for testing) ===
-                        .requestMatchers("/files/**").permitAll() // Upload & view files (TODO: Add auth for
-                                                                  // POST/DELETE)
+                        // === File endpoints — GET is public, write operations require auth ===
+                        .requestMatchers(HttpMethod.GET, "/files/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/files/**").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/files/**").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/files/**").authenticated()
 
                         // === WebSocket endpoints ===
                         .requestMatchers("/ws", "/ws/**", "/ws-native", "/ws-native/**").permitAll()
@@ -93,7 +102,16 @@ public class SecurityConfig {
 
         OAuth2TokenValidator<Jwt> defaultValidator = JwtValidators.createDefault();
         OAuth2TokenValidator<Jwt> tokenTypeValidator = new JwtClaimValidator<>("type", "access"::equals);
-        jwtDecoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(defaultValidator, tokenTypeValidator));
+        OAuth2TokenValidator<Jwt> blacklistValidator = token -> {
+            String jti = token.getId();
+            if (jti != null && Boolean.TRUE.equals(redisTemplate.hasKey("blacklist:" + jti))) {
+                return OAuth2TokenValidatorResult.failure(
+                        new OAuth2Error("token_revoked", "Token has been revoked", null));
+            }
+            return OAuth2TokenValidatorResult.success();
+        };
+        jwtDecoder.setJwtValidator(
+                new DelegatingOAuth2TokenValidator<>(defaultValidator, tokenTypeValidator, blacklistValidator));
 
         return jwtDecoder;
     }

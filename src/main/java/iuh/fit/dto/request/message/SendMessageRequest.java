@@ -35,4 +35,5 @@ public class SendMessageRequest {
     private String caption; // Optional caption text for IMAGE/VIDEO messages
     private List<String> mentions; // Optional list of mentioned userIds
     private List<String> mediaUrls; // Optional list of image URLs for IMAGE_GROUP
+    private String storyId; // Optional: reference to a Story (for story replies)
 }

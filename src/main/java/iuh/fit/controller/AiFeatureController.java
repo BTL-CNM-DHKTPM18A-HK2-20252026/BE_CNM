@@ -25,7 +25,6 @@ import org.springframework.web.bind.annotation.RestController;
 @Slf4j
 @Tag(name = "AI Features", description = "Smart Reply & Message Summary")
 public class AiFeatureController {
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AiFeatureController.class);
 
     private final SmartReplyService smartReplyService;
     private final MessageSummaryService messageSummaryService;

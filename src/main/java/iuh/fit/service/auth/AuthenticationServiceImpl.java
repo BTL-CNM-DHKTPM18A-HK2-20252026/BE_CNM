@@ -33,6 +33,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import org.springframework.data.redis.core.RedisTemplate;
 
 /**
  * Implementation of AuthenticationService for JWT-based authentication.
@@ -44,7 +46,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @FieldDefaults(makeFinal = true, level = AccessLevel.PRIVATE)
 public class AuthenticationServiceImpl implements AuthenticationService {
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthenticationServiceImpl.class);
 
     private static final String ACCESS_TOKEN_TYPE = "access";
     private static final String REFRESH_TOKEN_TYPE = "refresh";
@@ -57,6 +58,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     SimpMessagingTemplate messagingTemplate;
     EmailVerificationService emailVerificationService;
     iuh.fit.service.presence.SessionService sessionService;
+    RedisTemplate<String, String> redisTemplate;
 
     @NonFinal
     @Value("${jwt.access-token.secret}")
@@ -188,12 +190,13 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 sessionService.removeSession(userId);
             }
 
-            // TODO: Implement token blacklisting with Redis
-            // long ttlMillis = expireAt.getTime() - System.currentTimeMillis();
-            // if (ttlMillis > 0) {
-            // redisTokenService.blacklistToken(tokenId, Duration.ofMillis(ttlMillis));
-            // log.info("Token {} blacklisted, expires in {}ms", tokenId, ttlMillis);
-            // }
+            // Blacklist token in Redis so it cannot be reused after logout
+            long ttlMillis = expireAt.getTime() - System.currentTimeMillis();
+            if (ttlMillis > 0) {
+                redisTemplate.opsForValue()
+                        .set("blacklist:" + tokenId, "1", ttlMillis, TimeUnit.MILLISECONDS);
+                log.info("Token {} blacklisted, expires in {}ms", tokenId, ttlMillis);
+            }
 
             log.info("User logged out successfully. Token ID: {}, ExpireAt: {}", tokenId, expireAt);
 

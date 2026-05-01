@@ -71,6 +71,34 @@ public class StoryController {
         return ResponseEntity.ok().build();
     }
     
+    @PostMapping("/{storyId}/react")
+    @Operation(summary = "React to a story")
+    public ResponseEntity<Void> reactToStory(
+            @PathVariable String storyId,
+            @RequestHeader("X-User-Id") String userId,
+            @RequestBody iuh.fit.dto.request.story.ReactToStoryRequest request) {
+        storyService.reactToStory(storyId, userId, request.getReaction());
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{storyId}/reply")
+    @Operation(summary = "Reply to a story via message")
+    public ResponseEntity<Void> replyToStory(
+            @PathVariable String storyId,
+            @RequestHeader("X-User-Id") String userId,
+            @RequestBody iuh.fit.dto.request.story.ReplyToStoryRequest request) {
+        storyService.replyToStory(storyId, userId, request.getContent());
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/{storyId}/viewers")
+    @Operation(summary = "Get list of story viewers")
+    public ResponseEntity<List<iuh.fit.dto.response.story.StoryViewerResponse>> getStoryViewers(
+            @PathVariable String storyId,
+            @RequestHeader("X-User-Id") String userId) {
+        return ResponseEntity.ok(storyService.getStoryViewers(storyId, userId));
+    }
+
     @DeleteMapping("/{storyId}")
     @Operation(summary = "Delete a story")
     public ResponseEntity<Void> deleteStory(

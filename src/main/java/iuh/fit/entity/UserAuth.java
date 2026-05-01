@@ -1,6 +1,8 @@
 package iuh.fit.entity;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.annotation.Id;
@@ -41,7 +43,7 @@ public class UserAuth {
     Boolean isTwoFactorEnabled;
 
     @Builder.Default
-    Boolean isVerified = true;
+    Boolean isVerified = false;
 
     /**
      * Bcrypt-hashed 6-digit PIN used to protect hidden conversations. Null if not
@@ -53,4 +55,7 @@ public class UserAuth {
     LocalDateTime updatedAt;
     LocalDateTime lastLoginAt;
     Boolean isDeleted;
+
+    @Builder.Default
+    List<String> dismissedSuggestionIds = new ArrayList<>();
 }

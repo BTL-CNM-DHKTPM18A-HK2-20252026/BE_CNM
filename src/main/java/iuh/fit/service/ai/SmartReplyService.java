@@ -25,7 +25,6 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 @Slf4j
 public class SmartReplyService {
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SmartReplyService.class);
 
     private final MessageRepository messageRepository;
     private final ConversationMemberRepository conversationMemberRepository;

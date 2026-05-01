@@ -34,6 +34,7 @@ public class PostResponse {
     private Boolean turnOffComments;
     private String type; // TEXT, IMAGE, VIDEO, LINK, MIXED
     private LinkMetadata linkMetadata;
+    private PostResponse sharedPost; // Original post content if this is a share
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

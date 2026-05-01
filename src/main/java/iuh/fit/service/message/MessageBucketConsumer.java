@@ -55,6 +55,11 @@ public class MessageBucketConsumer {
         int retries = 0;
         while (retries < MAX_RETRIES) {
             try {
+                // Idempotency guard — skip if already persisted
+                if (messageBucketService.existsByMessageId(message.getMessageId())) {
+                    log.debug("Message {} already persisted, skipping duplicate", message.getMessageId());
+                    return;
+                }
                 // 1. Persist to MongoDB bucket (primary storage)
                 int bucketSeq = messageBucketService.addMessageToBucket(message);
 

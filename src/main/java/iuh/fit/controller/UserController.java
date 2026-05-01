@@ -54,9 +54,6 @@ public class UserController {
         S3Service s3Service;
         UserSettingRepository userSettingRepository;
         UserDeviceRepository userDeviceRepository;
-        iuh.fit.repository.FriendshipRepository friendshipRepository;
-        iuh.fit.repository.MessageRepository messageRepository;
-        iuh.fit.repository.ConversationMemberRepository conversationMemberRepository;
 
         /**
          * Register a new user
@@ -90,29 +87,7 @@ public class UserController {
         @GetMapping("/{userId}")
         public ResponseEntity<UserResponse> getUserById(@PathVariable String userId) {
                 log.info("Get user request for userId: {}", userId);
-
-                // Check if target user has locked their account
                 String currentUserId = JwtUtils.getCurrentUserId();
-                if (currentUserId != null && !currentUserId.equals(userId)) {
-                        UserSetting targetSetting = userSettingRepository.findById(userId).orElse(null);
-                        if (targetSetting != null && Boolean.TRUE.equals(targetSetting.getAccountLocked())) {
-                                throw new RuntimeException(
-                                                "Người dùng này đã khóa tài khoản, không thể xem trang cá nhân");
-                        }
-                        // Check blockStrangerProfileView — block non-friends from viewing profile
-                        if (targetSetting != null
-                                        && Boolean.TRUE.equals(targetSetting.getBlockStrangerProfileView())) {
-                                boolean areFriends = friendshipRepository
-                                                .findByRequesterIdAndReceiverId(currentUserId, userId)
-                                                .filter(f -> f.getStatus() == iuh.fit.enums.FriendshipStatus.ACCEPTED)
-                                                .isPresent();
-                                if (!areFriends) {
-                                        throw new RuntimeException(
-                                                        "Người dùng này không cho phép người lạ xem trang cá nhân");
-                                }
-                        }
-                }
-
                 UserResponse response = userService.getUserById(userId, currentUserId);
                 return ResponseEntity.ok(response);
         }
@@ -371,32 +346,6 @@ public class UserController {
                 String userId = JwtUtils.getCurrentUserId();
                 if (userId == null)
                         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-
-                java.time.LocalDateTime startOfDay = java.time.LocalDate.now().atStartOfDay();
-
-                // Get all conversations the user is in
-                java.util.List<String> conversationIds = conversationMemberRepository.findByUserId(userId)
-                                .stream()
-                                .map(iuh.fit.entity.ConversationMember::getConversationId)
-                                .collect(java.util.stream.Collectors.toList());
-
-                long totalTokens = 0;
-                int requestCount = 0;
-
-                if (!conversationIds.isEmpty()) {
-                        java.util.List<iuh.fit.entity.Message> aiMessages = messageRepository
-                                        .findAiMessagesByConversationIdsAfter(conversationIds, startOfDay);
-                        for (iuh.fit.entity.Message msg : aiMessages) {
-                                if (msg.getTotalTokens() != null)
-                                        totalTokens += msg.getTotalTokens();
-                                requestCount++;
-                        }
-                }
-
-                java.util.Map<String, Object> usage = new java.util.HashMap<>();
-                usage.put("totalTokensToday", totalTokens);
-                usage.put("requestCount", requestCount);
-                usage.put("date", java.time.LocalDate.now().toString());
-                return ResponseEntity.ok(ApiResponse.success(usage, "OK"));
+                return ResponseEntity.ok(ApiResponse.success(userService.getAiTokenUsageToday(userId), "OK"));
         }
 }

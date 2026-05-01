@@ -20,7 +20,7 @@ public class StoryMapper {
         
         long viewCount = storyViewRepository.countByStoryId(story.getStoryId());
         boolean isViewedByMe = currentUserId != null && 
-                storyViewRepository.findByStoryIdAndViewerId(story.getStoryId(), currentUserId).isPresent();
+                storyViewRepository.existsByStoryIdAndViewerId(story.getStoryId(), currentUserId);
         
         var userDetail = userDetailRepository.findById(story.getAuthorId()).orElse(null);
         

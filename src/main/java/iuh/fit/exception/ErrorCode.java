@@ -22,6 +22,8 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng"),
     USER_ALREADY_EXISTS(HttpStatus.CONFLICT, "Email này đã được đăng ký"),
     USER_INACTIVE(HttpStatus.FORBIDDEN, "Tài khoản đã bị vô hiệu hóa"),
+    USER_ACCOUNT_LOCKED(HttpStatus.FORBIDDEN, "Người dùng này đã khóa tài khoản"),
+    USER_PROFILE_PRIVATE(HttpStatus.FORBIDDEN, "Người dùng này không cho phép người lạ xem trang cá nhân"),
     INVALID_USER_DATA(HttpStatus.BAD_REQUEST, "Dữ liệu người dùng không hợp lệ"),
 
     // Message - 404, 400
@@ -38,6 +40,10 @@ public enum ErrorCode {
     NOT_GROUP_ADMIN(HttpStatus.FORBIDDEN, "Chỉ Trưởng nhóm mới có quyền thực hiện"),
     NOT_GROUP_CONVERSATION(HttpStatus.BAD_REQUEST, "Chức năng này chỉ áp dụng cho nhóm chat"),
 
+    // Post & Reel - 404
+    POST_NOT_FOUND(HttpStatus.NOT_FOUND, "Không tìm thấy bài viết"),
+    REEL_NOT_FOUND(HttpStatus.NOT_FOUND, "Không tìm thấy thước phim"),
+
     // Report - 400, 404
     REPORT_INVALID(HttpStatus.BAD_REQUEST, "Nội dung báo cáo không hợp lệ"),
     INVALID_MUTE_DURATION(HttpStatus.BAD_REQUEST, "Thời gian tắt thông báo không hợp lệ"),
@@ -48,6 +54,18 @@ public enum ErrorCode {
     ALREADY_FRIENDS(HttpStatus.CONFLICT, "Bạn đã là bạn bè với người này"),
     FRIEND_REQUEST_ALREADY_SENT(HttpStatus.CONFLICT, "Lời mời kết bạn đã được gửi trước đó"),
     CANNOT_ADD_YOURSELF(HttpStatus.BAD_REQUEST, "Không thể tự gửi lời mời kết bạn cho chính mình"),
+    USER_BLOCKED_YOU(HttpStatus.FORBIDDEN, "Bạn đã bị chặn bởi người dùng này"),
+    FRIEND_REQUEST_ALREADY_FROM_RECEIVER(HttpStatus.CONFLICT, "Người dùng này đã gửi cho bạn một lời mời kết bạn"),
+    FRIEND_REQUEST_NOT_PENDING(HttpStatus.BAD_REQUEST, "Lời mời kết bạn không ở trạng thái chờ xử lý"),
+    NOT_AUTHORIZED_TO_HANDLE_REQUEST(HttpStatus.FORBIDDEN, "Bạn không có quyền xử lý lời mời kết bạn này"),
+    MESSAGE_SENDER_ONLY(HttpStatus.FORBIDDEN, "Chỉ người gửi mới có thể thực hiện thao tác này"),
+    MESSAGE_ALREADY_RECALLED(HttpStatus.BAD_REQUEST, "Tin nhắn đã được thu hồi"),
+    MESSAGE_EDIT_TIME_EXCEEDED(HttpStatus.BAD_REQUEST, "Đã vượt quá thời gian cho phép chỉnh sửa tin nhắn"),
+    MESSAGE_RECALL_TIME_EXCEEDED(HttpStatus.BAD_REQUEST, "Đã vượt quá thời gian cho phép thu hồi tin nhắn"),
+    RECIPIENT_REQUIRED(HttpStatus.BAD_REQUEST, "RecipientId hoặc ConversationId là bắt buộc"),
+    GROUP_MESSAGES_DISABLED(HttpStatus.FORBIDDEN, "Trưởng nhóm đã tắt tính năng gửi tin nhắn đối với thành viên"),
+    STRANGERS_BLOCKED(HttpStatus.FORBIDDEN, "Người dùng này không nhận tin nhắn từ người lạ"),
+    FRIENDS_ONLY_MESSAGES(HttpStatus.FORBIDDEN, "Người dùng này chỉ nhận tin nhắn từ bạn bè"),
 
     // File Upload - 400, 413
     FILE_EMPTY(HttpStatus.BAD_REQUEST, "File không được để trống"),

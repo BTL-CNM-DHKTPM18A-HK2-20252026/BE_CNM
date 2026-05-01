@@ -35,6 +35,7 @@ import iuh.fit.entity.UserDevice;
 import iuh.fit.repository.UserDeviceRepository;
 import iuh.fit.response.ApiResponse;
 import iuh.fit.service.auth.AuthenticationService;
+import iuh.fit.service.device.UserDeviceService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -56,10 +57,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Tag(name = "Authentication", description = "User authentication APIs")
 public class AuthenticationController {
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthenticationController.class);
 
     AuthenticationService authenticationService;
-    UserDeviceRepository userDeviceRepository;
+    UserDeviceService userDeviceService;
 
     @NonFinal
     @Value("${jwt.refresh-token.cookie-name}")
@@ -98,52 +98,9 @@ public class AuthenticationController {
         AuthenticationResponse response = authenticationService.authenticate(request);
 
         // Record device info on successful login
-        try {
-            String userAgent = httpRequest.getHeader("User-Agent");
-            String ip = httpRequest.getHeader("X-Forwarded-For");
-            if (ip == null || ip.isBlank())
-                ip = httpRequest.getRemoteAddr();
-
-            String browser = parseBrowser(userAgent);
-            String os = parseOS(userAgent);
-            String deviceType = parseDeviceType(userAgent);
-            String deviceName = browser + " on " + os;
-
-            // Extract userId from the access token
-            String userId = extractUserIdFromToken(response.getAccessToken());
-
-            if (userId != null) {
-                // Check if same device already exists for this user
-                java.util.Optional<UserDevice> existingDevice = userDeviceRepository
-                        .findByUserIdAndDeviceNameAndIpAddressAndIsActiveTrue(userId, deviceName, ip);
-
-                if (existingDevice.isPresent()) {
-                    // Update existing device record
-                    UserDevice device = existingDevice.get();
-                    device.setLastActiveAt(java.time.LocalDateTime.now());
-                    device.setLoginAt(java.time.LocalDateTime.now());
-                    userDeviceRepository.save(device);
-                    log.info("Updated existing device login for user {}: {}", userId, deviceName);
-                } else {
-                    // Create new device record
-                    UserDevice device = UserDevice.builder()
-                            .userId(userId)
-                            .deviceName(deviceName)
-                            .deviceType(deviceType)
-                            .browser(browser)
-                            .os(os)
-                            .ipAddress(ip)
-                            .loginAt(java.time.LocalDateTime.now())
-                            .lastActiveAt(java.time.LocalDateTime.now())
-                            .createdAt(java.time.LocalDateTime.now())
-                            .isActive(true)
-                            .build();
-                    userDeviceRepository.save(device);
-                    log.info("Recorded new device login for user {}: {}", userId, deviceName);
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to record device info: {}", e.getMessage());
+        String userId = extractUserIdFromToken(response.getAccessToken());
+        if (userId != null) {
+            userDeviceService.recordLogin(userId, httpRequest);
         }
 
         // Mobile clients send X-Platform header and cannot handle cookies
@@ -309,52 +266,6 @@ public class AuthenticationController {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    private String parseBrowser(String ua) {
-        if (ua == null)
-            return "Unknown";
-        if (ua.contains("Edg/"))
-            return "Edge";
-        if (ua.contains("OPR/") || ua.contains("Opera"))
-            return "Opera";
-        if (ua.contains("Chrome/") && !ua.contains("Edg/"))
-            return "Chrome";
-        if (ua.contains("Safari/") && !ua.contains("Chrome/"))
-            return "Safari";
-        if (ua.contains("Firefox/"))
-            return "Firefox";
-        return "Unknown";
-    }
-
-    private String parseOS(String ua) {
-        if (ua == null)
-            return "Unknown";
-        if (ua.contains("Windows NT 10"))
-            return "Windows 10";
-        if (ua.contains("Windows NT 11") || (ua.contains("Windows NT 10") && ua.contains("Win64")))
-            return "Windows";
-        if (ua.contains("Windows"))
-            return "Windows";
-        if (ua.contains("Mac OS X"))
-            return "macOS";
-        if (ua.contains("Android"))
-            return "Android";
-        if (ua.contains("iPhone") || ua.contains("iPad"))
-            return "iOS";
-        if (ua.contains("Linux"))
-            return "Linux";
-        return "Unknown";
-    }
-
-    private String parseDeviceType(String ua) {
-        if (ua == null)
-            return "WEB";
-        if (ua.contains("Mobile") || ua.contains("Android") || ua.contains("iPhone"))
-            return "MOBILE";
-        if (ua.contains("Electron") || ua.contains("Desktop"))
-            return "DESKTOP";
-        return "WEB";
     }
 
     private String extractRefreshTokenFromCookies(HttpServletRequest request) {

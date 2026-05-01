@@ -31,8 +31,7 @@ import lombok.experimental.FieldDefaults;
 public class Message {
 
     @Id
-    @Builder.Default
-    String messageId = UUID.randomUUID().toString();
+    String messageId;
 
     String conversationId; // Reference to Conversations
     String senderId; // Reference to UserAuth (who sent the message)
@@ -41,6 +40,7 @@ public class Message {
     String content; // Text content or file URL
     String caption; // Optional caption text for IMAGE/VIDEO messages
     String replyToMessageId; // Reference to another Message (for replies)
+    String storyId; // Reference to a Story (for story replies)
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
     Boolean isDeleted;
@@ -50,7 +50,8 @@ public class Message {
     // Edit history: stores previous content before each edit
     List<EditHistory> editHistory;
 
-    // Local delete: list of userIds who deleted this message locally ("delete for me")
+    // Local delete: list of userIds who deleted this message locally ("delete for
+    // me")
     List<String> localDeletedBy;
 
     // Mentions: list of userIds mentioned in this message

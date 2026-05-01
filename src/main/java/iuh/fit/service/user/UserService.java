@@ -105,4 +105,12 @@ public interface UserService {
      * @return true if matches
      */
     boolean verifyPin(String userId, String rawPin);
+
+    /**
+     * Get total AI token usage for the current user today.
+     *
+     * @param userId authenticated user ID
+     * @return map with totalTokensToday, requestCount, date
+     */
+    java.util.Map<String, Object> getAiTokenUsageToday(String userId);
 }

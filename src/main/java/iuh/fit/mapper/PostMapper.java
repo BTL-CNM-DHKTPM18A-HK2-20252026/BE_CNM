@@ -15,6 +15,7 @@ import iuh.fit.entity.PostReaction;
 import iuh.fit.entity.UserDetail;
 import iuh.fit.repository.PostMediaRepository;
 import iuh.fit.repository.PostReactionRepository;
+import iuh.fit.repository.PostRepository;
 import iuh.fit.repository.UserDetailRepository;
 import lombok.RequiredArgsConstructor;
 
@@ -25,6 +26,7 @@ public class PostMapper {
     private final PostReactionRepository postReactionRepository;
     private final PostMediaRepository postMediaRepository;
     private final UserDetailRepository userDetailRepository;
+    private final PostRepository postRepository;
 
     public PostResponse toResponse(Post post, String currentUserId) {
         if (post == null) {
@@ -111,7 +113,7 @@ public class PostMapper {
                 .taggedUsers(new ArrayList<>())
                 .likeCount(reactions.size())
                 .commentCount(post.getCommentCount() == null ? 0 : post.getCommentCount())
-                .shareCount(0)
+                .shareCount(post.getShareCount() == null ? 0 : post.getShareCount())
                 .reactionCounts(reactionCounts)
                 .reactionNames(reactionNames)
                 .isLikedByMe(isLikedByMe)
@@ -120,8 +122,20 @@ public class PostMapper {
                 .turnOffComments(post.getTurnOffComments())
                 .type(post.getType() != null ? post.getType().name() : "TEXT")
                 .linkMetadata(post.getLinkMetadata())
+                .sharedPost(post.getSharedPostId() != null ? fetchSharedPost(post.getSharedPostId(), currentUserId) : null)
                 .createdAt(post.getCreatedAt())
                 .updatedAt(post.getUpdatedAt())
                 .build();
+    }
+
+    private PostResponse fetchSharedPost(String sharedPostId, String currentUserId) {
+        return postRepository.findById(sharedPostId)
+                .filter(p -> !Boolean.TRUE.equals(p.getIsDeleted()))
+                .map(p -> {
+                    // Manual mapping to avoid circular dependency issues if using toResponse recursively with full details
+                    // or just call toResponse but with a depth limit if needed.
+                    // For now, simple recursion should be fine if we don't have deep share chains.
+                    return toResponse(p, currentUserId);
+                }).orElse(null);
     }
 }

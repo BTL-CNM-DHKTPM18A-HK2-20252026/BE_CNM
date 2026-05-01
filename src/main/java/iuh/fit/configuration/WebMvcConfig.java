@@ -11,11 +11,15 @@ import lombok.RequiredArgsConstructor;
 public class WebMvcConfig implements WebMvcConfigurer {
 
     private final SearchRateLimitInterceptor searchRateLimitInterceptor;
+    private final AuthRateLimitInterceptor authRateLimitInterceptor;
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(searchRateLimitInterceptor)
                 .addPathPatterns("/search/**")
                 .excludePathPatterns("/search/health", "/search/reindex/**");
+
+        registry.addInterceptor(authRateLimitInterceptor)
+                .addPathPatterns("/auth/check-email", "/auth/check-phone", "/auth/login");
     }
 }

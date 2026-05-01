@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import iuh.fit.service.message.MessageService;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -29,6 +30,8 @@ public class StoryService {
     private final StoryMapper storyMapper;
     private final FriendService friendService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final MessageService messageService;
+    private final iuh.fit.repository.UserDetailRepository userDetailRepository;
     
     @Transactional
     public StoryResponse createStory(String authorId, CreateStoryRequest request) {
@@ -106,7 +109,7 @@ public class StoryService {
         }
         
         // Check if already viewed
-        if (storyViewRepository.findByStoryIdAndViewerId(storyId, viewerId).isEmpty()) {
+        if (!storyViewRepository.existsByStoryIdAndViewerId(storyId, viewerId)) {
             StoryView view = StoryView.builder()
                     .viewId(UUID.randomUUID().toString())
                     .storyId(storyId)
@@ -117,6 +120,64 @@ public class StoryService {
             storyViewRepository.save(view);
             log.info("Story viewed: {} by {}", storyId, viewerId);
         }
+    }
+    
+    @Transactional
+    public void reactToStory(String storyId, String viewerId, String reaction) {
+        StoryView view = storyViewRepository.findByStoryIdAndViewerId(storyId, viewerId)
+                .orElseGet(() -> StoryView.builder()
+                        .viewId(UUID.randomUUID().toString())
+                        .storyId(storyId)
+                        .viewerId(viewerId)
+                        .viewedAt(LocalDateTime.now())
+                        .build());
+        
+        view.setReaction(reaction);
+        storyViewRepository.save(view);
+        log.info("Story reacted: {} by {} with {}", storyId, viewerId, reaction);
+        
+        // Notify author via real-time if needed
+        Story story = storyRepository.findById(storyId).orElse(null);
+        if (story != null) {
+            messagingTemplate.convertAndSend("/topic/stories/interaction/" + story.getAuthorId(), "STORY_REACTION");
+        }
+    }
+
+    @Transactional
+    public void replyToStory(String storyId, String senderId, String messageContent) {
+        Story story = storyRepository.findById(storyId)
+                .orElseThrow(() -> new RuntimeException("Story not found"));
+        
+        // Use messageService to send a message of type STORY_REPLY
+        iuh.fit.dto.request.message.SendMessageRequest request = new iuh.fit.dto.request.message.SendMessageRequest();
+        request.setRecipientId(story.getAuthorId());
+        request.setContent(messageContent);
+        request.setMessageType("STORY_REPLY");
+        request.setStoryId(storyId);
+        
+        messageService.sendMessage(senderId, request);
+    }
+
+    public List<iuh.fit.dto.response.story.StoryViewerResponse> getStoryViewers(String storyId, String authorId) {
+        Story story = storyRepository.findById(storyId)
+                .orElseThrow(() -> new RuntimeException("Story not found"));
+        
+        if (!story.getAuthorId().equals(authorId)) {
+            throw new RuntimeException("Not authorized to see viewers");
+        }
+        
+        return storyViewRepository.findByStoryId(storyId).stream()
+                .map(view -> {
+                    var userDetail = userDetailRepository.findById(view.getViewerId()).orElse(null);
+                    return iuh.fit.dto.response.story.StoryViewerResponse.builder()
+                            .userId(view.getViewerId())
+                            .displayName(userDetail != null ? userDetail.getDisplayName() : "Unknown")
+                            .avatarUrl(userDetail != null ? userDetail.getAvatarUrl() : null)
+                            .viewedAt(view.getViewedAt())
+                            .reaction(view.getReaction())
+                            .build();
+                })
+                .collect(Collectors.toList());
     }
     
     @Transactional

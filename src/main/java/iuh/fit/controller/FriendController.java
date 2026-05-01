@@ -11,12 +11,14 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.friend.FriendActionRequest;
 import iuh.fit.dto.response.friend.FriendRequestResponse;
+import iuh.fit.dto.response.friend.FriendSuggestionResponse;
 import iuh.fit.dto.response.user.UserResponse;
 import iuh.fit.response.ApiResponse;
 import iuh.fit.service.friend.FriendService;
@@ -95,5 +97,21 @@ public class FriendController {
         String userId = JwtUtils.getCurrentUserId();
         friendService.blockUser(userId, request.getUserId());
         return ResponseEntity.ok(ApiResponse.success("Đã chặn người dùng này"));
+    }
+
+    @GetMapping("/suggestions")
+    @Operation(summary = "Get friend suggestions")
+    public ResponseEntity<ApiResponse<List<FriendSuggestionResponse>>> getFriendSuggestions(
+            @RequestParam(defaultValue = "10") int limit) {
+        String userId = JwtUtils.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.success(friendService.getFriendSuggestions(userId, limit)));
+    }
+    @PostMapping("/suggestions/dismiss")
+    @Operation(summary = "Dismiss a friend suggestion")
+    public ResponseEntity<ApiResponse<Void>> dismissSuggestion(
+            @Valid @RequestBody FriendActionRequest request) {
+        String userId = JwtUtils.getCurrentUserId();
+        friendService.dismissSuggestion(userId, request.getUserId());
+        return ResponseEntity.ok(ApiResponse.success("Đã bỏ qua gợi ý"));
     }
 }

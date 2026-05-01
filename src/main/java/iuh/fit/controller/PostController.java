@@ -21,7 +21,9 @@ import iuh.fit.dto.request.post.UpdatePostRequest;
 import iuh.fit.dto.response.post.PostResponse;
 import iuh.fit.enums.ReactionType;
 import iuh.fit.exception.UnauthorizedException;
+import iuh.fit.mapper.PostMapper;
 import iuh.fit.service.post.PostService;
+import iuh.fit.service.recommendation.RecommendationService;
 import iuh.fit.utils.JwtUtils;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,8 @@ import lombok.RequiredArgsConstructor;
 public class PostController {
 
     private final PostService postService;
+    private final RecommendationService recommendationService;
+    private final PostMapper postMapper;
 
     @PostMapping
     @Operation(summary = "Create a new post")
@@ -57,12 +61,23 @@ public class PostController {
     }
 
     @GetMapping("/feed")
-    @Operation(summary = "Get news feed")
+    @Operation(summary = "Get news feed (Chronological)")
     public ResponseEntity<Page<PostResponse>> getNewsFeed(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(postService.getNewsFeed(getCurrentUserId(), pageable));
+    }
+
+    @GetMapping("/feed/ranked")
+    @Operation(summary = "Get personalized news feed using recommendation algorithm")
+    public ResponseEntity<Page<PostResponse>> getRankedFeed(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        String currentUserId = getCurrentUserId();
+        return ResponseEntity.ok(recommendationService.getRankedFeed(currentUserId, pageable)
+                .map(post -> postMapper.toResponse(post, currentUserId)));
     }
 
     @PutMapping("/{postId}")

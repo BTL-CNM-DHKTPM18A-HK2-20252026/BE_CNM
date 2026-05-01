@@ -91,6 +91,17 @@ public class MessageBucketService {
         }
 
         /**
+         * Check whether a message with the given ID has already been persisted in any
+         * bucket.
+         * Used by the Kafka consumer for idempotency.
+         */
+        public boolean existsByMessageId(String messageId) {
+                org.springframework.data.mongodb.core.query.Query query = new org.springframework.data.mongodb.core.query.Query(
+                                Criteria.where("messages.messageId").is(messageId));
+                return mongoTemplate.exists(query, MessageBucket.class);
+        }
+
+        /**
          * Get paginated messages for a conversation using bucket aggregation.
          * Messages are returned newest-first (DESC by createdAt).
          */

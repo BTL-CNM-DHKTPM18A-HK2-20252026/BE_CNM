@@ -24,7 +24,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Slf4j
 public class BlackboxAiClient {
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BlackboxAiClient.class);
 
     private final ObjectMapper objectMapper;
 
