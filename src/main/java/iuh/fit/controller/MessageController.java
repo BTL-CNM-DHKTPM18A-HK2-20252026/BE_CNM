@@ -1,4 +1,4 @@
-﻿package iuh.fit.controller;
+package iuh.fit.controller;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;

@@ -88,7 +88,8 @@ public enum ErrorCode {
     // Server - 500
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi server, vui lòng thử lại sau"),
     DATABASE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi khi truy cập cơ sở dữ liệu"),
-    EXTERNAL_SERVICE_ERROR(HttpStatus.SERVICE_UNAVAILABLE, "Dịch vụ bên ngoài không khả dụng");
+    EXTERNAL_SERVICE_ERROR(HttpStatus.SERVICE_UNAVAILABLE, "Dịch vụ bên ngoài không khả dụng"),
+    DOCUMENT_EXTRACTION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể bóc tách văn bản từ tài liệu");
 
     private final HttpStatus status;
     private final String message;

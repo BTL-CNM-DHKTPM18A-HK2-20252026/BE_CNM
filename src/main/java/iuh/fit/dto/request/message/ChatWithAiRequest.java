@@ -36,4 +36,10 @@ public class ChatWithAiRequest {
     // Optional: S3 image URL when user sends an image in AI chat for vision
     // analysis
     private String userImageUrl;
+
+    // Optional: S3 document URL (PDF/DOCX) when user sends a document in AI chat
+    private String userDocumentUrl;
+
+    // Optional: original file name of the document (used for MIME detection)
+    private String userDocumentName;
 }

@@ -112,6 +112,19 @@ public class S3Service {
     }
 
     /**
+     * Downloads object bytes from S3 using the full public S3 URL.
+     * Extracts the object key from the URL and uses SDK credentials —
+     * works for private buckets without requiring a presigned URL.
+     */
+    public byte[] downloadBytesFromUrl(String url) {
+        String key = extractKey(url);
+        if (key == null || key.isBlank()) {
+            throw new IllegalArgumentException("Cannot extract S3 key from URL: " + url);
+        }
+        return downloadBytes(key);
+    }
+
+    /**
      * Generates a pre-signed GET URL for reading a private S3 object.
      */
     public String generatePresignedReadUrl(String objectKey, long expiryMinutes) {

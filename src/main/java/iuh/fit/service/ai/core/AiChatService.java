@@ -38,6 +38,8 @@ import iuh.fit.service.search.SearchService;
 import iuh.fit.service.storage.StorageService;
 import iuh.fit.service.ai.config.AiSystemPromptLibrary;
 import iuh.fit.service.ai.features.vision.AiImageWorkflowService;
+import iuh.fit.service.ai.features.document.AiDocumentService;
+import iuh.fit.service.ai.features.search.GoogleSearchContextService;
 import iuh.fit.service.ai.routing.AiRouterResult;
 import iuh.fit.service.ai.routing.AiRouterService;
 import lombok.RequiredArgsConstructor;
@@ -99,6 +101,8 @@ public class AiChatService {
     private final StorageService storageService;
     private final AiCompletionProvider blackboxAiClient;
     private final AiImageWorkflowService aiImageWorkflowService;
+    private final AiDocumentService aiDocumentService;
+    private final GoogleSearchContextService googleSearchContextService;
     private final AiSystemPromptLibrary systemPromptLibrary;
     private final AiRouterService aiRouterService;
     private final ObjectMapper objectMapper;
@@ -128,13 +132,14 @@ public class AiChatService {
         LocalDateTime now = LocalDateTime.now();
         Conversations conversation = resolveConversation(userId, request.getConversationId(), now);
 
-        // For vision requests (userImageUrl set), the user already uploaded an IMAGE
-        // via /messages. Creating a TEXT duplicate of the caption would appear as a
-        // separate message in the UI. Build the Message in-memory only; skip bucket
-        // save.
+        // For vision/document requests (userImageUrl or userDocumentUrl set), the user
+        // already uploaded the file via /messages. Creating a TEXT duplicate of the
+        // question would appear as a separate message in the UI. Build the Message
+        // in-memory only; skip bucket save.
         boolean isVisionRequest = StringUtils.hasText(request.getUserImageUrl());
+        boolean isDocumentRequest = StringUtils.hasText(request.getUserDocumentUrl());
         Message userMessage;
-        if (isVisionRequest) {
+        if (isVisionRequest || isDocumentRequest) {
             userMessage = buildUserMessageOnly(conversation.getConversationId(), userId,
                     InputSanitizer.sanitize(request.getContent()), now);
         } else {
@@ -198,6 +203,20 @@ public class AiChatService {
                     request.getLanguage(), request.getThemeType(), userProfileContext, storageContext,
                     fullAccessContext);
 
+            // Real-time Search: nếu câu hỏi cần dữ liệu mới nhất (tin tức, tỷ số, giá cả…)
+            // thì gọi Google Search và inject kết quả vào đầu prompt — ưu tiên cao nhất.
+            // Không áp dụng cho vision/document request (đã có context riêng).
+            if (!isVisionRequest && !isDocumentRequest
+                    && googleSearchContextService.isRealTimeQuery(request.getContent())) {
+                String searchContext = googleSearchContextService.buildSearchContext(
+                        request.getContent(), language);
+                if (StringUtils.hasText(searchContext)) {
+                    promptMessages.add(0, createPromptMessage("system", searchContext));
+                    log.info("[AiChatService] Real-time search context injected for query: '{}'",
+                            request.getContent());
+                }
+            }
+
             // Vision: if user sent an image, analyze it and inject as context
             if (StringUtils.hasText(request.getUserImageUrl())) {
                 // For vision requests, the TEXT user message was NOT saved to the bucket
@@ -247,6 +266,35 @@ public class AiChatService {
                 }
             }
 
+            // Document: if user sent a PDF/DOCX, extract text and inject as context
+            if (StringUtils.hasText(request.getUserDocumentUrl())) {
+                try {
+                    String docSystemPrompt = aiDocumentService.prepareDocumentContextFromUrl(
+                            request.getUserDocumentUrl(),
+                            request.getUserDocumentName(),
+                            language);
+                    // Inject as the first system message for highest priority
+                    promptMessages.add(0, createPromptMessage("system", docSystemPrompt));
+                    // Ensure the user question is present as a user turn
+                    boolean userTurnPresent = promptMessages.stream()
+                            .anyMatch(m -> "user".equals(m.get("role"))
+                                    && InputSanitizer.sanitize(request.getContent()).equals(m.get("content")));
+                    if (!userTurnPresent) {
+                        promptMessages.add(createPromptMessage("user",
+                                InputSanitizer.sanitize(request.getContent())));
+                    }
+                    log.info("[AiChatService] Document context injected for file '{}'",
+                            request.getUserDocumentName());
+                } catch (Exception docEx) {
+                    log.error("[AiChatService] Failed to extract document context from '{}': {}",
+                            request.getUserDocumentUrl(), docEx.getMessage(), docEx);
+                    String fallback = "vi".equals(language)
+                            ? "[Lưu ý: Không thể đọc nội dung tài liệu đính kèm. Hãy trả lời dựa trên câu hỏi của người dùng.]"
+                            : "[Note: The attached document could not be read. Answer based on the user's question only.]";
+                    promptMessages.add(0, createPromptMessage("system", fallback));
+                }
+            }
+
             // If router provided a refined prompt, replace the last user message in the
             // prompt
             if (routerResult != null && StringUtils.hasText(routerResult.getRefinedPrompt())
@@ -269,6 +317,10 @@ public class AiChatService {
                 case AiRouterResult.TASK_KNOWLEDGE -> 2048;
                 default -> 1024;
             };
+            // Document analysis needs more tokens for a full response
+            if (StringUtils.hasText(request.getUserDocumentUrl())) {
+                dynamicMaxTokens = Math.max(dynamicMaxTokens, 4096);
+            }
             for (int attempt = 1; attempt <= Math.max(1, maxRetries + 1); attempt++) {
                 try {
                     completion = blackboxAiClient.complete(promptMessages, selectedModel, dynamicMaxTokens);

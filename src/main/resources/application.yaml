@@ -167,6 +167,14 @@ ai:
   blackbox:
     url: ${BLACKBOX_API_URL:https://api.blackbox.ai/v1/chat/completions}
 
+# Google Custom Search API
+google:
+  api:
+    key: ${GOOGLE_API_KEY:}
+  search:
+    engine:
+      id: ${GOOGLE_SEARCH_ENGINE_ID:}
+
 # Actuator & Prometheus Monitoring
 management:
   endpoints:
