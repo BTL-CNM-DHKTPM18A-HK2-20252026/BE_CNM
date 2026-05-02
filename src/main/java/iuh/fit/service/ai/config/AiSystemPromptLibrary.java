@@ -1,4 +1,4 @@
-package iuh.fit.service.ai;
+package iuh.fit.service.ai.config;
 
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;

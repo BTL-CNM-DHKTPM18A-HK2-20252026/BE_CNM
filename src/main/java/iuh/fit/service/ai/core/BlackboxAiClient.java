@@ -1,4 +1,4 @@
-package iuh.fit.service.ai;
+package iuh.fit.service.ai.core;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -76,6 +76,34 @@ public class BlackboxAiClient implements AiCompletionProvider {
                     finalModel, fallbackModel);
             return doComplete(messages, fallbackModel, maxTokens);
         }
+    }
+
+    /**
+     * Vision-optimised completion: sets temperature=0.1 for maximum factual
+     * grounding. The messages list should already contain image_url content blocks.
+     */
+    public AiCompletionResult completeVision(List<Map<String, Object>> messages, String model, int maxTokens) {
+        if (!StringUtils.hasText(apiKey)) {
+            throw new IllegalStateException("BLACKBOX_API_KEY is missing");
+        }
+
+        String finalModel = StringUtils.hasText(model) ? model : defaultModel;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("model", finalModel);
+        payload.put("messages", messages);
+        payload.put("max_tokens", Math.max(1, maxTokens));
+        payload.put("stream", false);
+        payload.put("temperature", 0.1);
+
+        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+        ResponseEntity<String> response = getRestTemplate().postForEntity(blackboxUrl, request, String.class);
+
+        return parseResponse(response.getBody(), finalModel);
     }
 
     private AiCompletionResult doComplete(List<Map<String, String>> messages, String model, int maxTokens) {

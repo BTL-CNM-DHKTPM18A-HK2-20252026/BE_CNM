@@ -1,4 +1,4 @@
-package iuh.fit.service.ai;
+package iuh.fit.service.ai.features.vision;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -281,6 +281,279 @@ public class AiImageWorkflowService {
         }
 
         throw new IllegalStateException("Gemini returned no image data");
+    }
+
+    /**
+     * Analyzes an image at the given URL using Gemini Vision and returns a text
+     * description.
+     *
+     * @param imageUrl   publicly-accessible URL of the image (e.g. S3 presigned
+     *                   URL)
+     * @param userPrompt optional user question/prompt about the image; falls back
+     *                   to a generic description prompt
+     * @param language   "vi" or "en"
+     * @return text description from Gemini, or null if unavailable
+     */
+    public String analyzeImageWithGemini(String imageUrl, String userPrompt, String language) {
+        if (!StringUtils.hasText(geminiApiKey) || !StringUtils.hasText(imageUrl)) {
+            return null;
+        }
+        try {
+            // Download via S3 SDK directly — no presigned URL needed, SDK handles IAM auth.
+            byte[] imageBytes = downloadImageBytes(imageUrl);
+            if (imageBytes == null || imageBytes.length == 0) {
+                log.warn("[VISION] Downloaded image is empty from URL: {}", imageUrl);
+                return null;
+            }
+
+            String mimeType = detectImageMime(imageBytes);
+            String base64Data = Base64.getEncoder().encodeToString(imageBytes);
+
+            String prompt;
+            if (StringUtils.hasText(userPrompt)) {
+                prompt = userPrompt.length() > 1000 ? userPrompt.substring(0, 1000) : userPrompt;
+            } else {
+                prompt = "vi".equals(language)
+                        ? "Hãy mô tả chi tiết nội dung trong ảnh này."
+                        : "Describe the content of this image in detail.";
+            }
+
+            Map<String, Object> textPart = new HashMap<>();
+            textPart.put("text", prompt);
+
+            Map<String, Object> inlineData = new HashMap<>();
+            inlineData.put("mimeType", mimeType);
+            inlineData.put("data", base64Data);
+
+            Map<String, Object> imagePart = new HashMap<>();
+            imagePart.put("inlineData", inlineData);
+
+            Map<String, Object> content = new HashMap<>();
+            content.put("parts", List.of(textPart, imagePart));
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("contents", List.of(content));
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+
+            String visionUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+            RestTemplate restTemplate = buildRestTemplate(12000, 40000);
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                    visionUrl + "?key=" + geminiApiKey, request, String.class);
+
+            JsonNode partsNode = objectMapper.readTree(response.getBody()).at("/candidates/0/content/parts");
+            if (partsNode.isArray()) {
+                for (JsonNode part : partsNode) {
+                    String text = part.path("text").asText(null);
+                    if (StringUtils.hasText(text)) {
+                        return text;
+                    }
+                }
+            }
+            log.warn("[VISION] Gemini returned no text for image analysis");
+            return null;
+        } catch (Exception e) {
+            log.warn("[VISION] Failed to analyze image: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Analyze an image using OpenAI GPT-4o vision with Chain-of-Thought reasoning
+     * and a strict 85% confidence gate to minimize hallucination.
+     *
+     * Strategy:
+     * 1. Step 1 (Observe): Force the model to list raw visual evidence first
+     * (colors, shapes, text, art style, UI elements) — no conclusions yet.
+     * 2. Step 2 (Reason): Ask the model to derive its answer from the evidence
+     * and self-assess confidence (0–100).
+     * 3. Gate: If confidence < 85 or the model says "không chắc", return a
+     * specific low-confidence marker so AiChatService can ask for more context
+     * rather than hallucinating a confident-sounding wrong answer.
+     *
+     * @param imageUrl   URL of the image (S3 presigned or public)
+     * @param userPrompt optional user question about the image
+     * @param language   "vi" or "en"
+     * @return structured vision analysis string, or null if unavailable
+     */
+    public String analyzeImageWithOpenAi(String imageUrl, String userPrompt, String language) {
+        if (!StringUtils.hasText(openaiApiKey) || !StringUtils.hasText(imageUrl)) {
+            return null;
+        }
+        try {
+            // Download via S3 SDK directly — no presigned URL needed, SDK handles IAM auth.
+            byte[] imageBytes = downloadImageBytes(imageUrl);
+            if (imageBytes == null || imageBytes.length == 0) {
+                log.warn("[VISION-OAI] Downloaded image is empty from URL: {}", imageUrl);
+                return null;
+            }
+
+            String mimeType = detectImageMime(imageBytes);
+            String base64Data = Base64.getEncoder().encodeToString(imageBytes);
+            String dataUri = "data:" + mimeType + ";base64," + base64Data;
+
+            boolean isVi = "vi".equals(language);
+            String userQuestion = StringUtils.hasText(userPrompt)
+                    ? (userPrompt.length() > 800 ? userPrompt.substring(0, 800) : userPrompt)
+                    : (isVi ? "Hãy mô tả chi tiết nội dung trong ảnh này."
+                            : "Describe the content of this image in detail.");
+
+            // ── System prompt: Visual Chain-of-Thought (VCoT) 4-step + Valorant-priority +
+            // Pengu disambiguation
+            // ──
+            String systemPrompt = isVi
+                    ? """
+                            Bạn là chuyên gia nhận diện nhân vật game/anime với kỹ năng phân tích hình ảnh Visual Chain of Thought.
+                            Khi được cung cấp một hình ảnh, thực hiện ĐÚNG 4 bước sau:
+
+                            BƯỚC 1 — NHẬN DẠNG ĐẶC ĐIỂM (Raw Evidence):
+                            Liệt kê cụ thể:
+                            - Màu tóc + kiểu tóc
+                            - Màu mắt + phụ kiện mắt (có đeo mặt nạ mắt không? màu gì?)
+                            - Trang phục: màu sắc chính, chi tiết nổi bật, logo/biểu tượng
+                            - Phụ kiện đặc trưng (vũ khí, mũ, khăn…)
+                            - Sinh vật/pet đi kèm — mô tả cụ thể hình dạng của pet (đây là dấu hiệu quan trọng)
+                            - Văn bản / logo xuất hiện trong ảnh
+                            - Phong cách nghệ thuật: chibi, realistic, anime, pixel art…
+                            - Màu nền
+
+                            BƯỚC 2 — ĐỐI CHIẾU DATABASE (Thứ tự ưu tiên bắt buộc):
+                            Hãy kiểm tra theo ĐÚNG thứ tự này:
+
+                            [1] VALORANT trước — Xét agent Valorant trước tiên:
+                              Sage = tóc đen dài, trang phục xanh ngọc/xẹo
+                              Reyna = tóc đen/tím, hai dải tóc nổi bật, mắt tím
+                              Sova = tóc vàng, mặt nạ mắt màu xanh dương
+                              Neon = tóc vàng, áo jacket xanh dương nổi
+                              Jett = tóc xanh lá ngắn
+                              Viper = tóc đen, áo chống độc xanh lá
+                              Killjoy = tóc vàng, áo vàng/cam
+                              Chamber = tóc nâu sáng, vest đen lịch
+                              Gekko = tóc xanh lá nổi, companion Wingman/Dizzy/Thrash/Mosh
+
+                            [2] LEAGUE OF LEGENDS tiếp theo
+
+                            [3] Genshin Impact, Overwatch, Honkai, Blue Archive, One Piece, Naruto, MHA… sau cùng
+
+                            QUY TẮC PENGU — BẮT BUỘC TUÂN THỦ:
+                            Nếu ảnh có linh vật Pengu (con chò mở chiết đầu vuông/tròn trơn, đơn giản), ĐÓ LÀ KHÔNG ĐỦ ĐỂ KẾT LUẬN LÀ LEAGUE OF LEGENDS.
+                            Pengu xuất hiện trong cả League of Legends LÀ CẢ Valorant (scoins Pengu Cosplay). Cần xác định game dựa vào NHÂN VẬT CHÍNH, không dựa vào Pengu.
+
+                            BƯỚC 3 — DỰ ĐOÁN:
+                            - Nếu CHIBI: không dựa vào tỷ lệ cơ thể. Tập trung: màu tóc, vũ khí, trang phục, pet.
+                            - Đưa ra: Tên nhân vật + Tựa game/anime
+                            - Độ tự tin 0–100
+
+                            BƯỚC 4 — QUY TẮC ĐỘ TỰ TIN:
+                            - ≥ 70%: Khẳng định trực tiếp
+                            - < 70%: Liệt kê 2–3 phương án: "Có thể là: [A] trong [Game A] (~X%), [B] trong [Game B] (~Y%)"
+                            - KHÔNG bao giờ trả lời rỗng
+
+                            Trả lời bằng tiếng Việt.
+                            """
+                    : """
+                            You are an expert game/anime character identifier with Visual Chain of Thought (VCoT) image analysis.
+                            When given an image, perform EXACTLY these 4 steps:
+
+                            STEP 1 — IDENTIFY VISUAL FEATURES (Raw Evidence):
+                            List specifically:
+                            - Hair color + hairstyle
+                            - Eye color and any eye accessories (eye patch? color?)
+                            - Outfit: main colors, distinctive details, logos/symbols
+                            - Signature accessories (weapons, scarves, masks…)
+                            - Companion creatures/pets — describe the pet's specific shape and design
+                            - Visible text / logos in the image
+                            - Art style: chibi, realistic, anime 2D, pixel art…
+                            - Background color
+
+                            STEP 2 — CROSS-REFERENCE DATABASE (mandatory evaluation order):
+                            You MUST evaluate in this exact order:
+
+                            [PRIORITY 1] VALORANT Agents FIRST — check before anything else:
+                              Sage       = long black hair, jade/teal green outfit
+                              Reyna      = black/purple hair, two prominent hair strands, purple eyes
+                              Sova       = blonde hair, blue eye patch over right eye
+                              Neon       = blonde hair, bright blue jacket
+                              Jett       = short light blue-green hair
+                              Viper      = black hair, green hazmat-style coat
+                              Killjoy    = blonde hair, yellow/orange outfit, glasses
+                              Chamber    = light brown hair, sharp dark suit
+                              Gekko      = bright green hair, companions: Wingman/Dizzy/Thrash/Mosh
+
+                            [PRIORITY 2] LEAGUE OF LEGENDS Champions (evaluate only after ruling out Valorant)
+
+                            [PRIORITY 3] Genshin Impact, Overwatch, Honkai Star Rail, Blue Archive, Naruto, One Piece, MHA, etc.
+
+                            PENGU RULE — MANDATORY:
+                            If the image contains a Pengu mascot (small round/square-headed penguin-like creature, simple design),
+                            this does NOT mean the game is League of Legends.
+                            Pengu appears in BOTH League of Legends AND Valorant ("Pengu Cosplay" skins exist in Valorant).
+                            Identify the game by the MAIN CHARACTER's features, NOT by the presence of Pengu.
+
+                            STEP 3 — MAKE PREDICTION:
+                            - For CHIBI art style: DO NOT rely on body proportions. Focus on: hair color, weapon, outfit details, pet/companion.
+                            - State: character name + game/anime title
+                            - Self-assess confidence 0–100
+
+                            STEP 4 — CONFIDENCE RULES:
+                            - ≥ 70%: State result directly and confidently
+                            - < 70%: MUST list 2–3 candidates: "Possible: [Name A] from [Game A] (~X%), [Name B] from [Game B] (~Y%)"
+                            - NEVER give an empty or unhelpful response
+
+                            Respond in English.
+                            """;
+
+            // Build the request: system prompt + user question + image
+            Map<String, Object> systemMsg = new HashMap<>();
+            systemMsg.put("role", "system");
+            systemMsg.put("content", systemPrompt);
+
+            Map<String, Object> imageUrlPart = new HashMap<>();
+            imageUrlPart.put("url", dataUri);
+            imageUrlPart.put("detail", "high"); // High-res tile processing
+            Map<String, Object> imagePart = new HashMap<>();
+            imagePart.put("type", "image_url");
+            imagePart.put("image_url", imageUrlPart);
+            Map<String, Object> textPart = new HashMap<>();
+            textPart.put("type", "text");
+            textPart.put("text", userQuestion);
+
+            Map<String, Object> userMsg = new HashMap<>();
+            userMsg.put("role", "user");
+            userMsg.put("content", List.of(imagePart, textPart));
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("model", "gpt-4o");
+            payload.put("messages", List.of(systemMsg, userMsg));
+            payload.put("max_tokens", 1000);
+            payload.put("temperature", 0.0); // Zero temperature = maximum factual grounding, no creative guessing
+            payload.put("top_p", 0.1); // Tight nucleus sampling to prevent hallucination
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(openaiApiKey);
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
+
+            RestTemplate restTemplate = buildRestTemplate(15000, 55000);
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                    "https://api.openai.com/v1/chat/completions", request, String.class);
+
+            JsonNode choices = objectMapper.readTree(response.getBody()).path("choices");
+            if (choices.isArray() && choices.size() > 0) {
+                String text = choices.get(0).at("/message/content").asText(null);
+                if (StringUtils.hasText(text)) {
+                    log.debug("[VISION-OAI] Analysis complete ({} chars)", text.length());
+                    return text;
+                }
+            }
+            log.warn("[VISION-OAI] OpenAI returned no text for image analysis");
+            return null;
+        } catch (Exception e) {
+            log.warn("[VISION-OAI] Failed to analyze image with OpenAI: {}", e.getMessage());
+            return null;
+        }
     }
 
     private String resolveOpenAiSize(String presetSize) {
@@ -682,6 +955,33 @@ public class AiImageWorkflowService {
         }
 
         throw new IllegalStateException("Image provider returned no usable image data");
+    }
+
+    /**
+     * Downloads image bytes for vision analysis.
+     * For S3 URLs: uses S3 SDK getObject() directly (IAM auth, no presigned URL
+     * needed).
+     * For external URLs: falls back to RestTemplate GET.
+     */
+    private byte[] downloadImageBytes(String imageUrl) throws Exception {
+        if (!StringUtils.hasText(imageUrl))
+            return null;
+        // Extract S3 object key: everything after ".com/", strip query params
+        int idx = imageUrl.indexOf(".com/");
+        if (idx != -1) {
+            String objectKey = imageUrl.substring(idx + 5);
+            int qIdx = objectKey.indexOf('?');
+            if (qIdx != -1)
+                objectKey = objectKey.substring(0, qIdx);
+            objectKey = java.net.URLDecoder.decode(objectKey, java.nio.charset.StandardCharsets.UTF_8);
+            log.debug("[VISION] Downloading via S3 SDK: {}", objectKey);
+            return s3Service.downloadBytes(objectKey);
+        }
+        // Non-S3 URL (e.g., external image) — plain HTTP GET
+        log.debug("[VISION] Downloading via HTTP (non-S3 URL): {}", imageUrl);
+        RestTemplate dlTemplate = buildRestTemplate(8000, 30000);
+        ResponseEntity<byte[]> resp = dlTemplate.getForEntity(imageUrl, byte[].class);
+        return resp.getBody();
     }
 
     private RestTemplate buildRestTemplate() {

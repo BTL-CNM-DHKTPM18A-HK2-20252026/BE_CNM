@@ -1,4 +1,4 @@
-package iuh.fit.service.ai;
+package iuh.fit.service.ai.features.reply;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -7,6 +7,8 @@ import iuh.fit.entity.Message;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserDetailRepository;
+import iuh.fit.service.ai.core.AiCompletionProvider;
+import iuh.fit.service.ai.core.AiCompletionResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,7 +31,7 @@ public class SmartReplyService {
     private final MessageRepository messageRepository;
     private final ConversationMemberRepository conversationMemberRepository;
     private final UserDetailRepository userDetailRepository;
-    private final BlackboxAiClient aiClient;
+    private final AiCompletionProvider aiClient;
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
 

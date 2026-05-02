@@ -99,6 +99,19 @@ public class S3Service {
     }
 
     /**
+     * Downloads object bytes directly from S3 using SDK credentials.
+     * Use this for server-side access to private objects — avoids presigned URL
+     * generation issues (malformed credentials, region mismatch, etc.).
+     */
+    public byte[] downloadBytes(String objectKey) {
+        try (com.amazonaws.services.s3.model.S3Object s3Object = s3Client.getObject(bucketName, objectKey)) {
+            return s3Object.getObjectContent().readAllBytes();
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to download S3 object: " + objectKey, ex);
+        }
+    }
+
+    /**
      * Generates a pre-signed GET URL for reading a private S3 object.
      */
     public String generatePresignedReadUrl(String objectKey, long expiryMinutes) {
@@ -150,15 +163,17 @@ public class S3Service {
     }
 
     /**
-     * Generates a pre-signed download URL that forces the browser to download the file.
+     * Generates a pre-signed download URL that forces the browser to download the
+     * file.
      * 
-     * @param url The public S3 URL of the file
+     * @param url      The public S3 URL of the file
      * @param fileName The name to be used for the downloaded file
      * @return Pre-signed URL string with attachment disposition
      */
     public String generateDownloadUrl(String url, String fileName) {
         String key = extractKey(url);
-        if (key == null || key.isBlank()) return url;
+        if (key == null || key.isBlank())
+            return url;
 
         Date expiration = new Date();
         expiration.setTime(expiration.getTime() + 1000L * 60 * 15); // 15 minutes

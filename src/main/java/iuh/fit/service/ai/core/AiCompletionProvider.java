@@ -1,4 +1,4 @@
-package iuh.fit.service.ai;
+package iuh.fit.service.ai.core;
 
 import java.util.List;
 import java.util.Map;

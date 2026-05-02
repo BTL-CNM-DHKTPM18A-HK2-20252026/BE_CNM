@@ -1,7 +1,9 @@
-package iuh.fit.service.ai;
+package iuh.fit.service.ai.routing;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import iuh.fit.service.ai.core.AiCompletionProvider;
+import iuh.fit.service.ai.core.AiCompletionResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -123,12 +125,30 @@ public class AiRouterService {
         }
     }
 
+    /**
+     * Route with attachment awareness.
+     * If {@code hasImageAttachment} is true, skip LLM routing and force TASK_VISION.
+     */
+    public AiRouterResult routeWithAttachment(String userMessage, String language, boolean hasImageAttachment) {
+        if (hasImageAttachment) {
+            log.info("[AI Router] Image attachment detected — forcing TASK_VISION");
+            return AiRouterResult.builder()
+                    .selectedModel(modelChat)
+                    .taskType(AiRouterResult.TASK_VISION)
+                    .reason("Image attachment present — routed to vision analysis")
+                    .refinedPrompt(StringUtils.hasText(userMessage) ? userMessage : "")
+                    .build();
+        }
+        return route(userMessage, language);
+    }
+
     private String resolveModelId(String taskType, String selectedModelHint) {
         return switch (taskType) {
             case AiRouterResult.TASK_CORE_CHAT -> modelChat;
             case AiRouterResult.TASK_REASONING_CODE -> modelReasoning;
             case AiRouterResult.TASK_KNOWLEDGE -> modelKnowledge;
             case AiRouterResult.TASK_IMAGE_GEN -> modelImage;
+            case AiRouterResult.TASK_VISION -> modelChat;
             default -> modelChat;
         };
     }

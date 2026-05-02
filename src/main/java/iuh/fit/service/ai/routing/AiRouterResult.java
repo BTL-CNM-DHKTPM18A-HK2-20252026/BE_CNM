@@ -1,4 +1,4 @@
-package iuh.fit.service.ai;
+package iuh.fit.service.ai.routing;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -15,6 +15,7 @@ public class AiRouterResult {
     public static final String TASK_REASONING_CODE = "REASONING_CODE";
     public static final String TASK_KNOWLEDGE = "KNOWLEDGE";
     public static final String TASK_IMAGE_GEN = "IMAGE_GEN";
+    public static final String TASK_VISION = "VISION";
 
     private String selectedModel;
     private String taskType;

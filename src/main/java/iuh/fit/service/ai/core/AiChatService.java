@@ -1,4 +1,4 @@
-package iuh.fit.service.ai;
+package iuh.fit.service.ai.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import iuh.fit.document.MessageDocument;
@@ -30,11 +30,16 @@ import iuh.fit.repository.FileUploadRepository;
 import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserAuthRepository;
+import iuh.fit.service.message.MessageBucketService;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserSettingRepository;
 import iuh.fit.response.SearchResult;
 import iuh.fit.service.search.SearchService;
 import iuh.fit.service.storage.StorageService;
+import iuh.fit.service.ai.config.AiSystemPromptLibrary;
+import iuh.fit.service.ai.features.vision.AiImageWorkflowService;
+import iuh.fit.service.ai.routing.AiRouterResult;
+import iuh.fit.service.ai.routing.AiRouterService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -79,6 +84,7 @@ public class AiChatService {
     private static final int CONTINUATION_MAX_TOKENS = 320;
 
     private final MessageRepository messageRepository;
+    private final MessageBucketService messageBucketService;
     private final ConversationRepository conversationRepository;
     private final ConversationMemberRepository conversationMemberRepository;
     private final UserAuthRepository userAuthRepository;
@@ -122,14 +128,24 @@ public class AiChatService {
         LocalDateTime now = LocalDateTime.now();
         Conversations conversation = resolveConversation(userId, request.getConversationId(), now);
 
-        Message userMessage = createUserMessage(conversation.getConversationId(), userId,
-                InputSanitizer.sanitize(request.getContent()), now);
-        updateConversationLastMessage(conversation, userMessage);
-
-        String senderName = userDetailRepository.findByUserId(userId)
-                .map(UserDetail::getDisplayName)
-                .orElse("Unknown");
-        searchService.indexMessage(userMessage, senderName);
+        // For vision requests (userImageUrl set), the user already uploaded an IMAGE
+        // via /messages. Creating a TEXT duplicate of the caption would appear as a
+        // separate message in the UI. Build the Message in-memory only; skip bucket
+        // save.
+        boolean isVisionRequest = StringUtils.hasText(request.getUserImageUrl());
+        Message userMessage;
+        if (isVisionRequest) {
+            userMessage = buildUserMessageOnly(conversation.getConversationId(), userId,
+                    InputSanitizer.sanitize(request.getContent()), now);
+        } else {
+            userMessage = createUserMessage(conversation.getConversationId(), userId,
+                    InputSanitizer.sanitize(request.getContent()), now);
+            updateConversationLastMessage(conversation, userMessage);
+            String senderName = userDetailRepository.findByUserId(userId)
+                    .map(UserDetail::getDisplayName)
+                    .orElse("Unknown");
+            searchService.indexMessage(userMessage, senderName);
+        }
 
         broadcastAiTyping(conversation.getConversationId(), true);
         try {
@@ -143,8 +159,13 @@ public class AiChatService {
             String language = resolveResponseLanguage(request.getLanguage());
             AiRouterResult routerResult = aiRouterService.route(request.getContent(), language);
 
-            // If router detected IMAGE_GEN task, redirect to image workflow
-            if (routerResult != null && AiRouterResult.TASK_IMAGE_GEN.equals(routerResult.getTaskType())) {
+            // If router detected IMAGE_GEN task, redirect to image workflow.
+            // EXCEPTION: if the user sent an image (isVisionRequest), the router may
+            // misclassify "What character is this?" as IMAGE_GEN. Always prefer vision
+            // analysis when an image URL is present.
+            if (!isVisionRequest
+                    && routerResult != null
+                    && AiRouterResult.TASK_IMAGE_GEN.equals(routerResult.getTaskType())) {
                 QuickCommand routerImageCommand = new QuickCommand("image.generate",
                         routerResult.getRefinedPrompt());
                 return handleImageGenerationRequest(userId, request, conversation, userMessage, routerImageCommand);
@@ -153,8 +174,8 @@ public class AiChatService {
             // --- Step 2: Build context & call the routed model ---
             String selectedModel = (routerResult != null) ? routerResult.getSelectedModel() : defaultModel;
 
-            List<Message> recentMessages = messageRepository
-                    .findByConversationIdOrderByCreatedAtDesc(conversation.getConversationId(), PageRequest.of(0, 30))
+            List<Message> recentMessages = messageBucketService
+                    .getConversationMessages(conversation.getConversationId(), PageRequest.of(0, 30))
                     .getContent();
 
             List<Message> slidingWindow = buildSlidingWindow(recentMessages);
@@ -176,6 +197,55 @@ public class AiChatService {
             List<Map<String, String>> promptMessages = buildPrompt(summary, ragContexts, slidingWindow,
                     request.getLanguage(), request.getThemeType(), userProfileContext, storageContext,
                     fullAccessContext);
+
+            // Vision: if user sent an image, analyze it and inject as context
+            if (StringUtils.hasText(request.getUserImageUrl())) {
+                // For vision requests, the TEXT user message was NOT saved to the bucket
+                // (to avoid duplicating the image caption in the UI). Add the question
+                // as a user turn in the prompt so the AI knows what was asked.
+                promptMessages.add(createPromptMessage("user", InputSanitizer.sanitize(request.getContent())));
+
+                String visionDesc = aiImageWorkflowService.analyzeImageWithOpenAi(
+                        request.getUserImageUrl(),
+                        InputSanitizer.sanitize(request.getContent()),
+                        language);
+                // Fallback to Gemini if OpenAI vision unavailable
+                if (!StringUtils.hasText(visionDesc)) {
+                    visionDesc = aiImageWorkflowService.analyzeImageWithGemini(
+                            request.getUserImageUrl(),
+                            InputSanitizer.sanitize(request.getContent()),
+                            language);
+                }
+                if (StringUtils.hasText(visionDesc)) {
+                    // Inject the VCoT analysis as a system context block.
+                    // The new 4-step prompt already enforces 70% gate and candidate listing;
+                    // instruct the main model to present those candidates rather than collapsing.
+                    String visionContext = "vi".equals(language)
+                            ? """
+                                    [KẾT QUẢ PHÂN TÍCH ẢNH - Visual Chain-of-Thought]:
+                                    %s
+
+                                    HƯỚNG DẪN XỬ LÝ:
+                                    - Câu trả lời của bạn phải dựa HOÀN TOÀN vào phân tích trên
+                                    - Nếu phân tích liệt kê nhiều "phương án có thể" (Có thể là: A, B, C), hãy trình bày RÕ RÀNG các phương án đó cho người dùng — không tự chọn đại một cái
+                                    - Nếu phân tích đã khẳng định tên nhân vật/tựa game, trả lời trực tiếp với thông tin đó
+                                    - Không bổ sung thêm thông tin mà bạn không thể suy ra từ phân tích ảnh
+                                    """
+                                    .formatted(visionDesc)
+                            : """
+                                    [IMAGE ANALYSIS RESULT - Visual Chain-of-Thought]:
+                                    %s
+
+                                    PROCESSING INSTRUCTIONS:
+                                    - Your answer must be based ENTIRELY on the analysis above
+                                    - If the analysis lists multiple "possible candidates" (Possible: A, B, C), present ALL of those options clearly to the user — do not arbitrarily pick one
+                                    - If the analysis has confidently identified a character/game, answer directly with that information
+                                    - Do not add information you cannot infer from the image analysis
+                                    """
+                                    .formatted(visionDesc);
+                    promptMessages.add(createPromptMessage("system", visionContext));
+                }
+            }
 
             // If router provided a refined prompt, replace the last user message in the
             // prompt
@@ -292,7 +362,7 @@ public class AiChatService {
                     .aiErrorMessage(errorMessage)
                     .build();
 
-            assistantMessage = messageRepository.save(assistantMessage);
+            messageBucketService.addMessageToBucket(assistantMessage);
             if (completion != null) {
                 searchService.indexMessage(assistantMessage, "Fruvia Chatbot");
             }
@@ -495,7 +565,8 @@ public class AiChatService {
     }
 
     private boolean isNaturalTerminalChar(char c) {
-        return ".!?;:…)]}>'\"`”’」。！？".indexOf(c) >= 0;
+        String terminalChars = ".!?;:\u2026)\\]}>'\"`\u201C\u201D\u2018\u2019\u300D\u3002\uFF01\uFF1F";
+        return terminalChars.indexOf(c) >= 0;
     }
 
     private boolean looksLikeStandaloneUrl(String text) {
@@ -642,7 +713,7 @@ public class AiChatService {
                     .aiRequestId(UUID.randomUUID().toString())
                     .build();
 
-            imageMessage = messageRepository.save(imageMessage);
+            messageBucketService.addMessageToBucket(imageMessage);
 
             String confirmationText = "vi".equals(language)
                     ? "Mình đã tạo ảnh xong rồi, bạn xem ngay bên dưới nhé."
@@ -668,7 +739,7 @@ public class AiChatService {
                     .totalTokens(estimateTokenCount(userMessage.getContent()) + estimateTokenCount(confirmationText))
                     .aiRequestId(UUID.randomUUID().toString())
                     .build();
-            assistantMessage = messageRepository.save(assistantMessage);
+            messageBucketService.addMessageToBucket(assistantMessage);
 
             searchService.indexMessage(assistantMessage, "Fruvia Chatbot");
 
@@ -708,8 +779,8 @@ public class AiChatService {
 
             // Fall back to text AI response so the user still gets something useful
             try {
-                List<Message> recentMessages = messageRepository
-                        .findByConversationIdOrderByCreatedAtDesc(conversation.getConversationId(),
+                List<Message> recentMessages = messageBucketService
+                        .getConversationMessages(conversation.getConversationId(),
                                 PageRequest.of(0, 30))
                         .getContent();
                 List<Message> slidingWindow = buildSlidingWindow(recentMessages);
@@ -797,7 +868,7 @@ public class AiChatService {
                         .build();
             }
 
-            assistantMessage = messageRepository.save(assistantMessage);
+            messageBucketService.addMessageToBucket(assistantMessage);
             updateConversationLastMessage(conversation, assistantMessage);
 
             List<ConversationMember> members = conversationMemberRepository
@@ -872,8 +943,8 @@ public class AiChatService {
         return emitter;
     }
 
-    private Message createUserMessage(String conversationId, String userId, String content, LocalDateTime now) {
-        Message message = Message.builder()
+    private Message buildUserMessageOnly(String conversationId, String userId, String content, LocalDateTime now) {
+        return Message.builder()
                 .messageId(UUID.randomUUID().toString())
                 .conversationId(conversationId)
                 .senderId(userId)
@@ -890,8 +961,12 @@ public class AiChatService {
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
+    }
 
-        return messageRepository.save(message);
+    private Message createUserMessage(String conversationId, String userId, String content, LocalDateTime now) {
+        Message message = buildUserMessageOnly(conversationId, userId, content, now);
+        messageBucketService.addMessageToBucket(message);
+        return message;
     }
 
     private Conversations resolveConversation(String userId, String conversationId, LocalDateTime now) {
@@ -956,7 +1031,7 @@ public class AiChatService {
                             .createdAt(now)
                             .updatedAt(now)
                             .build();
-                    welcomeMessage = messageRepository.save(welcomeMessage);
+                    messageBucketService.addMessageToBucket(welcomeMessage);
                     created.setLastMessageId(welcomeMessage.getMessageId());
                     created.setLastMessageContent(welcomeContent);
                     created.setLastMessageTime(now);
@@ -1387,8 +1462,8 @@ public class AiChatService {
             List<Message> recentUserMessages = messageRepository
                     .findBySenderIdOrderByCreatedAtDesc(userId, PageRequest.of(0, 60))
                     .getContent();
-            List<Message> recentConversationMessages = messageRepository
-                    .findByConversationIdOrderByCreatedAtDesc(conversationId, PageRequest.of(0, 40))
+            List<Message> recentConversationMessages = messageBucketService
+                    .getConversationMessages(conversationId, PageRequest.of(0, 40))
                     .getContent();
             List<FileUpload> files = fileUploadRepository.findByUploadedBy(userId);
             List<Conversations> privateConversations = conversationRepository
@@ -1640,8 +1715,8 @@ public class AiChatService {
                                     .findFirst()
                                     .orElse(null);
 
-                    long interactionCount = messageRepository
-                            .countByConversationIdAndIsDeletedFalse(conversation.getConversationId());
+                    long interactionCount = messageBucketService
+                            .countMessages(conversation.getConversationId());
 
                     Map<String, Object> payload = new LinkedHashMap<>();
                     payload.put("peer_user_id", peerId);

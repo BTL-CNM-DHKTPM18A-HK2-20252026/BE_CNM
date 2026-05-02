@@ -32,4 +32,8 @@ public class ChatWithAiRequest {
     // Optional permission flag from client settings.
     // If true, backend injects full user context (profile, history, file metadata).
     private Boolean fullAccessGranted;
+
+    // Optional: S3 image URL when user sends an image in AI chat for vision
+    // analysis
+    private String userImageUrl;
 }

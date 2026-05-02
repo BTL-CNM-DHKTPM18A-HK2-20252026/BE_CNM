@@ -27,7 +27,7 @@ import iuh.fit.dto.response.conversation.ConversationResponse;
 import iuh.fit.dto.response.message.AiChatResponse;
 import iuh.fit.dto.response.message.MessageResponse;
 import iuh.fit.dto.response.message.MessageAndConversationResponse;
-import iuh.fit.service.ai.AiChatService;
+import iuh.fit.service.ai.core.AiChatService;
 import iuh.fit.service.message.MessageService;
 import iuh.fit.service.s3.S3Service;
 import iuh.fit.response.ApiResponse;

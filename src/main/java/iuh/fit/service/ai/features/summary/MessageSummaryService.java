@@ -1,4 +1,4 @@
-package iuh.fit.service.ai;
+package iuh.fit.service.ai.features.summary;
 
 import iuh.fit.dto.response.ai.SummarizeResponse;
 import iuh.fit.entity.ConversationMember;
@@ -6,12 +6,13 @@ import iuh.fit.entity.Message;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserDetailRepository;
+import iuh.fit.service.ai.core.AiCompletionProvider;
+import iuh.fit.service.ai.core.AiCompletionResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -31,7 +32,7 @@ public class MessageSummaryService {
     private final MessageRepository messageRepository;
     private final ConversationMemberRepository conversationMemberRepository;
     private final UserDetailRepository userDetailRepository;
-    private final BlackboxAiClient aiClient;
+    private final AiCompletionProvider aiClient;
 
     @Value("${ai.model.knowledge:blackboxai/google/gemini-3.1-pro-preview}")
     private String knowledgeModel;
