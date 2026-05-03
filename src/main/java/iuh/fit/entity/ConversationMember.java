@@ -36,6 +36,8 @@ public class ConversationMember {
     String nickname; // Custom nickname in this conversation
     String lastReadMessageId; // Last message this member has read
     LocalDateTime lastReadAt;
+    String lastDeliveredMessageId; // Last message delivered to this member's device
+    LocalDateTime lastDeliveredAt;
 
     @Builder.Default
     Boolean isPinned = false; // Per-user pin status

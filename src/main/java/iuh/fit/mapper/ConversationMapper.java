@@ -6,8 +6,8 @@ import iuh.fit.entity.ConversationPermission;
 import iuh.fit.entity.Conversations;
 import iuh.fit.dto.response.conversation.ConversationPermissionResponse;
 import iuh.fit.entity.UserDetail;
-import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserDetailRepository;
+import iuh.fit.service.message.MessageBucketService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 public class ConversationMapper {
 
         private final UserDetailRepository userDetailRepository;
-        private final MessageRepository messageRepository;
+        private final MessageBucketService messageBucketService;
         private final iuh.fit.repository.FriendshipRepository friendshipRepository;
 
         public ConversationResponse toResponse(Conversations conversation, List<ConversationMember> members) {
@@ -82,13 +82,10 @@ public class ConversationMapper {
                         long count;
                         if (lastReadAt == null) {
                                 // User has never opened this conversation — count all messages except their own
-                                count = messageRepository.countByConversationIdAndIsDeletedFalseAndSenderIdNot(
-                                                convId, currentUserId);
+                                count = messageBucketService.countUnread(convId, currentUserId);
                         } else {
                                 // Count messages sent after the user last read, excluding their own
-                                count = messageRepository
-                                                .countByConversationIdAndIsDeletedFalseAndCreatedAtGreaterThanAndSenderIdNot(
-                                                                convId, lastReadAt, currentUserId);
+                                count = messageBucketService.countUnreadAfter(convId, lastReadAt, currentUserId);
                         }
                         unreadCount = (int) Math.min(count, Integer.MAX_VALUE);
                 }
@@ -117,7 +114,9 @@ public class ConversationMapper {
                                 .isMarkedUnread(isMarkedUnread)
                                 .unreadCount(unreadCount)
                                 .autoDeleteDuration(conversation.getAutoDeleteDuration())
-                                .invitationLink(conversation.getInvitationLink() != null ? conversation.getInvitationLink() : "fruvi.chat/" + conversation.getConversationId())
+                                .invitationLink(conversation.getInvitationLink() != null
+                                                ? conversation.getInvitationLink()
+                                                : "fruvi.chat/" + conversation.getConversationId())
                                 .permissions(toPermissionResponse(permission))
                                 .build();
         }
@@ -139,10 +138,11 @@ public class ConversationMapper {
 
         private ConversationResponse.MemberInfo mapMember(ConversationMember member, String currentUserId) {
                 UserDetail detail = userDetailRepository.findByUserId(member.getUserId()).orElse(null);
-                
+
                 Boolean isFriend = null;
                 if (currentUserId != null && !currentUserId.equals(member.getUserId())) {
-                        isFriend = friendshipRepository.findByRequesterIdAndReceiverId(currentUserId, member.getUserId())
+                        isFriend = friendshipRepository
+                                        .findByRequesterIdAndReceiverId(currentUserId, member.getUserId())
                                         .map(f -> f.getStatus() == iuh.fit.enums.FriendshipStatus.ACCEPTED)
                                         .orElse(false);
                 }

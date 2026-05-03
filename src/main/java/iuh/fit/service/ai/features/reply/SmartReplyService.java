@@ -5,8 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import iuh.fit.dto.response.ai.SmartReplyResponse;
 import iuh.fit.entity.Message;
 import iuh.fit.repository.ConversationMemberRepository;
-import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserDetailRepository;
+import iuh.fit.service.message.MessageBucketService;
 import iuh.fit.service.ai.core.AiCompletionProvider;
 import iuh.fit.service.ai.core.AiCompletionResult;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
 @Slf4j
 public class SmartReplyService {
 
-    private final MessageRepository messageRepository;
+    private final MessageBucketService messageBucketService;
     private final ConversationMemberRepository conversationMemberRepository;
     private final UserDetailRepository userDetailRepository;
     private final AiCompletionProvider aiClient;
@@ -52,7 +52,7 @@ public class SmartReplyService {
         conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Ban khong phai thanh vien cua cuoc hoi thoai nay"));
 
-        var page = messageRepository.findByConversationIdOrderByCreatedAtDesc(
+        var page = messageBucketService.getConversationMessages(
                 conversationId, PageRequest.of(0, CONTEXT_SIZE));
         List<Message> recentMessages = new ArrayList<>(page.getContent());
         Collections.reverse(recentMessages);

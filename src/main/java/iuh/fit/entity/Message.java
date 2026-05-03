@@ -18,11 +18,10 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;
 
 /**
- * Message entity - Stores chat messages
+ * Message entity - Stores chat messages embedded in MessageBucket
  * Related to: Conversations (conversationId), UserAuth (senderId)
  * Can have: MessageAttachment, MessageReaction
  */
-@Document(collection = "message")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

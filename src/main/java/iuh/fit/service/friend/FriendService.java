@@ -10,9 +10,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import iuh.fit.service.notification.NotificationEvent;
 
 import iuh.fit.dto.response.friend.FriendRequestResponse;
 import iuh.fit.dto.response.friend.FriendSuggestionResponse;
@@ -48,6 +51,7 @@ public class FriendService implements IFriendService {
     private final UserMapper userMapper;
     private final SimpMessagingTemplate messagingTemplate;
     private final UserSettingRepository userSettingRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public FriendRequestResponse sendFriendRequest(String senderId, String receiverId, String message) {
@@ -111,6 +115,10 @@ public class FriendService implements IFriendService {
         // Notify sender (for real-time update on other devices/tabs)
         messagingTemplate.convertAndSend("/topic/friend-events/" + senderId, "SENT");
 
+        // Publish notification event (async persist + push)
+        eventPublisher.publishEvent(NotificationEvent.forFriendRequest(
+                this, receiverId, senderId, friendship.getId()));
+
         return friendMapper.toResponse(friendship);
     }
 
@@ -137,6 +145,10 @@ public class FriendService implements IFriendService {
         // Notify both users to update friend list
         messagingTemplate.convertAndSend("/topic/friend-events/" + friendship.getRequesterId(), "ACCEPTED");
         messagingTemplate.convertAndSend("/topic/friend-events/" + friendship.getReceiverId(), "ACCEPTED");
+
+        // Notify original requester rằng người ta đã chấp nhận
+        eventPublisher.publishEvent(NotificationEvent.forFriendAccepted(
+                this, friendship.getRequesterId(), friendship.getReceiverId(), friendship.getId()));
     }
 
     @Transactional

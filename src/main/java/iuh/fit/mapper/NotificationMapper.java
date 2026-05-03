@@ -7,22 +7,34 @@ import iuh.fit.entity.Notification;
 
 @Component
 public class NotificationMapper {
-    
-    public NotificationResponse toResponse(Notification notification) {
-        if (notification == null) {
+
+    public NotificationResponse toResponse(Notification n) {
+        if (n == null)
             return null;
-        }
-        
+
         return NotificationResponse.builder()
-            .notificationId(notification.getNotificationId())
-            .receiverId(notification.getReceiverId())
-            .actorId(notification.getActorId())
-            .notificationType(notification.getNotificationType() != null ? 
-                notification.getNotificationType().toString() : null)
-            .content(null)
-            .relatedObjectId(notification.getEntityId())
-            .isRead(notification.getIsRead())
-            .createdAt(notification.getCreatedAt())
-            .build();
+                .notificationId(n.getNotificationId())
+                .receiverId(n.getReceiverId())
+                .actorId(n.getActorId())
+                .actorName(n.getActorName())
+                .actorAvatarUrl(n.getActorAvatarUrl())
+                .notificationType(n.getNotificationType() != null ? n.getNotificationType().name() : null)
+                .title(n.getTitle())
+                .body(n.getBody())
+                .iconUrl(n.getIconUrl())
+                .deepLink(n.getDeepLink())
+                .objectType(n.getObjectType())
+                .objectId(n.getObjectId())
+                .targetType(n.getTargetType())
+                .targetId(n.getTargetId())
+                .relatedObjectId(n.getObjectId() != null ? n.getObjectId() : n.getEntityId())
+                .groupKey(n.getGroupKey())
+                .aggregateCount(n.getAggregateCount())
+                .actionStatus(n.getActionStatus())
+                .metadata(n.getMetadata())
+                .isRead(Boolean.TRUE.equals(n.getIsRead()))
+                .createdAt(n.getCreatedAt())
+                .updatedAt(n.getUpdatedAt())
+                .build();
     }
 }

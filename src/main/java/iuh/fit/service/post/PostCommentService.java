@@ -6,8 +6,11 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import iuh.fit.service.notification.NotificationEvent;
 
 import iuh.fit.dto.request.post.CreateCommentRequest;
 import iuh.fit.dto.response.post.CommentResponse;
@@ -32,6 +35,7 @@ public class PostCommentService {
     private final PostRepository postRepository;
     private final UserDetailRepository userDetailRepository;
     private final CommentReactionRepository reactionRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public CommentResponse addComment(String postId, String userId, CreateCommentRequest request) {
@@ -42,7 +46,8 @@ public class PostCommentService {
         if (actualParentId != null) {
             PostComment parent = commentRepository.findById(actualParentId).orElse(null);
             if (parent != null && parent.getParentCommentId() != null) {
-                // If parent is already a reply (Level 2), the new reply should point to the root (Level 1)
+                // If parent is already a reply (Level 2), the new reply should point to the
+                // root (Level 1)
                 actualParentId = parent.getParentCommentId();
             }
         }
@@ -64,13 +69,33 @@ public class PostCommentService {
         post.setCommentCount((post.getCommentCount() == null ? 0 : post.getCommentCount()) + 1);
         postRepository.save(post);
 
+        // Publish notification
+        final String savedCommentId = comment.getCommentId();
+        String snippet = comment.getContent() == null ? null
+                : (comment.getContent().length() > 80 ? comment.getContent().substring(0, 80) + "…"
+                        : comment.getContent());
+        if (actualParentId != null) {
+            // Reply: notify parent comment author
+            commentRepository.findById(actualParentId).ifPresent(parent -> {
+                if (!parent.getUserId().equals(userId)) {
+                    eventPublisher.publishEvent(NotificationEvent.forCommentReply(
+                            this, parent.getUserId(), userId, postId, savedCommentId, snippet));
+                }
+            });
+        } else if (post.getAuthorId() != null && !post.getAuthorId().equals(userId)) {
+            // Top-level comment: notify post author
+            eventPublisher.publishEvent(NotificationEvent.forPostComment(
+                    this, post.getAuthorId(), userId, postId, comment.getCommentId(), snippet));
+        }
+
         return mapToResponse(comment, userId);
     }
 
     public List<CommentResponse> getCommentsByPostId(String postId, String currentUserId) {
         List<PostComment> allComments = commentRepository.findByPostIdAndIsDeletedFalseOrderByCreatedAtAsc(postId);
-        
-        if (allComments == null || allComments.isEmpty()) return new ArrayList<>();
+
+        if (allComments == null || allComments.isEmpty())
+            return new ArrayList<>();
 
         List<CommentResponse> rootComments = allComments.stream()
                 .filter(c -> c.getParentCommentId() == null)
@@ -113,6 +138,13 @@ public class PostCommentService {
                     .createdAt(LocalDateTime.now())
                     .build();
             reactionRepository.save(reaction);
+
+            // Notify comment author (skip self)
+            if (comment.getUserId() != null && !comment.getUserId().equals(userId)) {
+                eventPublisher.publishEvent(NotificationEvent.forCommentReaction(
+                        this, comment.getUserId(), userId, comment.getPostId(), commentId,
+                        reactionType == null ? null : reactionType.name()));
+            }
         }
 
         return mapToResponse(comment, userId);
@@ -120,7 +152,7 @@ public class PostCommentService {
 
     private CommentResponse mapToResponse(PostComment comment, String currentUserId) {
         UserDetail userDetail = userDetailRepository.findByUserId(comment.getUserId()).orElse(null);
-        
+
         long likeCount = reactionRepository.countByCommentId(comment.getCommentId());
         String userReaction = null;
         if (currentUserId != null) {

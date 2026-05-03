@@ -16,7 +16,6 @@ import iuh.fit.mapper.MessageMapper;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.ConversationPermissionRepository;
 import iuh.fit.repository.ConversationRepository;
-import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.PinnedMessageRepository;
 import iuh.fit.repository.UserDetailRepository;
 import lombok.RequiredArgsConstructor;
@@ -42,7 +41,7 @@ public class PinnedMessageService {
         private static final int MAX_PINNED_MESSAGES = 20;
 
         private final PinnedMessageRepository pinnedMessageRepository;
-        private final MessageRepository messageRepository;
+        private final MessageBucketService messageBucketService;
         private final ConversationRepository conversationRepository;
         private final ConversationMemberRepository conversationMemberRepository;
         private final ConversationPermissionRepository conversationPermissionRepository;
@@ -55,17 +54,20 @@ public class PinnedMessageService {
 
         @Transactional
         public PinnedMessageResponse pinMessage(String messageId, String userId) {
-                Message message = messageRepository.findById(messageId)
+                Message message = messageBucketService.findMessageById(messageId)
                                 .orElseThrow(() -> new RuntimeException("Message not found"));
 
                 String conversationId = message.getConversationId();
                 // Verify user is a member of the conversation and check role/permissions
-                ConversationMember requester = conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                ConversationMember requester = conversationMemberRepository
+                                .findByConversationIdAndUserId(conversationId, userId)
                                 .orElseThrow(() -> new RuntimeException("Not a member of this conversation"));
 
                 // Admin/Deputy always allowed. Members allowed if canPinMessages is true.
-                if (requester.getRole() != iuh.fit.enums.MemberRole.ADMIN && requester.getRole() != iuh.fit.enums.MemberRole.DEPUTY) {
-                        iuh.fit.entity.ConversationPermission permission = conversationPermissionRepository.findByConversationId(conversationId).orElse(null);
+                if (requester.getRole() != iuh.fit.enums.MemberRole.ADMIN
+                                && requester.getRole() != iuh.fit.enums.MemberRole.DEPUTY) {
+                        iuh.fit.entity.ConversationPermission permission = conversationPermissionRepository
+                                        .findByConversationId(conversationId).orElse(null);
                         if (permission == null || !Boolean.TRUE.equals(permission.getCanPinMessages())) {
                                 throw new RuntimeException("Chỉ Admin hoặc Phó nhóm mới có quyền ghim tin nhắn");
                         }
@@ -99,12 +101,12 @@ public class PinnedMessageService {
                 PinnedMessageResponse response = buildResponse(pinned, message, userId);
                 LocalDateTime now = LocalDateTime.now();
                 Message systemMessage = createSystemMessage(
-                        conversationId,
-                        userId,
-                        buildPinSystemContent(userId, true),
-                        now);
+                                conversationId,
+                                userId,
+                                buildPinSystemContent(userId, true),
+                                now);
 
-                Message savedSystemMessage = messageRepository.save(systemMessage);
+                Message savedSystemMessage = systemMessage;
                 syncConversationLastMessage(message.getConversationId(), savedSystemMessage);
 
                 MessageResponse systemResponse = messageMapper.toResponse(savedSystemMessage);
@@ -113,8 +115,6 @@ public class PinnedMessageService {
                                 .message(systemResponse)
                                 .conversation(conversationResponse)
                                 .build();
-
-                // Broadcast pin event via WebSocket
                 Map<String, Object> pinEvent = new HashMap<>();
                 pinEvent.put("type", "MESSAGE_PIN");
                 pinEvent.put("messageId", messageId);
@@ -137,18 +137,21 @@ public class PinnedMessageService {
 
         @Transactional
         public void unpinMessage(String messageId, String userId) {
-                Message message = messageRepository.findById(messageId)
+                Message message = messageBucketService.findMessageById(messageId)
                                 .orElseThrow(() -> new RuntimeException("Message not found"));
 
                 String conversationId = message.getConversationId();
 
                 // Verify user is a member of the conversation and check role/permissions
-                ConversationMember requester = conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                ConversationMember requester = conversationMemberRepository
+                                .findByConversationIdAndUserId(conversationId, userId)
                                 .orElseThrow(() -> new RuntimeException("Not a member of this conversation"));
 
                 // Admin/Deputy always allowed. Members allowed if canPinMessages is true.
-                if (requester.getRole() != iuh.fit.enums.MemberRole.ADMIN && requester.getRole() != iuh.fit.enums.MemberRole.DEPUTY) {
-                        iuh.fit.entity.ConversationPermission permission = conversationPermissionRepository.findByConversationId(conversationId).orElse(null);
+                if (requester.getRole() != iuh.fit.enums.MemberRole.ADMIN
+                                && requester.getRole() != iuh.fit.enums.MemberRole.DEPUTY) {
+                        iuh.fit.entity.ConversationPermission permission = conversationPermissionRepository
+                                        .findByConversationId(conversationId).orElse(null);
                         if (permission == null || !Boolean.TRUE.equals(permission.getCanPinMessages())) {
                                 throw new RuntimeException("Chỉ Admin hoặc Phó nhóm mới có quyền bỏ ghim tin nhắn");
                         }
@@ -163,12 +166,12 @@ public class PinnedMessageService {
 
                 LocalDateTime now = LocalDateTime.now();
                 Message systemMessage = createSystemMessage(
-                        conversationId,
-                        userId,
-                        buildPinSystemContent(userId, false),
-                        now);
+                                conversationId,
+                                userId,
+                                buildPinSystemContent(userId, false),
+                                now);
 
-                Message savedSystemMessage = messageRepository.save(systemMessage);
+                Message savedSystemMessage = systemMessage;
                 syncConversationLastMessage(conversationId, savedSystemMessage);
 
                 MessageResponse systemResponse = messageMapper.toResponse(savedSystemMessage);
@@ -177,8 +180,6 @@ public class PinnedMessageService {
                                 .message(systemResponse)
                                 .conversation(conversationResponse)
                                 .build();
-
-                // Broadcast unpin event via WebSocket
                 Map<String, Object> unpinEvent = new HashMap<>();
                 unpinEvent.put("type", "MESSAGE_UNPIN");
                 unpinEvent.put("messageId", messageId);
@@ -208,7 +209,8 @@ public class PinnedMessageService {
 
                 return pinnedMessages.stream()
                                 .map(pin -> {
-                                        Message msg = messageRepository.findById(pin.getMessageId()).orElse(null);
+                                        Message msg = messageBucketService.findMessageById(pin.getMessageId())
+                                                        .orElse(null);
                                         return buildResponse(pin, msg, pin.getPinnedByUserId());
                                 })
                                 .collect(Collectors.toList());

@@ -329,6 +329,18 @@ public class ConversationController {
                 "Lấy trạng thái đã xem thành công"));
     }
 
+    @GetMapping("/{conversationId}/delivered-status")
+    @Operation(summary = "Get delivered status of all members in a conversation")
+    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> getDeliveredStatus(
+            @PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        return ResponseEntity.ok(ApiResponse.success(
+                conversationService.getDeliveredStatus(conversationId, userId),
+                "Lấy trạng thái đã nhận thành công"));
+    }
+
     // ==================== MARK AS READ ====================
 
     @PatchMapping("/{conversationId}/mark-as-read")

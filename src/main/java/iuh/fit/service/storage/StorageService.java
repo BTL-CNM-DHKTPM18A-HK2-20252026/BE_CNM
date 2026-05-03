@@ -8,7 +8,7 @@ import iuh.fit.enums.ConversationType;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.MessageAttachmentRepository;
-import iuh.fit.repository.MessageRepository;
+import iuh.fit.service.message.MessageBucketService;
 import iuh.fit.service.s3.S3Service;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.ObjectMetadata;
@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class StorageService {
 
-    private final MessageRepository messageRepository;
+    private final MessageBucketService messageBucketService;
     private final MessageAttachmentRepository messageAttachmentRepository;
     private final ConversationMemberRepository conversationMemberRepository;
     private final ConversationRepository conversationRepository;
@@ -55,7 +55,7 @@ public class StorageService {
         // Step 2: Get all non-TEXT messages across all user conversations
         List<Message> allMessages = new ArrayList<>();
         for (String convId : conversationIds) {
-            allMessages.addAll(messageRepository.findByConversationIdAndMessageTypeInOrderByCreatedAtDesc(
+            allMessages.addAll(messageBucketService.findByConversationIdAndMessageTypeIn(
                     convId, List.of("IMAGE", "VIDEO", "VOICE", "MEDIA", "LINK")));
         }
 

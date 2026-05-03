@@ -28,11 +28,11 @@ import iuh.fit.exception.ForbiddenException;
 import iuh.fit.mapper.UserMapper;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.FriendshipRepository;
-import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserAuthRepository;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserSettingRepository;
 import iuh.fit.repository.UserVerificationRepository;
+import iuh.fit.service.message.MessageBucketService;
 import iuh.fit.service.conversation.ConversationService;
 import iuh.fit.service.search.SearchService;
 import lombok.AccessLevel;
@@ -52,7 +52,7 @@ public class UserServiceImpl implements UserService {
     UserDetailRepository userDetailRepository;
     UserSettingRepository userSettingRepository;
     FriendshipRepository friendshipRepository;
-    MessageRepository messageRepository;
+    MessageBucketService messageBucketService;
     ConversationMemberRepository conversationMemberRepository;
     PasswordEncoder passwordEncoder;
     UserMapper userMapper;
@@ -498,7 +498,7 @@ public class UserServiceImpl implements UserService {
         long totalTokens = 0;
         int requestCount = 0;
         if (!conversationIds.isEmpty()) {
-            java.util.List<iuh.fit.entity.Message> aiMessages = messageRepository
+            java.util.List<iuh.fit.entity.Message> aiMessages = messageBucketService
                     .findAiMessagesByConversationIdsAfter(conversationIds, startOfDay);
             for (iuh.fit.entity.Message msg : aiMessages) {
                 if (msg.getTotalTokens() != null)

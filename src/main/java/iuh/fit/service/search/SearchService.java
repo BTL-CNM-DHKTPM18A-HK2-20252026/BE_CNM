@@ -41,7 +41,6 @@ import iuh.fit.entity.UserDetail;
 import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.MessageBucketRepository;
-import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.SearchHistoryRepository;
 import iuh.fit.repository.UserAuthRepository;
 import iuh.fit.repository.UserDetailRepository;
@@ -63,7 +62,6 @@ public class SearchService {
 
     private final MessageSearchRepository messageSearchRepository;
     private final DocumentSearchRepository documentSearchRepository;
-    private final MessageRepository messageRepository;
     private final MessageBucketRepository messageBucketRepository;
     private final UserDetailRepository userDetailRepository;
     private final UserAuthRepository userAuthRepository;
@@ -524,42 +522,41 @@ public class SearchService {
         log.info("Starting bulk reindex of all messages (batch size: {})...", REINDEX_BATCH_SIZE);
         int pageNum = 0;
         int totalCount = 0;
-        Page<Message> page;
+        Page<MessageBucket> page;
 
         do {
-            page = messageRepository.findAll(PageRequest.of(pageNum, REINDEX_BATCH_SIZE));
+            page = messageBucketRepository.findAll(PageRequest.of(pageNum, 100));
             List<IndexQuery> bulkQueries = new ArrayList<>(REINDEX_BATCH_SIZE);
 
-            for (Message msg : page.getContent()) {
-                if (msg.getContent() == null || msg.getContent().isBlank())
+            for (MessageBucket bucket : page.getContent()) {
+                if (bucket.getMessages() == null)
                     continue;
-                if (Boolean.TRUE.equals(msg.getIsDeleted()) || Boolean.TRUE.equals(msg.getIsRecalled()))
-                    continue;
+                for (Message msg : bucket.getMessages()) {
+                    if (msg.getContent() == null || msg.getContent().isBlank())
+                        continue;
+                    if (Boolean.TRUE.equals(msg.getIsDeleted()) || Boolean.TRUE.equals(msg.getIsRecalled()))
+                        continue;
 
-                String senderName = userDetailRepository.findByUserId(msg.getSenderId())
-                        .map(UserDetail::getDisplayName)
-                        .orElse("Unknown");
+                    String senderName = userDetailRepository.findByUserId(msg.getSenderId())
+                            .map(UserDetail::getDisplayName)
+                            .orElse("Unknown");
 
-                // Look up bucket sequence number for this message
-                Integer bucketSeq = messageBucketRepository.findByMessagesMessageId(msg.getMessageId())
-                        .map(MessageBucket::getSequenceNumber)
-                        .orElse(null);
+                    MessageDocument doc = MessageDocument.builder()
+                            .messageId(msg.getMessageId())
+                            .conversationId(msg.getConversationId())
+                            .senderId(msg.getSenderId())
+                            .senderName(senderName)
+                            .content(msg.getContent())
+                            .messageType(msg.getMessageType().name())
+                            .bucketSequenceNumber(bucket.getSequenceNumber())
+                            .createdAt(msg.getCreatedAt())
+                            .build();
 
-                MessageDocument doc = MessageDocument.builder()
-                        .messageId(msg.getMessageId())
-                        .conversationId(msg.getConversationId())
-                        .senderId(msg.getSenderId())
-                        .senderName(senderName)
-                        .content(msg.getContent())
-                        .messageType(msg.getMessageType().name())
-                        .bucketSequenceNumber(bucketSeq)
-                        .createdAt(msg.getCreatedAt())
-                        .build();
-
-                bulkQueries.add(new IndexQueryBuilder()
-                        .withId(doc.getMessageId())
-                        .withObject(doc)
-                        .build());
+                    bulkQueries.add(new IndexQueryBuilder()
+                            .withId(doc.getMessageId())
+                            .withObject(doc)
+                            .build());
+                }
             }
 
             if (!bulkQueries.isEmpty()) {
@@ -567,7 +564,7 @@ public class SearchService {
                     elasticsearchOperations.bulkIndex(bulkQueries, MessageDocument.class);
                     totalCount += bulkQueries.size();
                 } catch (Exception e) {
-                    log.error("Bulk index failed for message batch {}: {}", pageNum, e.getMessage());
+                    log.error("Bulk index failed for bucket batch {}: {}", pageNum, e.getMessage());
                 }
             }
             pageNum++;

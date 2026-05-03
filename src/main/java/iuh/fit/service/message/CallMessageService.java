@@ -11,7 +11,6 @@ import iuh.fit.mapper.ConversationMapper;
 import iuh.fit.mapper.MessageMapper;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.ConversationRepository;
-import iuh.fit.repository.MessageRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessageSendingOperations;
@@ -46,7 +45,7 @@ import java.util.UUID;
 @Slf4j
 public class CallMessageService {
 
-    private final MessageRepository messageRepository;
+    private final MessageProducerService messageProducerService;
     private final ConversationRepository conversationRepository;
     private final ConversationMemberRepository conversationMemberRepository;
     private final MessageMapper messageMapper;
@@ -90,8 +89,9 @@ public class CallMessageService {
                 .updatedAt(now)
                 .build();
 
-        message = messageRepository.save(message);
-        log.info("[CallMessage] Saved {} message {} in conversation {}", type, message.getMessageId(), conversationId);
+        messageProducerService.send(message);
+        log.info("[CallMessage] Sent {} message {} to Kafka for conversation {}", type, message.getMessageId(),
+                conversationId);
 
         // Update conversation snippet
         Conversations conv = convOpt.get();

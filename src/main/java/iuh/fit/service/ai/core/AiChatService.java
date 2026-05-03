@@ -28,7 +28,6 @@ import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.FileUploadRepository;
 import iuh.fit.repository.FriendshipRepository;
-import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserAuthRepository;
 import iuh.fit.service.message.MessageBucketService;
 import iuh.fit.repository.UserDetailRepository;
@@ -85,7 +84,6 @@ public class AiChatService {
     private static final int CONTINUATION_MAX_ROUNDS = 2;
     private static final int CONTINUATION_MAX_TOKENS = 320;
 
-    private final MessageRepository messageRepository;
     private final MessageBucketService messageBucketService;
     private final ConversationRepository conversationRepository;
     private final ConversationMemberRepository conversationMemberRepository;
@@ -1511,7 +1509,7 @@ public class AiChatService {
             UserAuth auth = userAuthRepository.findById(userId).orElse(null);
             UserSetting setting = userSettingRepository.findByUserId(userId).orElse(null);
 
-            List<Message> recentUserMessages = messageRepository
+            List<Message> recentUserMessages = messageBucketService
                     .findBySenderIdOrderByCreatedAtDesc(userId, PageRequest.of(0, 60))
                     .getContent();
             List<Message> recentConversationMessages = messageBucketService

@@ -4,8 +4,8 @@ import iuh.fit.dto.response.ai.SummarizeResponse;
 import iuh.fit.entity.ConversationMember;
 import iuh.fit.entity.Message;
 import iuh.fit.repository.ConversationMemberRepository;
-import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserDetailRepository;
+import iuh.fit.service.message.MessageBucketService;
 import iuh.fit.service.ai.core.AiCompletionProvider;
 import iuh.fit.service.ai.core.AiCompletionResult;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 public class MessageSummaryService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MessageSummaryService.class);
 
-    private final MessageRepository messageRepository;
+    private final MessageBucketService messageBucketService;
     private final ConversationMemberRepository conversationMemberRepository;
     private final UserDetailRepository userDetailRepository;
     private final AiCompletionProvider aiClient;
@@ -79,7 +79,7 @@ public class MessageSummaryService {
         long start = System.currentTimeMillis();
         int count = Math.min(messageCount, MAX_TOTAL_MESSAGES);
 
-        Page<Message> page = messageRepository.findByConversationIdOrderByCreatedAtDesc(
+        Page<Message> page = messageBucketService.getConversationMessages(
                 conversationId, PageRequest.of(0, count));
         List<Message> messages = new ArrayList<>(page.getContent());
         Collections.reverse(messages);
@@ -171,7 +171,7 @@ public class MessageSummaryService {
             String lastReadMessageId, ConversationMember member) {
         // If a specific lastReadMessageId is provided, find messages after it
         if (lastReadMessageId != null && !lastReadMessageId.isBlank()) {
-            Message lastRead = messageRepository.findById(lastReadMessageId).orElse(null);
+            Message lastRead = messageBucketService.findMessageById(lastReadMessageId).orElse(null);
             if (lastRead != null && lastRead.getCreatedAt() != null) {
                 return fetchMessagesAfter(conversationId, userId, lastRead.getCreatedAt());
             }
@@ -183,7 +183,7 @@ public class MessageSummaryService {
         }
 
         // Never read — get most recent MAX_TOTAL_MESSAGES
-        Page<Message> page = messageRepository.findByConversationIdOrderByCreatedAtDesc(
+        Page<Message> page = messageBucketService.getConversationMessages(
                 conversationId, PageRequest.of(0, MAX_TOTAL_MESSAGES));
         List<Message> result = new ArrayList<>(page.getContent());
         Collections.reverse(result);
@@ -195,8 +195,8 @@ public class MessageSummaryService {
         List<Message> allMessages = new ArrayList<>();
         int pageNum = 0;
         while (allMessages.size() < MAX_TOTAL_MESSAGES) {
-            Page<Message> page = messageRepository.findByConversationIdAndCreatedAtBeforeOrderByCreatedAtDesc(
-                    conversationId, LocalDateTime.now(), PageRequest.of(pageNum, 200));
+            Page<Message> page = messageBucketService.getConversationMessages(
+                    conversationId, PageRequest.of(pageNum, 200));
             if (page.isEmpty())
                 break;
 

@@ -44,6 +44,9 @@ public enum ErrorCode {
     POST_NOT_FOUND(HttpStatus.NOT_FOUND, "Không tìm thấy bài viết"),
     REEL_NOT_FOUND(HttpStatus.NOT_FOUND, "Không tìm thấy thước phim"),
 
+    // Notification - 404
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "Không tìm thấy thông báo"),
+
     // Report - 400, 404
     REPORT_INVALID(HttpStatus.BAD_REQUEST, "Nội dung báo cáo không hợp lệ"),
     INVALID_MUTE_DURATION(HttpStatus.BAD_REQUEST, "Thời gian tắt thông báo không hợp lệ"),

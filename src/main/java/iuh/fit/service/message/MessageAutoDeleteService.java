@@ -2,7 +2,7 @@ package iuh.fit.service.message;
 
 import iuh.fit.entity.Conversations;
 import iuh.fit.repository.ConversationRepository;
-import iuh.fit.repository.MessageRepository;
+import iuh.fit.service.message.MessageBucketService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -18,7 +18,7 @@ import java.util.List;
 public class MessageAutoDeleteService {
 
     private final ConversationRepository conversationRepository;
-    private final MessageRepository messageRepository;
+    private final MessageBucketService messageBucketService;
 
     /**
      * Runs every 5 minutes to delete messages older than the configured auto-delete
@@ -50,7 +50,7 @@ public class MessageAutoDeleteService {
             }
 
             LocalDateTime cutoff = LocalDateTime.now().minusDays(days);
-            long deleted = messageRepository.deleteByConversationIdAndCreatedAtBefore(
+            long deleted = messageBucketService.deleteByConversationIdAndCreatedAtBefore(
                     conv.getConversationId(), cutoff);
 
             if (deleted > 0) {

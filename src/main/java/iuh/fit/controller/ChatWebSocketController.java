@@ -30,7 +30,6 @@ public class ChatWebSocketController {
     private final UserSettingRepository userSettingRepository;
     private final TypingIndicatorService typingIndicatorService;
 
-
     /**
      * Typing indicator: Client sends to /app/chat/{conversationId}/typing
      * Server broadcasts to /topic/chat/{conversationId}/typing
@@ -83,6 +82,33 @@ public class ChatWebSocketController {
         if (!readReceiptsHidden) {
             messagingTemplate.convertAndSend(
                     "/topic/chat/" + conversationId + "/read", payload);
+        }
+    }
+
+    /**
+     * Delivery receipt: Client sends to /app/chat/{conversationId}/delivered
+     * Server persists lastDeliveredMessageId and broadcasts to
+     * /topic/chat/{conversationId}/delivered
+     *
+     * Payload: { "userId": "...", "messageId": "..." }
+     */
+    @MessageMapping("/chat/{conversationId}/delivered")
+    public void handleDelivered(
+            @DestinationVariable String conversationId,
+            @Payload Map<String, Object> payload) {
+        String userId = (String) payload.get("userId");
+        String messageId = (String) payload.get("messageId");
+
+        if (userId != null && messageId != null) {
+            conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                    .ifPresent(member -> {
+                        member.setLastDeliveredMessageId(messageId);
+                        member.setLastDeliveredAt(LocalDateTime.now());
+                        conversationMemberRepository.save(member);
+                    });
+
+            messagingTemplate.convertAndSend(
+                    "/topic/chat/" + conversationId + "/delivered", payload);
         }
     }
 }

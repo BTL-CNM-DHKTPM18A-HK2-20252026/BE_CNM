@@ -22,8 +22,9 @@ import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.repository.ConversationPermissionRepository;
 import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.FriendshipRepository;
-import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.UserAuthRepository;
+import iuh.fit.service.message.MessageBucketService;
+import iuh.fit.service.message.MessageProducerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -47,7 +48,8 @@ import java.util.stream.Stream;
 public class ConversationService {
     private final ConversationRepository conversationRepository;
     private final ConversationMemberRepository conversationMemberRepository;
-    private final MessageRepository messageRepository;
+    private final MessageBucketService messageBucketService;
+    private final MessageProducerService messageProducerService;
     private final ConversationMapper conversationMapper;
     private final SimpMessageSendingOperations messagingTemplate;
     private final FriendshipRepository friendshipRepository;
@@ -55,7 +57,6 @@ public class ConversationService {
     private final ConversationPermissionRepository conversationPermissionRepository;
     private final UserAuthRepository userAuthRepository;
     private final PasswordEncoder passwordEncoder;
-
 
     private static final String S3_PUBLIC_BASE = "https://fruvia-chat-storage.s3.ap-southeast-1.amazonaws.com/public";
     private static final String[] DEFAULT_GROUP_AVATARS = {
@@ -72,6 +73,7 @@ public class ConversationService {
             S3_PUBLIC_BASE + "/avatar_group/avtgr11.jpg",
             S3_PUBLIC_BASE + "/avatar_group/avtgr12.jpg"
     };
+
     /**
      * Tìm cuộc hội thoại P2P giữa 2 người. Trả về null nếu chưa có (Lazy Creation).
      */
@@ -235,7 +237,8 @@ public class ConversationService {
                 .findByConversationIdAndUserId(conversationId, userId)
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
 
-        // Check permissions: Admin/Deputy always allowed. Members allowed if canEditInfo is true.
+        // Check permissions: Admin/Deputy always allowed. Members allowed if
+        // canEditInfo is true.
         if (requester.getRole() != MemberRole.ADMIN && requester.getRole() != MemberRole.DEPUTY) {
             ConversationPermission permission = getPermissions(conversationId);
             if (permission == null || !Boolean.TRUE.equals(permission.getCanEditInfo())) {
@@ -258,7 +261,8 @@ public class ConversationService {
         conv = conversationRepository.save(conv);
 
         List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
-        ConversationPermission permission = conversationPermissionRepository.findByConversationId(conversationId).orElse(null);
+        ConversationPermission permission = conversationPermissionRepository.findByConversationId(conversationId)
+                .orElse(null);
         enrichWithLastMessage(conv);
         ConversationResponse response = conversationMapper.toResponse(conv, allMembers, permission);
         response.setType("UPDATED");
@@ -281,7 +285,8 @@ public class ConversationService {
      * Chỉ ADMIN hoặc DEPUTY mới có quyền.
      */
     @Transactional
-    public ConversationResponse updatePermissions(String conversationId, String userId, iuh.fit.dto.request.conversation.UpdatePermissionRequest request) {
+    public ConversationResponse updatePermissions(String conversationId, String userId,
+            iuh.fit.dto.request.conversation.UpdatePermissionRequest request) {
         Conversations conv = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CONVERSATION_NOT_FOUND));
 
@@ -294,20 +299,29 @@ public class ConversationService {
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
 
         if (requester.getRole() != MemberRole.ADMIN && requester.getRole() != MemberRole.DEPUTY) {
-            throw new ForbiddenException(ErrorCode.FORBIDDEN, "Chỉ Admin hoặc Phó nhóm mới có quyền cập nhật quyền hạn nhóm");
+            throw new ForbiddenException(ErrorCode.FORBIDDEN,
+                    "Chỉ Admin hoặc Phó nhóm mới có quyền cập nhật quyền hạn nhóm");
         }
 
         ConversationPermission permission = conversationPermissionRepository.findByConversationId(conversationId)
                 .orElseGet(() -> ConversationPermission.builder().conversationId(conversationId).build());
 
-        if (request.getCanEditInfo() != null) permission.setCanEditInfo(request.getCanEditInfo());
-        if (request.getCanPinMessages() != null) permission.setCanPinMessages(request.getCanPinMessages());
-        if (request.getCanCreateNotes() != null) permission.setCanCreateNotes(request.getCanCreateNotes());
-        if (request.getCanCreatePolls() != null) permission.setCanCreatePolls(request.getCanCreatePolls());
-        if (request.getCanSendMessages() != null) permission.setCanSendMessages(request.getCanSendMessages());
-        if (request.getIsMemberApprovalRequired() != null) permission.setIsMemberApprovalRequired(request.getIsMemberApprovalRequired());
-        if (request.getIsHighlightAdminMessages() != null) permission.setIsHighlightAdminMessages(request.getIsHighlightAdminMessages());
-        if (request.getCanNewMembersReadRecentMessages() != null) permission.setCanNewMembersReadRecentMessages(request.getCanNewMembersReadRecentMessages());
+        if (request.getCanEditInfo() != null)
+            permission.setCanEditInfo(request.getCanEditInfo());
+        if (request.getCanPinMessages() != null)
+            permission.setCanPinMessages(request.getCanPinMessages());
+        if (request.getCanCreateNotes() != null)
+            permission.setCanCreateNotes(request.getCanCreateNotes());
+        if (request.getCanCreatePolls() != null)
+            permission.setCanCreatePolls(request.getCanCreatePolls());
+        if (request.getCanSendMessages() != null)
+            permission.setCanSendMessages(request.getCanSendMessages());
+        if (request.getIsMemberApprovalRequired() != null)
+            permission.setIsMemberApprovalRequired(request.getIsMemberApprovalRequired());
+        if (request.getIsHighlightAdminMessages() != null)
+            permission.setIsHighlightAdminMessages(request.getIsHighlightAdminMessages());
+        if (request.getCanNewMembersReadRecentMessages() != null)
+            permission.setCanNewMembersReadRecentMessages(request.getCanNewMembersReadRecentMessages());
 
         permission.setUpdatedAt(LocalDateTime.now());
         permission = conversationPermissionRepository.save(permission);
@@ -339,7 +353,8 @@ public class ConversationService {
 
                     List<ConversationMember> members = conversationMemberRepository
                             .findByConversationId(conv.getConversationId());
-                    return conversationMapper.toResponse(conv, members, getPermissions(conv.getConversationId()), userId);
+                    return conversationMapper.toResponse(conv, members, getPermissions(conv.getConversationId()),
+                            userId);
                 })
                 .filter(resp -> resp != null)
                 .sorted((ConversationResponse c1, ConversationResponse c2) -> {
@@ -413,7 +428,7 @@ public class ConversationService {
         if (conv == null)
             return;
         if (conv.getLastMessageContent() == null) {
-            messageRepository.findByConversationIdOrderByCreatedAtDesc(conv.getConversationId(), PageRequest.of(0, 1))
+            messageBucketService.getConversationMessages(conv.getConversationId(), PageRequest.of(0, 1))
                     .getContent().stream().findFirst().ifPresent(lastMsg -> {
                         String snippet = lastMsg.getContent();
                         if (lastMsg.getMessageType() == MessageType.IMAGE)
@@ -498,7 +513,8 @@ public class ConversationService {
             for (ConversationMember m : newMembers) {
                 enrichWithLastMessage(conv);
                 List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
-                ConversationResponse response = conversationMapper.toResponse(conv, allMembers, getPermissions(conversationId));
+                ConversationResponse response = conversationMapper.toResponse(conv, allMembers,
+                        getPermissions(conversationId));
                 response.setType("CREATED");
                 messagingTemplate.convertAndSend("/topic/group-events/" + m.getUserId(), response);
             }
@@ -506,7 +522,7 @@ public class ConversationService {
             // Broadcast system message to all members in chat
             iuh.fit.entity.UserDetail requesterDetail = userDetailRepository.findByUserId(requesterId).orElse(null);
             String requesterName = requesterDetail != null ? requesterDetail.getDisplayName() : "Ai đó";
-            
+
             List<String> names = new ArrayList<>();
             for (ConversationMember m : newMembers) {
                 userDetailRepository.findByUserId(m.getUserId()).ifPresent(d -> names.add(d.getDisplayName()));
@@ -839,14 +855,43 @@ public class ConversationService {
         return result;
     }
 
+    public List<java.util.Map<String, Object>> getDeliveredStatus(String conversationId, String userId) {
+        conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của hội thoại này"));
+
+        List<ConversationMember> members = conversationMemberRepository.findByConversationId(conversationId);
+        List<java.util.Map<String, Object>> result = new ArrayList<>();
+
+        for (ConversationMember m : members) {
+            if (m.getUserId().equals(userId))
+                continue;
+            if (m.getLastDeliveredMessageId() == null)
+                continue;
+
+            java.util.Map<String, Object> entry = new java.util.HashMap<>();
+            entry.put("userId", m.getUserId());
+            entry.put("messageId", m.getLastDeliveredMessageId());
+            entry.put("lastDeliveredAt", m.getLastDeliveredAt() != null ? m.getLastDeliveredAt().toString() : null);
+            result.add(entry);
+        }
+        return result;
+    }
+
     /**
      * Mark all messages in a conversation as read for a user.
-     * Đặt lastReadAt = now và xóa cờ isMarkedUnread.
+     * Đặt lastReadAt = now, lastReadMessageId = last message, và xóa cờ
+     * isMarkedUnread.
      */
     @Transactional
     public void markAsRead(String conversationId, String userId) {
         conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
                 .ifPresent(member -> {
+                    // Find the last message in the conversation to set lastReadMessageId
+                    var lastMessages = messageBucketService.getConversationMessages(
+                            conversationId, org.springframework.data.domain.PageRequest.of(0, 1));
+                    if (!lastMessages.isEmpty()) {
+                        member.setLastReadMessageId(lastMessages.getContent().get(0).getMessageId());
+                    }
                     member.setLastReadAt(LocalDateTime.now());
                     member.setIsMarkedUnread(false);
                     conversationMemberRepository.save(member);
@@ -863,6 +908,7 @@ public class ConversationService {
      */
     private void broadcastSystemMessage(String conversationId, String content) {
         Message msg = Message.builder()
+                .messageId(java.util.UUID.randomUUID().toString())
                 .conversationId(conversationId)
                 .senderId("SYSTEM")
                 .messageType(MessageType.SYSTEM)
@@ -872,7 +918,7 @@ public class ConversationService {
                 .isRecalled(false)
                 .isEdited(false)
                 .build();
-        messageRepository.save(msg);
+        messageProducerService.send(msg);
 
         java.util.Map<String, Object> payload = java.util.Map.of(
                 "id", msg.getMessageId(),
@@ -1201,7 +1247,8 @@ public class ConversationService {
                     enrichWithLastMessage(conv);
                     List<ConversationMember> members = conversationMemberRepository
                             .findByConversationId(conv.getConversationId());
-                    return conversationMapper.toResponse(conv, members, getPermissions(conv.getConversationId()), userId);
+                    return conversationMapper.toResponse(conv, members, getPermissions(conv.getConversationId()),
+                            userId);
                 })
                 .filter(resp -> resp != null)
                 .collect(Collectors.toList());
@@ -1291,7 +1338,8 @@ public class ConversationService {
         }
 
         // Check if already a member
-        Optional<ConversationMember> existing = conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId);
+        Optional<ConversationMember> existing = conversationMemberRepository
+                .findByConversationIdAndUserId(conversationId, userId);
         if (existing.isPresent()) {
             // Already a member, just return the conversation
             List<ConversationMember> members = conversationMemberRepository.findByConversationId(conversationId);
@@ -1315,7 +1363,8 @@ public class ConversationService {
 
         List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
         enrichWithLastMessage(conv);
-        ConversationResponse response = conversationMapper.toResponse(conv, allMembers, getPermissions(conversationId), userId);
+        ConversationResponse response = conversationMapper.toResponse(conv, allMembers, getPermissions(conversationId),
+                userId);
         response.setType("CREATED"); // Notify the joining user
 
         // Notify other members
@@ -1327,22 +1376,26 @@ public class ConversationService {
 
         return response;
     }
+
     public java.util.Map<String, Object> getGroupPreview(String conversationId) {
         Conversations conv = conversationRepository.findById(conversationId)
-                .orElseThrow(() -> new iuh.fit.exception.ResourceNotFoundException(iuh.fit.exception.ErrorCode.CONVERSATION_NOT_FOUND));
+                .orElseThrow(() -> new iuh.fit.exception.ResourceNotFoundException(
+                        iuh.fit.exception.ErrorCode.CONVERSATION_NOT_FOUND));
 
         if (conv.getConversationType() != iuh.fit.enums.ConversationType.GROUP) {
-            throw new iuh.fit.exception.InvalidInputException(iuh.fit.exception.ErrorCode.INVALID_INPUT, "Hội thoại không phải là nhóm");
+            throw new iuh.fit.exception.InvalidInputException(iuh.fit.exception.ErrorCode.INVALID_INPUT,
+                    "Hội thoại không phải là nhóm");
         }
 
-        List<iuh.fit.entity.ConversationMember> members = conversationMemberRepository.findByConversationId(conversationId);
-        
+        List<iuh.fit.entity.ConversationMember> members = conversationMemberRepository
+                .findByConversationId(conversationId);
+
         java.util.Map<String, Object> preview = new java.util.HashMap<>();
         preview.put("conversationId", conv.getConversationId());
         preview.put("name", conv.getConversationName());
         preview.put("avatar", conv.getAvatarUrl());
         preview.put("memberCount", members.size());
-        
+
         // Get some member avatars for the preview
         List<String> memberAvatars = members.stream()
                 .map(m -> {
@@ -1353,7 +1406,7 @@ public class ConversationService {
                 .limit(3)
                 .collect(java.util.stream.Collectors.toList());
         preview.put("memberAvatars", memberAvatars);
-        
+
         String userId = JwtUtils.getCurrentUserId();
         if (userId != null) {
             boolean isMember = members.stream().anyMatch(m -> m.getUserId().equals(userId));

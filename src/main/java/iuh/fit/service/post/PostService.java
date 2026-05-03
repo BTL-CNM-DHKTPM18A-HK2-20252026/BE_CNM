@@ -8,8 +8,11 @@ import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import iuh.fit.service.notification.NotificationEvent;
 
 import iuh.fit.dto.request.post.CreatePostRequest;
 import iuh.fit.dto.request.post.PostMediaRequest;
@@ -40,6 +43,7 @@ public class PostService {
     private final PostMapper postMapper;
     private final PostMediaRepository postMediaRepository;
     private final PostReactionRepository postReactionRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public PostResponse createPost(String authorId, CreatePostRequest request) {
@@ -110,13 +114,14 @@ public class PostService {
                             .build())
                     .toList();
             post.setMedia(new ArrayList<>(mediaEntities));
-            
+
             // Also save to separate collection for backwards compatibility if needed
             postMediaRepository.saveAll(mediaEntities);
         }
 
         post = postRepository.save(post);
-        log.info("Post created: {} of type {} with {} media items", post.getPostId(), post.getType(), post.getMedia() != null ? post.getMedia().size() : 0);
+        log.info("Post created: {} of type {} with {} media items", post.getPostId(), post.getType(),
+                post.getMedia() != null ? post.getMedia().size() : 0);
 
         return postMapper.toResponse(post, authorId);
     }
@@ -214,6 +219,13 @@ public class PostService {
                     .build();
             postReactionRepository.save(reaction);
             log.info("New reaction {} added to post: {} by user: {}", reactionType, postId, userId);
+
+            // Notify post author (skip self-reaction)
+            if (post.getAuthorId() != null && !post.getAuthorId().equals(userId)) {
+                eventPublisher.publishEvent(NotificationEvent.forPostReaction(
+                        this, post.getAuthorId(), userId, postId,
+                        reactionType == null ? null : reactionType.name()));
+            }
         }
 
         return postMapper.toResponse(post, userId);

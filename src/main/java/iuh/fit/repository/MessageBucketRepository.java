@@ -26,7 +26,7 @@ public interface MessageBucketRepository extends MongoRepository<MessageBucket, 
     /**
      * Find the bucket containing a specific messageId (for sync operations).
      */
-    @Query("{ 'messages.messageId': ?0 }")
+    @Query("{ 'messages._id': ?0 }")
     Optional<MessageBucket> findByMessagesMessageId(String messageId);
 
     /**

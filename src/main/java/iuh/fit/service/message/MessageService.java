@@ -23,7 +23,6 @@ import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.MessageAttachmentRepository;
 import iuh.fit.repository.MessageReactionRepository;
-import iuh.fit.repository.MessageRepository;
 import iuh.fit.repository.PinnedMessageRepository;
 import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.repository.UserSettingRepository;
@@ -81,7 +80,6 @@ public class MessageService {
         }
     }
 
-    private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
     private final MessageAttachmentRepository messageAttachmentRepository;
     private final MessageMapper messageMapper;
@@ -259,7 +257,7 @@ public class MessageService {
         String forwardedFromSenderId = null;
         if (request.getForwardedFromMessageId() != null && !request.getForwardedFromMessageId().isEmpty()) {
             Message originalMsg = messageBucketService.findMessageById(request.getForwardedFromMessageId())
-                    .orElseGet(() -> messageRepository.findById(request.getForwardedFromMessageId()).orElse(null));
+                    .orElse(null);
             if (originalMsg != null) {
                 forwardedFromMessageId = originalMsg.getMessageId();
                 forwardedFromSenderId = originalMsg.getSenderId();
@@ -484,24 +482,8 @@ public class MessageService {
             return new org.springframework.data.domain.PageImpl<>(responses, bucketPage.getPageable(),
                     bucketPage.getTotalElements());
         }
-        // Fallback for conversations not yet migrated to buckets
-        Page<MessageResponse> legacyPage = messageRepository
-                .findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
-                .map(m -> {
-                    if (userId != null && m.getLocalDeletedBy() != null && m.getLocalDeletedBy().contains(userId))
-                        return null;
-                    return messageMapper.toResponse(m);
-                });
-        // Remove nulls from filtered page
-        List<MessageResponse> legacyFiltered = legacyPage.getContent().stream()
-                .filter(r -> r != null)
-                .collect(Collectors.toList());
-        if (pageable.getPageNumber() == 0 && !legacyFiltered.isEmpty()) {
-            List<Message> legacyMsgs = messageRepository
-                    .findByConversationIdOrderByCreatedAtDesc(conversationId, pageable).getContent();
-            messageCacheService.warmUp(conversationId, legacyMsgs);
-        }
-        return new org.springframework.data.domain.PageImpl<>(legacyFiltered, pageable, legacyPage.getTotalElements());
+        // Empty page when no messages found in bucket
+        return new org.springframework.data.domain.PageImpl<>(List.of(), pageable, 0);
     }
 
     /**
@@ -510,8 +492,7 @@ public class MessageService {
      */
     public Page<MessageResponse> getMessagesBefore(String conversationId, String beforeId, int size, String userId) {
         // Find cursor message from bucket first, fallback to message collection
-        Message beforeMsg = messageBucketService.findMessageById(beforeId)
-                .orElseGet(() -> messageRepository.findById(beforeId).orElse(null));
+        Message beforeMsg = messageBucketService.findMessageById(beforeId).orElse(null);
         if (beforeMsg == null) {
             return Page.empty();
         }
@@ -550,16 +531,8 @@ public class MessageService {
                     estimatedTotal);
         }
 
-        // 3. Fallback for conversations not yet migrated to buckets
-        Pageable pageable = PageRequest.of(0, size);
-        List<MessageResponse> legacyResponses = messageRepository
-                .findByConversationIdAndCreatedAtBeforeOrderByCreatedAtDesc(
-                        conversationId, beforeMsg.getCreatedAt(), pageable)
-                .getContent().stream()
-                .filter(m -> userId == null || m.getLocalDeletedBy() == null || !m.getLocalDeletedBy().contains(userId))
-                .map(messageMapper::toResponse)
-                .collect(Collectors.toList());
-        return new org.springframework.data.domain.PageImpl<>(legacyResponses, pageable, legacyResponses.size());
+        // No fallback — bucket is authoritative
+        return new org.springframework.data.domain.PageImpl<>(List.of(), PageRequest.of(0, size), 0);
     }
 
     /**
@@ -568,8 +541,7 @@ public class MessageService {
      * Used for the "jump to searched message" feature.
      */
     public List<MessageResponse> getMessagesAround(String conversationId, String targetId, int halfSize) {
-        Message targetMsg = messageBucketService.findMessageById(targetId)
-                .orElseGet(() -> messageRepository.findById(targetId).orElse(null));
+        Message targetMsg = messageBucketService.findMessageById(targetId).orElse(null);
         if (targetMsg == null) {
             return List.of();
         }
@@ -578,22 +550,11 @@ public class MessageService {
 
         // Messages before (returned desc by getMessagesBefore, so reverse to asc)
         List<Message> beforeDesc = messageBucketService.getMessagesBefore(conversationId, targetTime, halfSize);
-        if (beforeDesc.isEmpty()) {
-            Pageable p = PageRequest.of(0, halfSize);
-            beforeDesc = messageRepository
-                    .findByConversationIdAndCreatedAtBeforeOrderByCreatedAtDesc(conversationId, targetTime, p)
-                    .getContent();
-        }
         List<Message> beforeAsc = new java.util.ArrayList<>(beforeDesc);
         java.util.Collections.reverse(beforeAsc);
 
         // Messages after (asc)
         List<Message> afterAsc = messageBucketService.getMessagesAfter(conversationId, targetTime, halfSize);
-        if (afterAsc.isEmpty()) {
-            Pageable p = PageRequest.of(0, halfSize);
-            afterAsc = messageRepository
-                    .findByConversationIdAndCreatedAtAfterOrderByCreatedAtAsc(conversationId, targetTime, p);
-        }
 
         List<Message> all = new java.util.ArrayList<>();
         all.addAll(beforeAsc);
@@ -610,24 +571,12 @@ public class MessageService {
                 MessageType.MEDIA.name());
         List<Message> bucketResults = messageBucketService.findByConversationIdAndMessageTypeIn(conversationId,
                 mediaTypes);
-        if (!bucketResults.isEmpty()) {
-            return bucketResults.stream().map(messageMapper::toResponse).collect(Collectors.toList());
-        }
-        // Fallback for conversations not yet migrated
-        return messageRepository.findByConversationIdAndMessageTypeInOrderByCreatedAtDesc(conversationId, mediaTypes)
-                .stream().map(messageMapper::toResponse).collect(Collectors.toList());
+        return bucketResults.stream().map(messageMapper::toResponse).collect(Collectors.toList());
     }
 
     public List<MessageResponse> getConversationLinks(String conversationId) {
         List<Message> bucketResults = messageBucketService.findLinksByConversationId(conversationId);
-        if (!bucketResults.isEmpty()) {
-            return bucketResults.stream().map(messageMapper::toResponse).collect(Collectors.toList());
-        }
-        // Fallback for conversations not yet migrated
-        return messageRepository
-                .findByConversationIdAndMessageTypeInOrderByCreatedAtDesc(conversationId,
-                        List.of(MessageType.LINK.name()))
-                .stream().map(messageMapper::toResponse).collect(Collectors.toList());
+        return bucketResults.stream().map(messageMapper::toResponse).collect(Collectors.toList());
     }
 
     // ── Time limits (minutes) ──
@@ -777,7 +726,6 @@ public class MessageService {
     public void addReaction(String messageId, String userId, ReactionType reactionType) {
         // Tìm message trong bucket (primary storage) → fallback legacy collection
         Message message = messageBucketService.findMessageById(messageId)
-                .or(() -> messageRepository.findById(messageId))
                 .orElseThrow(() -> ResourceNotFoundException.message(messageId));
 
         // Toggle: nếu reaction cùng (messageId, userId, icon) đã tồn tại → xóa (toggle
@@ -896,9 +844,8 @@ public class MessageService {
         messageAttachmentRepository.deleteByMessageIdIn(messageIds);
         pinnedMessageRepository.deleteByConversationId(conversationId);
 
-        // Delete from bucket storage (primary) and legacy message collection
+        // Delete from bucket storage (primary)
         messageBucketService.deleteByConversationId(conversationId);
-        messageRepository.deleteByConversationId(conversationId);
 
         // 8. Reset conversation last-message metadata so the UI shows empty state
         conv.setLastMessageId(null);

@@ -335,4 +335,110 @@ public class MessageBucketService {
                                 bucketCount, conversationId, sorted.size());
                 return bucketCount;
         }
+
+        /**
+         * Count unread messages in a conversation for a given user
+         * (messages not sent by excludeSenderId and not deleted).
+         */
+        public long countUnread(String conversationId, String excludeSenderId) {
+                Aggregation agg = Aggregation.newAggregation(
+                                Aggregation.match(Criteria.where("conversationId").is(conversationId)),
+                                Aggregation.unwind("messages"),
+                                Aggregation.replaceRoot("messages"),
+                                Aggregation.match(Criteria.where("isDeleted").ne(true)
+                                                .and("senderId").ne(excludeSenderId)),
+                                Aggregation.count().as("total"));
+                org.bson.Document result = mongoTemplate
+                                .aggregate(agg, "message_bucket", org.bson.Document.class)
+                                .getUniqueMappedResult();
+                return result == null ? 0L : ((Number) result.get("total")).longValue();
+        }
+
+        /**
+         * Count unread messages after a given timestamp in a conversation
+         * (messages not sent by excludeSenderId, not deleted, created after
+         * {@code after}).
+         */
+        public long countUnreadAfter(String conversationId, LocalDateTime after, String excludeSenderId) {
+                Aggregation agg = Aggregation.newAggregation(
+                                Aggregation.match(Criteria.where("conversationId").is(conversationId)),
+                                Aggregation.unwind("messages"),
+                                Aggregation.replaceRoot("messages"),
+                                Aggregation.match(Criteria.where("isDeleted").ne(true)
+                                                .and("senderId").ne(excludeSenderId)
+                                                .and("createdAt").gt(after)),
+                                Aggregation.count().as("total"));
+                org.bson.Document result = mongoTemplate
+                                .aggregate(agg, "message_bucket", org.bson.Document.class)
+                                .getUniqueMappedResult();
+                return result == null ? 0L : ((Number) result.get("total")).longValue();
+        }
+
+        /**
+         * Find AI-generated messages in given conversations created after
+         * {@code after}.
+         * Used for daily AI token usage tracking.
+         */
+        public List<Message> findAiMessagesByConversationIdsAfter(List<String> conversationIds,
+                        LocalDateTime after) {
+                if (conversationIds == null || conversationIds.isEmpty()) {
+                        return List.of();
+                }
+                Aggregation agg = Aggregation.newAggregation(
+                                Aggregation.match(Criteria.where("conversationId").in(conversationIds)),
+                                Aggregation.unwind("messages"),
+                                Aggregation.replaceRoot("messages"),
+                                Aggregation.match(Criteria.where("aiGenerated").is(true)
+                                                .and("createdAt").gte(after)));
+                return mongoTemplate.aggregate(agg, "message_bucket", Message.class).getMappedResults();
+        }
+
+        /**
+         * Find recent messages sent by a specific user across all conversations,
+         * ordered by createdAt descending. Used by AI profile snapshot.
+         */
+        public Page<Message> findBySenderIdOrderByCreatedAtDesc(String senderId, Pageable pageable) {
+                Aggregation agg = Aggregation.newAggregation(
+                                Aggregation.match(Criteria.where("messages.senderId").is(senderId)),
+                                Aggregation.unwind("messages"),
+                                Aggregation.replaceRoot("messages"),
+                                Aggregation.match(Criteria.where("senderId").is(senderId)),
+                                Aggregation.sort(Sort.Direction.DESC, "createdAt"),
+                                Aggregation.skip(pageable.getOffset()),
+                                Aggregation.limit(pageable.getPageSize()));
+                List<Message> messages = mongoTemplate.aggregate(agg, "message_bucket", Message.class)
+                                .getMappedResults();
+                return new PageImpl<>(messages, pageable, messages.size());
+        }
+
+        /**
+         * Delete messages older than {@code cutoff} from all buckets of a conversation.
+         * Modifies bucket documents in-place using $pull.
+         *
+         * @return approximate count of deleted messages
+         */
+        public long deleteByConversationIdAndCreatedAtBefore(String conversationId, LocalDateTime cutoff) {
+                Aggregation countAgg = Aggregation.newAggregation(
+                                Aggregation.match(Criteria.where("conversationId").is(conversationId)),
+                                Aggregation.unwind("messages"),
+                                Aggregation.replaceRoot("messages"),
+                                Aggregation.match(Criteria.where("createdAt").lt(cutoff)),
+                                Aggregation.count().as("total"));
+                AggregationResults<org.bson.Document> countResult = mongoTemplate.aggregate(
+                                countAgg, "message_bucket", org.bson.Document.class);
+                long deleted = countResult.getMappedResults().isEmpty() ? 0
+                                : ((Number) countResult.getMappedResults().get(0).get("total")).longValue();
+                if (deleted > 0) {
+                        Query query = new Query(Criteria.where("conversationId").is(conversationId));
+                        Update update = new Update().pull("messages",
+                                        new org.bson.Document("createdAt",
+                                                        new org.bson.Document("$lt",
+                                                                        java.util.Date.from(cutoff
+                                                                                        .atZone(java.time.ZoneId
+                                                                                                        .systemDefault())
+                                                                                        .toInstant()))));
+                        mongoTemplate.updateMulti(query, update, "message_bucket");
+                }
+                return deleted;
+        }
 }
