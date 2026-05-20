@@ -137,8 +137,12 @@ public class AuthenticationController {
         if (body != null && body.containsKey("refresh_token")) {
             refreshToken = body.get("refresh_token");
         }
+//        if (refreshToken == null || refreshToken.isBlank()) {
+//            refreshToken = extractRefreshTokenFromCookies(request);
+//        }
         if (refreshToken == null || refreshToken.isBlank()) {
-            refreshToken = extractRefreshTokenFromCookies(request);
+            return ResponseEntity.status(401)
+                    .body(ApiResponse.error("INVALID_TOKEN", "Missing refresh token"));
         }
         AuthenticationResponse response = authenticationService.refreshAccessToken(refreshToken);
         return ResponseEntity.ok(ApiResponse.success(response, "Làm mới access token thành công"));

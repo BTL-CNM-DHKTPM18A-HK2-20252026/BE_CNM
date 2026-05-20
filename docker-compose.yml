@@ -34,7 +34,7 @@ services:
     container_name: fruvia-mongodb
     restart: always
     ports:
-      - "127.0.0.1:27017:27017"
+      - "127.0.0.1:27018:27017"
     volumes:
       - mongo_data:/data/db
     # Limit WiredTiger cache to prevent MongoDB from consuming all RAM
@@ -136,7 +136,7 @@ services:
 
   # ── Spring Boot Backend ──────────────────────────────────────────────────
   backend:
-    image: ${BACKEND_IMAGE}
+    build: .
     container_name: fruvia-backend
     restart: always
     ports:

@@ -251,6 +251,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     private JWTClaimsSet verifyToken(String token, String tokenSecret, String expectedType)
             throws ParseException, JOSEException {
+        if (token == null || token.isBlank()) {
+            throw new AppException(ErrorCode.INVALID_TOKEN);
+        }
         SignedJWT signedJWT = SignedJWT.parse(token);
 
         JWSVerifier verifier = new MACVerifier(tokenSecret.getBytes());
