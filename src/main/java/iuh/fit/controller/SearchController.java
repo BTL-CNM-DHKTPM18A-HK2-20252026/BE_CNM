@@ -4,6 +4,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +12,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.document.DocumentDocument;
 import iuh.fit.document.MessageDocument;
 import iuh.fit.document.UserDocument;
+import iuh.fit.dto.request.search.RecordClickRequest;
+import iuh.fit.dto.response.search.SearchHistoryDTO;
 import iuh.fit.entity.SearchHistory;
 import iuh.fit.repository.ConversationMemberRepository;
 import iuh.fit.response.ApiResponse;
@@ -18,6 +21,7 @@ import iuh.fit.response.GlobalSearchResult;
 import iuh.fit.response.SearchResult;
 import iuh.fit.service.search.SearchService;
 import iuh.fit.utils.JwtUtils;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
@@ -26,6 +30,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/search")
 @RequiredArgsConstructor
+@Validated
 @Tag(name = "Search", description = "Elasticsearch search APIs")
 public class SearchController {
 
@@ -109,14 +114,16 @@ public class SearchController {
     }
 
     @PostMapping("/history/click")
-    public ResponseEntity<ApiResponse<Void>> recordClick(@RequestBody Map<String, String> body) {
+    public ResponseEntity<ApiResponse<Void>> recordClick(@Valid @RequestBody RecordClickRequest body) {
         String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         searchService.trackInteraction(
                 userId,
-                body.get("targetId"),
-                body.get("name"),
-                body.get("avatar"),
-                body.get("type"));
+                body.targetId(),
+                body.name(),
+                body.avatar(),
+                body.type());
         return ResponseEntity.ok(ApiResponse.<Void>builder().success(true).build());
     }
 
@@ -182,15 +189,24 @@ public class SearchController {
 
     @GetMapping("/history")
     @Operation(summary = "Get search history for current user")
-    public ResponseEntity<ApiResponse<List<SearchHistory>>> getSearchHistory(
+    public ResponseEntity<ApiResponse<List<SearchHistoryDTO>>> getSearchHistory(
             @RequestParam(defaultValue = "20") int limit) {
 
         String userId = JwtUtils.getCurrentUserId();
         if (userId == null)
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
 
-        List<SearchHistory> history = searchService.getSearchHistory(userId, limit);
-        return ResponseEntity.ok(ApiResponse.<List<SearchHistory>>builder()
+        List<SearchHistoryDTO> history = searchService.getSearchHistory(userId, limit)
+                .stream()
+                .map(h -> new SearchHistoryDTO(
+                        h.getId(),
+                        h.getTargetId(),
+                        h.getTargetName(),
+                        h.getTargetAvatar(),
+                        h.getTargetType(),
+                        h.getSearchedAt()))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.<List<SearchHistoryDTO>>builder()
                 .success(true).message("Search history retrieved").data(history).build());
     }
 

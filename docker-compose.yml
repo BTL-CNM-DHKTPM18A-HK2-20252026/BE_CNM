@@ -23,7 +23,7 @@ services:
         limits:
           memory: 192m
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -38,13 +38,13 @@ services:
     volumes:
       - mongo_data:/data/db
     # Limit WiredTiger cache to prevent MongoDB from consuming all RAM
-    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5"]
+    command: [ "mongod", "--wiredTigerCacheSizeGB", "0.5" ]
     deploy:
       resources:
         limits:
           memory: 768m
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -55,15 +55,16 @@ services:
     container_name: fruvia-kafka
     restart: always
     ports:
-      - "127.0.0.1:9092:9092"
+      - "9092:9092"
+      - "29092:29092"
     environment:
       # KRaft single-node setup
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       # Auto-create topics & retention (reduce retention to save disk I/O)
@@ -89,7 +90,8 @@ services:
       test:
         [
           "CMD-SHELL",
-          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1",
+          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server
+            localhost:9092 > /dev/null 2>&1",
         ]
       interval: 15s
       timeout: 10s
@@ -125,7 +127,8 @@ services:
       test:
         [
           "CMD-SHELL",
-          'curl -s -u elastic:${ELASTIC_PASSWORD:-changeme} http://localhost:9200/_cluster/health | grep -q ''"status"''',
+          "curl -s -u elastic:${ELASTIC_PASSWORD:-changeme}
+            http://localhost:9200/_cluster/health | grep -q '\"status\"'",
         ]
       interval: 30s
       timeout: 10s
@@ -149,8 +152,10 @@ services:
       - MONGODB_DATABASE=${MONGODB_DATABASE}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
-      - ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET:?ACCESS_TOKEN_SECRET must be set in .env}
-      - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET:?REFRESH_TOKEN_SECRET must be set in .env}
+      - ACCESS_TOKEN_SECRET=${ACCESS_TOKEN_SECRET:?ACCESS_TOKEN_SECRET must be
+        set in .env}
+      - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET:?REFRESH_TOKEN_SECRET must
+        be set in .env}
       - REFRESH_TOKEN_COOKIE_SECURE=${REFRESH_TOKEN_COOKIE_SECURE:-true}
       - REFRESH_TOKEN_COOKIE_SAME_SITE=${REFRESH_TOKEN_COOKIE_SAME_SITE:-None}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}

@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.FieldDefaults;
 
 @Document(collection = "search_history")
-@CompoundIndex(name = "idx_user_query", def = "{'userId': 1, 'query': 1}")
+@CompoundIndex(name = "idx_user_target", def = "{'userId': 1, 'targetId': 1}", unique = true)
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -33,10 +33,10 @@ public class SearchHistory {
 
     String query;
 
-    String targetId;     // ID của User/Group cụ thể mà họ đã nhấn vào
-    String targetName;   // Lưu tên tại thời điểm đó (để hiển thị nhanh)
+    String targetId; // ID của User/Group cụ thể mà họ đã nhấn vào
+    String targetName; // Lưu tên tại thời điểm đó (để hiển thị nhanh)
     String targetAvatar; // Lưu link ảnh (để hiển thị nhanh)
-    String targetType;   // "USER" hoặc "GROUP"
+    String targetType; // "USER" hoặc "GROUP"
 
     @Builder.Default
     LocalDateTime searchedAt = LocalDateTime.now();

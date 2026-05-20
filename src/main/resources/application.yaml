@@ -24,7 +24,7 @@ spring:
       port: ${MONGODB_PORT:27017}
       database: ${MONGODB_DATABASE:fruvia_db}
       auto-index-creation: true
-      ddl-auto: create-drop
+      ddl-auto: update
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
@@ -46,7 +46,7 @@ spring:
 
   # Kafka Configuration (Write-behind message persistence)
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer

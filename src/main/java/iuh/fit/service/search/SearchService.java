@@ -25,6 +25,10 @@ import org.springframework.data.elasticsearch.core.query.IndexQuery;
 import org.springframework.data.elasticsearch.core.query.IndexQueryBuilder;
 import org.springframework.data.elasticsearch.core.query.highlight.Highlight;
 import org.springframework.data.elasticsearch.core.query.highlight.HighlightField;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -69,6 +73,7 @@ public class SearchService {
     private final FriendshipRepository friendshipRepository;
     private final ElasticsearchOperations elasticsearchOperations;
     private final ConversationRepository conversationRepository;
+    private final MongoTemplate mongoTemplate;
 
     // ── Circuit breaker state ─────────────────────────────────────────────────
     private final AtomicBoolean esAvailable = new AtomicBoolean(true);
@@ -872,17 +877,17 @@ public class SearchService {
 
     @Async
     public void trackInteraction(String userId, String targetId, String name, String avatar, String type) {
-        // Nếu đã tồn tại lịch sử với người này, xóa cái cũ để cái mới lên đầu
-        searchHistoryRepository.deleteByUserIdAndTargetId(userId, targetId);
-
-        searchHistoryRepository.save(SearchHistory.builder()
-                .userId(userId)
-                .targetId(targetId)
-                .targetName(name)
-                .targetAvatar(avatar)
-                .targetType(type)
-                .searchedAt(LocalDateTime.now())
-                .build());
+        // Atomic upsert: update nếu đã tồn tại, insert nếu chưa — tránh race condition
+        Query query = Query.query(Criteria.where("userId").is(userId).and("targetId").is(targetId));
+        Update update = new Update()
+                .set("targetName", name)
+                .set("targetAvatar", avatar)
+                .set("targetType", type)
+                .set("searchedAt", LocalDateTime.now())
+                .setOnInsert("userId", userId)
+                .setOnInsert("targetId", targetId)
+                .setOnInsert("id", java.util.UUID.randomUUID().toString());
+        mongoTemplate.upsert(query, update, SearchHistory.class);
     }
 
     public List<SearchHistory> getSearchHistory(String userId, int limit) {

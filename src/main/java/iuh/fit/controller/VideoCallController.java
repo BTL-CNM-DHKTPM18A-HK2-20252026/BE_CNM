@@ -10,10 +10,12 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 
 import iuh.fit.entity.CallLog;
+import iuh.fit.entity.UserDetail;
 import iuh.fit.enums.CallStatus;
 import iuh.fit.enums.CallType;
 import iuh.fit.enums.MessageType;
 import iuh.fit.repository.CallLogRepository;
+import iuh.fit.repository.UserDetailRepository;
 import iuh.fit.service.message.CallMessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +49,7 @@ public class VideoCallController {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final CallLogRepository callLogRepository;
+    private final UserDetailRepository userDetailRepository;
     private final CallMessageService callMessageService;
 
     /**
@@ -93,7 +96,7 @@ public class VideoCallController {
             case "CALL_ACCEPTED" -> handleCallAccepted(callId, message, receiverId);
             case "CALL_REJECTED" -> handleCallRejected(senderId, callId, message, receiverId);
             case "OFFER", "ANSWER", "ICE_CANDIDATE" -> relay(receiverId, message);
-            case "CALL_END" -> handleCallEnd(senderId, callId, message, receiverId);
+            case "CALL_END", "END_CALL" -> handleCallEnd(senderId, callId, message, receiverId);
             default -> log.warn("[VideoCall] Unknown signal type: {}", type);
         }
     }
@@ -103,6 +106,8 @@ public class VideoCallController {
      * Tạo CallLog trong DB, relay tín hiệu tới callee.
      */
     private void handleCallRequest(String senderId, String receiverId, String callId, Map<String, Object> message) {
+        enrichCallerMetadata(senderId, message);
+
         // Lưu call log (non-blocking: relay luôn được gọi)
         try {
             CallLog callLog = CallLog.builder()
@@ -120,6 +125,32 @@ public class VideoCallController {
         }
 
         relay(receiverId, message);
+    }
+
+    private void enrichCallerMetadata(String senderId, Map<String, Object> message) {
+        Object callerName = message.get("callerName");
+        Object callerAvatar = message.get("callerAvatar");
+        boolean missingName = callerName == null || callerName.toString().isBlank();
+        boolean missingAvatar = callerAvatar == null || callerAvatar.toString().isBlank();
+
+        if (!missingName && !missingAvatar) {
+            return;
+        }
+
+        userDetailRepository.findByUserId(senderId).ifPresent((UserDetail userDetail) -> {
+            if (missingName) {
+                String displayName = userDetail.getDisplayName();
+                if (displayName != null && !displayName.isBlank()) {
+                    message.put("callerName", displayName);
+                }
+            }
+            if (missingAvatar) {
+                String avatarUrl = userDetail.getAvatarUrl();
+                if (avatarUrl != null && !avatarUrl.isBlank()) {
+                    message.put("callerAvatar", avatarUrl);
+                }
+            }
+        });
     }
 
     /**
@@ -204,5 +235,8 @@ public class VideoCallController {
      */
     private void relay(String receiverId, Map<String, Object> message) {
         messagingTemplate.convertAndSendToUser(receiverId, "/queue/call-signal", message);
+        messagingTemplate.convertAndSend("/topic/call-signal/" + receiverId, message);
+        log.info("[VideoCall] Relayed {} to receiver={} via user queue and topic fallback",
+                message.get("type"), receiverId);
     }
 }

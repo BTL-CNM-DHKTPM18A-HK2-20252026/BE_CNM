@@ -43,7 +43,7 @@ public class KafkaConfig {
     public static final String TOPIC_MESSAGES = "chat.messages";
     public static final String TOPIC_MESSAGES_DLQ = "chat.messages.dlq";
 
-    @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
+    @Value("${spring.kafka.bootstrap-servers:localhost:29092}")
     private String bootstrapServers;
 
     @Bean
