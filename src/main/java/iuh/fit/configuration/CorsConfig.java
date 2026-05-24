@@ -1,6 +1,7 @@
 package iuh.fit.configuration;
 
 import java.util.Arrays;
+import java.util.List;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -16,21 +17,24 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 public class CorsConfig {
 
+    private static final String DEFAULT_ALLOWED_ORIGINS =
+            "http://fruvia-web-074095961202.s3-website-ap-southeast-1.amazonaws.com,http://localhost:3000";
+
     // Port configuration:
     // 3000: React/Next.js development server
     // 5173: Vite development server (Vue/React)
     // 8081: Mobile app (React Native/Flutter) or alternative frontend
-    @Value("${cors.allowed-origins:http://localhost:3000,http://localhost:5173,http://localhost:8081}")
-    private String[] allowedOrigins;
+    @Value("${cors.allowed-origins:" + DEFAULT_ALLOWED_ORIGINS + "}")
+    private String allowedOrigins;
 
     @Value("${cors.allowed-methods:GET,POST,PUT,DELETE,PATCH,OPTIONS}")
-    private String[] allowedMethods;
+    private String allowedMethods;
 
     @Value("${cors.allowed-headers:*}")
-    private String[] allowedHeaders;
+    private String allowedHeaders;
 
-    @Value("${cors.exposed-headers:Authorization,Content-Type,X-Total-Count}")
-    private String[] exposedHeaders;
+    @Value("${cors.exposed-headers:Authorization}")
+    private String exposedHeaders;
 
     @Value("${cors.allow-credentials:true}")
     private boolean allowCredentials;
@@ -43,16 +47,16 @@ public class CorsConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         // Allowed origins (Web + Mobile)
-        configuration.setAllowedOrigins(Arrays.asList(allowedOrigins));
+        configuration.setAllowedOrigins(parseCsv(allowedOrigins));
 
         // Allowed HTTP methods
-        configuration.setAllowedMethods(Arrays.asList(allowedMethods));
+        configuration.setAllowedMethods(parseCsv(allowedMethods));
 
         // Allowed headers
-        configuration.setAllowedHeaders(Arrays.asList(allowedHeaders));
+        configuration.setAllowedHeaders(parseCsv(allowedHeaders));
 
         // Exposed headers (important for Authorization tokens)
-        configuration.setExposedHeaders(Arrays.asList(exposedHeaders));
+        configuration.setExposedHeaders(parseCsv(exposedHeaders));
 
         // Allow credentials (cookies, authorization headers)
         configuration.setAllowCredentials(allowCredentials);
@@ -64,5 +68,12 @@ public class CorsConfig {
         source.registerCorsConfiguration("/**", configuration);
 
         return source;
+    }
+
+    private List<String> parseCsv(String value) {
+        return Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
     }
 }
