@@ -323,6 +323,6 @@ public class AuthenticationController {
 
     @GetMapping("/test-cicd")
     public ResponseEntity<ApiResponse<String>> testCicd() {
-        return ResponseEntity.ok(ApiResponse.success("Chúc mừng bạn đã CICD thành công 123"));
+        return ResponseEntity.ok(ApiResponse.success("Chúc mừng bạn đã CICD thành công 1234"));
     }
 }
