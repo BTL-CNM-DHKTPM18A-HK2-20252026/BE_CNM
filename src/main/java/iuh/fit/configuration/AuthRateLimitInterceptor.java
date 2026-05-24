@@ -36,6 +36,10 @@ public class AuthRateLimitInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler)
             throws IOException {
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return true;
+        }
+
         String ip = resolveClientIp(request);
         String key = RATE_LIMIT_PREFIX + ip;
 

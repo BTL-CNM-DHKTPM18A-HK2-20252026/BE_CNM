@@ -123,6 +123,34 @@ jobs:
             AWS_REGION="${{ secrets.AWS_REGION }}"
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
             IMAGE_TAG="${ECR_REGISTRY}/${{ secrets.ECR_REPOSITORY }}:${SHORT_SHA}"
+            HEALTH_URL="http://localhost:8080/actuator/health"
+            HEALTH_RETRIES=15
+            HEALTH_SLEEP_SECONDS=5
+
+            print_backend_debug() {
+              echo "==> Container status:"
+              docker compose ps backend
+
+              echo "==> Backend logs (last 80 lines):"
+              docker compose logs --tail=80 backend
+            }
+
+            rollback_backend() {
+              if [ -n "${OLD_IMAGE}" ]; then
+                echo "==> Rolling back to previous image: ${OLD_IMAGE}"
+                if grep -q "^BACKEND_IMAGE=" .env; then
+                  sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${OLD_IMAGE}|" .env
+                else
+                  echo "BACKEND_IMAGE=${OLD_IMAGE}" >> .env
+                fi
+
+                docker compose up -d --no-deps --pull never backend
+                print_backend_debug
+              else
+                echo "==> No previous BACKEND_IMAGE found, skipping rollback."
+                print_backend_debug
+              fi
+            }
 
             echo "==> Logging into ECR..."
             aws ecr get-login-password --region "${AWS_REGION}" \
@@ -131,8 +159,12 @@ jobs:
             echo "==> Pulling new image: ${IMAGE_TAG}"
             docker pull "${IMAGE_TAG}"
 
-            echo "==> Updating BACKEND_IMAGE in .env"
             cd "${APP_DIR}"
+            OLD_IMAGE=$(grep "^BACKEND_IMAGE=" .env | cut -d= -f2- || true)
+            echo "==> Current image in .env: ${OLD_IMAGE:-<empty>}"
+            echo "==> New image to deploy: ${IMAGE_TAG}"
+
+            echo "==> Updating BACKEND_IMAGE in .env"
             if grep -q "^BACKEND_IMAGE=" .env; then
               sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${IMAGE_TAG}|" .env
             else
@@ -152,17 +184,27 @@ jobs:
             echo "==> Restarting backend container only..."
             docker compose up -d --no-deps --pull never backend
 
-            echo "==> Waiting for backend to start (45s)..."
-            sleep 45
+            print_backend_debug
 
-            echo "==> Container status:"
-            docker compose ps backend
+            echo "==> Waiting for backend health endpoint: ${HEALTH_URL}"
+            HEALTH_OK=0
+            for attempt in $(seq 1 "${HEALTH_RETRIES}"); do
+              if curl -sf --max-time 10 "${HEALTH_URL}"; then
+                HEALTH_OK=1
+                echo
+                echo "==> Backend is healthy on attempt ${attempt}/${HEALTH_RETRIES}"
+                break
+              fi
 
-            echo "==> Backend logs (last 50 lines):"
-            docker compose logs --tail=50 backend
+              echo "==> Health check attempt ${attempt}/${HEALTH_RETRIES} failed, retrying in ${HEALTH_SLEEP_SECONDS}s..."
+              sleep "${HEALTH_SLEEP_SECONDS}"
+            done
 
-            echo "==> Health check via curl:"
-            curl -sf --max-time 10 http://localhost:8080/actuator/health || echo "WARN: Health endpoint not reachable"
+            if [ "${HEALTH_OK}" -ne 1 ]; then
+              echo "==> Backend failed health check after ${HEALTH_RETRIES} attempts."
+              rollback_backend
+              exit 1
+            fi
 
             echo "==> Cleaning up old images..."
             docker image prune -f
