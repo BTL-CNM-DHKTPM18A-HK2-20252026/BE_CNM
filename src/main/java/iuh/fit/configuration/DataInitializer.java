@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
 @Slf4j
 public class DataInitializer {
 
-        private static final String S3_PUBLIC_BASE = "https://fruvia-chat-storage.s3.ap-southeast-1.amazonaws.com/public";
+        private static final String S3_PUBLIC_BASE = "https://fruvia-asset.s3.ap-southeast-2.amazonaws.com/public";
 
         private final String ddlAuto;
         private final PasswordEncoder passwordEncoder;

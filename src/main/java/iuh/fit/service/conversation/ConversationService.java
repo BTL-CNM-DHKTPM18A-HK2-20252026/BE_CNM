@@ -58,7 +58,7 @@ public class ConversationService {
     private final UserAuthRepository userAuthRepository;
     private final PasswordEncoder passwordEncoder;
 
-    private static final String S3_PUBLIC_BASE = "https://fruvia-chat-storage.s3.ap-southeast-1.amazonaws.com/public";
+    private static final String S3_PUBLIC_BASE = "https://fruvia-asset.s3.ap-southeast-2.amazonaws.com/public";
     private static final String[] DEFAULT_GROUP_AVATARS = {
             S3_PUBLIC_BASE + "/avatar_group/avtgr1.jpg",
             S3_PUBLIC_BASE + "/avatar_group/avtgr2.jpg",
