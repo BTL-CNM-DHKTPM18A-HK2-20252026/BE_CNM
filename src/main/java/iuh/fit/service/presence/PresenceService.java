@@ -78,7 +78,7 @@ public class PresenceService {
      */
     public void userConnected(String userId) {
         markOnline(userId);
-        log.info("[Presence] User {} connected", userId);
+        log.info("[Presence] ✅ User {} connected — broadcasting ONLINE to friends", userId);
 
         broadcastStatus(userId, true);
     }
@@ -96,7 +96,7 @@ public class PresenceService {
             userAuthRepository.save(user);
         });
 
-        log.info("[Presence] User {} disconnected – lastSeen = {}", userId, now);
+        log.info("[Presence] ❌ User {} disconnected – lastSeen = {} — broadcasting OFFLINE to friends", userId, now);
 
         broadcastStatus(userId, false);
     }
@@ -231,7 +231,7 @@ public class PresenceService {
      */
     private void broadcastStatus(String userId, boolean online) {
         if (isStatusHidden(userId)) {
-            log.debug("[Presence] User {} has hidden status — skip broadcast", userId);
+            log.info("[Presence] User {} has hidden status — skip broadcast", userId);
             return;
         }
 
@@ -250,10 +250,14 @@ public class PresenceService {
 
         // Broadcast tới từng bạn bè đang listen
         List<String> friendIds = getFriendIds(userId);
+        log.info("[Presence] Broadcasting {} for userId={} to {} friends: {}",
+                online ? "ONLINE" : "OFFLINE", userId, friendIds.size(), friendIds);
         for (String fid : friendIds) {
             messagingTemplate.convertAndSend("/topic/presence/" + fid, payload);
+            log.info("[Presence] → Sent to /topic/presence/{}", fid);
         }
-        log.debug("[Presence] Broadcast {} to {} friends", online ? "ONLINE" : "OFFLINE", friendIds.size());
+        log.info("[Presence] Broadcast {} to {} friends DONE for userId={}",
+                online ? "ONLINE" : "OFFLINE", friendIds.size(), userId);
     }
 
     // ────────────────────────────────────────────────────────────
@@ -265,9 +269,12 @@ public class PresenceService {
      */
     private List<String> getFriendIds(String userId) {
         List<Friendship> friendships = friendshipRepository.findAllAcceptedFriends(userId);
-        return friendships.stream()
+        log.info("[Presence] getFriendIds(userId={}) → {} accepted friendships found", userId, friendships.size());
+        List<String> ids = friendships.stream()
                 .map(f -> f.getRequesterId().equals(userId) ? f.getReceiverId() : f.getRequesterId())
                 .collect(Collectors.toList());
+        log.info("[Presence] Friend IDs for {}: {}", userId, ids);
+        return ids;
     }
 
     /**
