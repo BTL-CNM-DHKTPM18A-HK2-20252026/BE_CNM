@@ -136,6 +136,7 @@ services:
 
   # ── Spring Boot Backend ──────────────────────────────────────────────────
   backend:
+    build: .
     image: ${BACKEND_IMAGE}
     container_name: fruvia-backend
     restart: always

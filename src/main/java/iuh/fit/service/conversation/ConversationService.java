@@ -247,6 +247,11 @@ public class ConversationService {
             }
         }
 
+        String previousName = conv.getConversationName();
+        String previousAvatarUrl = conv.getAvatarUrl();
+        iuh.fit.entity.UserDetail requesterDetail = userDetailRepository.findByUserId(userId).orElse(null);
+        String requesterName = requesterDetail != null ? requesterDetail.getDisplayName() : "Ai đó";
+
         if (request.getConversationName() != null) {
             conv.setConversationName(request.getConversationName());
         }
@@ -266,6 +271,18 @@ public class ConversationService {
         enrichWithLastMessage(conv);
         ConversationResponse response = conversationMapper.toResponse(conv, allMembers, permission);
         response.setType("UPDATED");
+
+        String nextName = conv.getConversationName();
+        String nextAvatarUrl = conv.getAvatarUrl();
+
+        if (request.getConversationName() != null && !java.util.Objects.equals(previousName, nextName)) {
+            broadcastSystemMessage(conversationId,
+                    requesterName + " đã đổi tên nhóm " + previousName + " thành " + nextName);
+        }
+
+        if (request.getConversationAvatarUrl() != null && !java.util.Objects.equals(previousAvatarUrl, nextAvatarUrl)) {
+            broadcastSystemMessage(conversationId, requesterName + " đã cập nhật ảnh đại diện nhóm");
+        }
 
         // Notify all members about group info update
         for (ConversationMember member : allMembers) {
