@@ -229,6 +229,27 @@ public class MessageService {
             }
         }
 
+        // IMAGE_GROUP: encode content as JSON array for frontend fallback parsing
+        if (type == MessageType.IMAGE_GROUP && request.getMediaUrls() != null
+                && !request.getMediaUrls().isEmpty()) {
+            try {
+                finalContent = objectMapper.writeValueAsString(
+                        request.getMediaUrls().stream()
+                                .map(url -> {
+                                    var map = new java.util.HashMap<String, Object>();
+                                    map.put("url", url);
+                                    String name = url.substring(url.lastIndexOf('/') + 1);
+                                    if (name.contains("?"))
+                                        name = name.substring(0, name.indexOf('?'));
+                                    map.put("fileName", name);
+                                    return map;
+                                })
+                                .collect(Collectors.toList()));
+            } catch (Exception e) {
+                log.warn("Failed to encode IMAGE_GROUP content as JSON: {}", e.getMessage());
+            }
+        }
+
         Message.MessageBuilder builder = Message.builder()
                 .messageId(UUID.randomUUID().toString())
                 .conversationId(convId)
@@ -272,6 +293,26 @@ public class MessageService {
             SendMessageRequest request) {
         messageCacheService.pushMessage(message);
         messageProducerService.send(message);
+
+        // IMAGE_GROUP: save MessageAttachment entities synchronously
+        if (type == MessageType.IMAGE_GROUP && request.getMediaUrls() != null
+                && !request.getMediaUrls().isEmpty()) {
+            List<MessageAttachment> attachments = new ArrayList<>();
+            for (String url : request.getMediaUrls()) {
+                String name = url.substring(url.lastIndexOf('/') + 1);
+                if (name.contains("?"))
+                    name = name.substring(0, name.indexOf('?'));
+                attachments.add(MessageAttachment.builder()
+                        .messageId(message.getMessageId())
+                        .url(url)
+                        .fileName(name)
+                        .thumbnailUrl(url)
+                        .build());
+            }
+            messageAttachmentRepository.saveAll(attachments);
+            log.debug("Saved {} attachments for IMAGE_GROUP message {}",
+                    attachments.size(), message.getMessageId());
+        }
     }
 
     private void updateConversationLastMessage(Conversations conv, Message message, String senderId) {
