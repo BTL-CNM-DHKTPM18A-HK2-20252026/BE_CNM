@@ -46,6 +46,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -66,6 +68,58 @@ public class MessageService {
 
     private static final List<String> SSRF_BLOCKED_HOSTS = List.of(
             "169.254.169.254", "localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]");
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * Returns true if content is a Tiptap/generic JSON object string.
+     * Used to skip raw-string splitting that would corrupt the JSON structure.
+     */
+    private boolean isJsonMessage(String content) {
+        if (content == null || content.length() < 2) return false;
+        String trimmed = content.trim();
+        return trimmed.startsWith("{") && trimmed.endsWith("}");
+    }
+
+    /**
+     * Extracts plain text from a Tiptap JSON document string recursively.
+     * Falls back to the raw string if content is not valid JSON.
+     */
+    private String getPlainTextFromContent(String content) {
+        if (content == null) return "";
+        if (!isJsonMessage(content)) return content;
+        try {
+            JsonNode root = objectMapper.readTree(content);
+            StringBuilder sb = new StringBuilder();
+            extractTextFromNode(root, sb);
+            String result = sb.toString().trim();
+            return result.isEmpty() ? content : result;
+        } catch (Exception e) {
+            return content;
+        }
+    }
+
+    private void extractTextFromNode(JsonNode node, StringBuilder sb) {
+        if (node == null) return;
+        if (node.has("type") && "text".equals(node.get("type").asText())) {
+            JsonNode textNode = node.get("text");
+            if (textNode != null) sb.append(textNode.asText());
+            return;
+        }
+        JsonNode contentArr = node.get("content");
+        if (contentArr != null && contentArr.isArray()) {
+            for (JsonNode child : contentArr) {
+                extractTextFromNode(child, sb);
+            }
+            if (node.has("type")) {
+                String nodeType = node.get("type").asText("");
+                if ("paragraph".equals(nodeType) || "heading".equals(nodeType)
+                        || "blockquote".equals(nodeType) || "listItem".equals(nodeType)) {
+                    sb.append(" ");
+                }
+            }
+        }
+    }
 
     private boolean isSsrfSafe(String url) {
         try {
@@ -104,7 +158,7 @@ public class MessageService {
         String content = request.getContent() != null ? request.getContent().trim() : "";
         MessageType type = resolveMessageType(request, content);
 
-        if (type == MessageType.TEXT && content.length() > 800) {
+        if (type == MessageType.TEXT && content.length() > 800 && !isJsonMessage(content)) {
             List<String> chunks = splitMessage(content, 800);
             MessageAndConversationResponse lastResponse = null;
             for (String chunk : chunks) {
@@ -347,7 +401,7 @@ public class MessageService {
             case CALL_REJECTED -> "[Cuộc gọi bị từ chối]";
             case CALL_ENDED -> "[Cuộc gọi]";
             case SYSTEM -> message.getContent();
-            default -> message.getContent();
+            default -> getPlainTextFromContent(message.getContent());
         };
         conv.setLastMessageId(message.getMessageId());
         conv.setLastMessageContent(snippet);
