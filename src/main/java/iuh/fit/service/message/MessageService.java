@@ -103,6 +103,32 @@ public class MessageService {
     public MessageAndConversationResponse sendMessage(String senderId, SendMessageRequest request) {
         String content = request.getContent() != null ? request.getContent().trim() : "";
         MessageType type = resolveMessageType(request, content);
+
+        if (type == MessageType.TEXT && content.length() > 800) {
+            List<String> chunks = splitMessage(content, 800);
+            MessageAndConversationResponse lastResponse = null;
+            for (String chunk : chunks) {
+                SendMessageRequest chunkRequest = new SendMessageRequest(
+                        request.getConversationId(),
+                        request.getRecipientId(),
+                        chunk,
+                        request.getMessageType(),
+                        request.getReplyToMessageId(),
+                        request.getFileName(),
+                        request.getFileSize(),
+                        request.getVoiceDuration(),
+                        request.getVideoDuration(),
+                        request.getForwardedFromMessageId(),
+                        request.getCaption(),
+                        request.getMentions(),
+                        request.getMediaUrls(),
+                        request.getStoryId()
+                );
+                lastResponse = this.sendMessage(senderId, chunkRequest);
+            }
+            return lastResponse;
+        }
+
         LocalDateTime now = LocalDateTime.now();
 
         Conversations conv = resolveConversation(request, senderId, now);
@@ -855,5 +881,43 @@ public class MessageService {
 
         log.info("clearConversationAll: deleted {} messages from conversation {} by user {}",
                 messages.size(), conversationId, userId);
+    }
+
+    private List<String> splitMessage(String text, int chunkSize) {
+        List<String> chunks = new ArrayList<>();
+        String remaining = text;
+
+        while (remaining.length() > 0) {
+            if (remaining.length() <= chunkSize) {
+                chunks.add(remaining);
+                break;
+            }
+
+            String prefix = remaining.substring(0, chunkSize);
+            
+            // Priority 1: Search backwards for newline
+            int lastNewline = prefix.lastIndexOf('\n');
+            if (lastNewline != -1 && lastNewline > 0) {
+                int pos = lastNewline + 1;
+                chunks.add(remaining.substring(0, pos));
+                remaining = remaining.substring(pos);
+                continue;
+            }
+
+            // Priority 2: Search backwards for space
+            int lastSpace = prefix.lastIndexOf(' ');
+            if (lastSpace != -1 && lastSpace > 0) {
+                int pos = lastSpace + 1;
+                chunks.add(remaining.substring(0, pos));
+                remaining = remaining.substring(pos);
+                continue;
+            }
+
+            // Special case: Substring exact chunkSize
+            chunks.add(remaining.substring(0, chunkSize));
+            remaining = remaining.substring(chunkSize);
+        }
+
+        return chunks;
     }
 }
