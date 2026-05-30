@@ -156,6 +156,67 @@ public class FileController {
     }
 
     /**
+     * Download/Proxy file to force download (Content-Disposition: attachment)
+     */
+    @Operation(summary = "Download file via proxy", 
+               description = "Proxy download from external URL (e.g. S3) to force browser attachment download")
+    @GetMapping("/download")
+    public ResponseEntity<org.springframework.core.io.Resource> downloadFileByUrl(
+            @RequestParam("url") String urlStr,
+            @RequestParam(value = "filename", required = false) String filename) {
+        log.info("Proxy download request for URL: {}, filename: {}", urlStr, filename);
+        try {
+            java.net.URL url = new java.net.URL(urlStr);
+            java.net.HttpURLConnection connection = (java.net.HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(10000);
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode != java.net.HttpURLConnection.HTTP_OK) {
+                log.error("Failed to fetch file from URL: {}, status code: {}", urlStr, responseCode);
+                return ResponseEntity.status(responseCode).build();
+            }
+
+            String contentType = connection.getContentType();
+            int contentLength = connection.getContentLength();
+            java.io.InputStream inputStream = connection.getInputStream();
+            org.springframework.core.io.InputStreamResource resource = new org.springframework.core.io.InputStreamResource(inputStream);
+
+            String dispositionFilename = filename;
+            if (dispositionFilename == null || dispositionFilename.trim().isEmpty()) {
+                String path = url.getPath();
+                dispositionFilename = path.substring(path.lastIndexOf('/') + 1);
+            }
+            if (dispositionFilename.isEmpty()) {
+                dispositionFilename = "downloaded_file";
+            }
+
+            org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+            String encodedFilename = java.net.URLEncoder.encode(dispositionFilename, java.nio.charset.StandardCharsets.UTF_8.toString())
+                    .replaceAll("\\+", "%20");
+            headers.add(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + dispositionFilename + "\"; filename*=UTF-8''" + encodedFilename);
+            
+            if (contentType != null) {
+                headers.setContentType(MediaType.parseMediaType(contentType));
+            } else {
+                headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            }
+            if (contentLength >= 0) {
+                headers.setContentLength(contentLength);
+            }
+
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(resource);
+
+        } catch (Exception e) {
+            log.error("Error occurred while proxy downloading file from URL: {}", urlStr, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
      * Lấy thông tin file theo ID
      */
     @Operation(summary = "Get file info", description = "Get detailed information of a file")
