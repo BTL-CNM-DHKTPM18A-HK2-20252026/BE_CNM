@@ -12,6 +12,7 @@ import iuh.fit.enums.ConversationStatus;
 import iuh.fit.enums.ConversationType;
 import iuh.fit.enums.FriendshipStatus;
 import iuh.fit.enums.MessageType;
+import iuh.fit.enums.AiRole;
 import iuh.fit.enums.PrivacyLevel;
 import iuh.fit.enums.ReactionType;
 import iuh.fit.exception.AppException;
@@ -163,23 +164,88 @@ public class MessageService {
 
     private Message buildMessage(SendMessageRequest request, String senderId, String convId, String content,
             MessageType type, LocalDateTime now) {
+        String finalContent = content;
+        if (type == MessageType.POLL) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode pollNode = objectMapper.readTree(content);
+                String question = pollNode.has("question") ? pollNode.get("question").asText() : "";
+
+                List<iuh.fit.entity.Poll.PollOption> optionsList = new ArrayList<>();
+                if (pollNode.has("options") && pollNode.get("options").isArray()) {
+                    for (com.fasterxml.jackson.databind.JsonNode optNode : pollNode.get("options")) {
+                        String optText = optNode.asText().trim();
+                        if (!optText.isEmpty()) {
+                            optionsList.add(iuh.fit.entity.Poll.PollOption.builder()
+                                    .optionId(UUID.randomUUID().toString())
+                                    .content(optText)
+                                    .voterIds(new ArrayList<>())
+                                    .build());
+                        }
+                    }
+                }
+
+                LocalDateTime deadlineVal = null;
+                if (pollNode.has("deadline") && !pollNode.get("deadline").isNull()) {
+                    String dlStr = pollNode.get("deadline").asText();
+                    if (!dlStr.isEmpty() && !"Không thời hạn".equals(dlStr)) {
+                        try {
+                            deadlineVal = LocalDateTime.parse(dlStr);
+                        } catch (Exception parseEx) {
+                            // ignore
+                        }
+                    }
+                }
+
+                Boolean isPinned = pollNode.has("isPinned") ? pollNode.get("isPinned").asBoolean() : false;
+                Boolean multipleChoices = pollNode.has("multipleChoices") ? pollNode.get("multipleChoices").asBoolean()
+                        : true;
+                Boolean allowAddOptions = pollNode.has("allowAddOptions") ? pollNode.get("allowAddOptions").asBoolean()
+                        : true;
+                Boolean hideResultsBeforeVote = pollNode.has("hideResultsBeforeVote")
+                        ? pollNode.get("hideResultsBeforeVote").asBoolean()
+                        : false;
+                Boolean hideVoters = pollNode.has("hideVoters") ? pollNode.get("hideVoters").asBoolean() : false;
+
+                iuh.fit.entity.Poll poll = iuh.fit.entity.Poll.builder()
+                        .pollId(UUID.randomUUID().toString())
+                        .conversationId(convId)
+                        .creatorId(senderId)
+                        .question(question)
+                        .options(optionsList)
+                        .deadline(deadlineVal)
+                        .isPinned(isPinned)
+                        .multipleChoices(multipleChoices)
+                        .allowAddOptions(allowAddOptions)
+                        .hideResultsBeforeVote(hideResultsBeforeVote)
+                        .hideVoters(hideVoters)
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build();
+
+                poll = pollRepository.save(poll);
+                finalContent = poll.getPollId();
+            } catch (Exception e) {
+                log.error("Failed to parse or save POLL content: {}", e.getMessage(), e);
+            }
+        }
+
         Message.MessageBuilder builder = Message.builder()
                 .messageId(UUID.randomUUID().toString())
                 .conversationId(convId)
                 .senderId(senderId)
                 .role(AiRole.USER)
                 .messageType(type)
-                .content(content)
+                .content(finalContent)
                 .caption(request.getCaption())
                 .replyToMessageId(request.getReplyToMessageId())
                 .storyId(request.getStoryId())
-                .fileName(request.getOriginalName())
+                .fileName(request.getFileName())
                 .fileSize(request.getFileSize())
                 .voiceDuration(request.getVoiceDuration())
                 .videoDuration(request.getVideoDuration())
                 .mentions(request.getMentions())
                 .forwardedFromMessageId(request.getForwardedFromMessageId())
-                .forwardedFromSenderId(request.getForwardedFromSenderId())
+                .forwardedFromSenderId(null)
                 .createdAt(now)
                 .updatedAt(now)
                 .isDeleted(false)
@@ -193,7 +259,7 @@ public class MessageService {
                 var linkMeta = linkScraper.scrape(content);
                 if (linkMeta != null) {
                     builder.linkTitle(linkMeta.getTitle());
-                    builder.linkThumbnail(linkMeta.getThumbnailUrl());
+                    builder.linkThumbnail(linkMeta.getThumbnail());
                 }
             } catch (Exception e) {
                 log.warn("Failed to scrape link preview for: {}", content, e);
@@ -211,8 +277,15 @@ public class MessageService {
     private void updateConversationLastMessage(Conversations conv, Message message, String senderId) {
         userDetailRepository.findByUserId(senderId)
                 .ifPresent(d -> conv.setLastMessageSenderName(d.getDisplayName()));
+
+        String lastContent = message.getContent();
+        if (message.getMessageType() == MessageType.POLL) {
+            iuh.fit.entity.Poll p = pollRepository.findById(message.getContent()).orElse(null);
+            lastContent = "📊 [Bình chọn] " + (p != null ? p.getQuestion() : "Bình chọn mới");
+        }
+
         conv.setLastMessageId(message.getMessageId());
-        conv.setLastMessageContent(message.getContent());
+        conv.setLastMessageContent(lastContent);
         conv.setLastMessageSenderId(senderId);
         conv.setLastMessageTime(message.getCreatedAt());
         conv.setUpdatedAt(message.getCreatedAt());
