@@ -52,6 +52,8 @@ public class MessageResponse {
     private List<MessageReactionDto> reactions;
     private List<String> mentions;
     private List<AttachmentDto> attachments; // For IMAGE_GROUP messages
+    private iuh.fit.entity.Poll poll; // For POLL messages
+
 
     @Data
     @NoArgsConstructor

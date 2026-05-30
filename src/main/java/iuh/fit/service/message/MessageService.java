@@ -152,6 +152,7 @@ public class MessageService {
     private final MessageBucketService messageBucketService;
     private final MessageCacheService messageCacheService;
     private final MessageProducerService messageProducerService;
+    private final iuh.fit.repository.PollRepository pollRepository;
 
     @Transactional
     public MessageAndConversationResponse sendMessage(String senderId, SendMessageRequest request) {
@@ -326,87 +327,6 @@ public class MessageService {
 
     private boolean areFriends(String userA, String userB) {
         return friendshipRepository.findByRequesterIdAndReceiverId(userA, userB)
-                .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED).isPresent()
-                || friendshipRepository.findByRequesterIdAndReceiverId(userB, userA)
-                        .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED).isPresent();
-    }
-
-    private Message buildMessage(SendMessageRequest request, String senderId, String convId,
-            String content, MessageType type, LocalDateTime now) {
-        String forwardedFromMessageId = null;
-        String forwardedFromSenderId = null;
-        if (request.getForwardedFromMessageId() != null && !request.getForwardedFromMessageId().isEmpty()) {
-            Message originalMsg = messageBucketService.findMessageById(request.getForwardedFromMessageId())
-                    .orElse(null);
-            if (originalMsg != null) {
-                forwardedFromMessageId = originalMsg.getMessageId();
-                forwardedFromSenderId = originalMsg.getSenderId();
-            }
-        }
-        return Message.builder()
-                .messageId(UUID.randomUUID().toString())
-                .conversationId(convId)
-                .senderId(senderId)
-                .content(content)
-                .caption(request.getCaption())
-                .messageType(type)
-                .replyToMessageId(request.getReplyToMessageId())
-                .isEdited(false)
-                .isDeleted(false)
-                .createdAt(now)
-                .updatedAt(now)
-                .voiceDuration(request.getVoiceDuration())
-                .videoDuration(type == MessageType.VIDEO ? request.getVideoDuration() : null)
-                .fileName(request.getFileName())
-                .fileSize(request.getFileSize())
-                .forwardedFromMessageId(forwardedFromMessageId)
-                .forwardedFromSenderId(forwardedFromSenderId)
-                .mentions(request.getMentions())
-                .storyId(request.getStoryId())
-                .build();
-    }
-
-    private void persistMessageToCache(Message message, MessageType type, String content, SendMessageRequest request) {
-        if (type == MessageType.LINK && isSsrfSafe(content)) {
-            try {
-                LinkScraper.LinkMetadata metadata = linkScraper.scrape(content);
-                message.setLinkTitle(metadata.getTitle());
-                message.setLinkThumbnail(metadata.getThumbnail());
-            } catch (Exception e) {
-                log.warn("Error scraping metadata during message send: {}", e.getMessage());
-            }
-        }
-        if (type == MessageType.IMAGE_GROUP && request.getMediaUrls() != null
-                && !request.getMediaUrls().isEmpty()) {
-            for (String url : request.getMediaUrls()) {
-                messageAttachmentRepository.save(MessageAttachment.builder()
-                        .messageId(message.getMessageId())
-                        .url(url)
-                        .build());
-            }
-        }
-        messageCacheService.pushMessage(message);
-        messageProducerService.send(message);
-    }
-
-    private void updateConversationLastMessage(Conversations conv, Message message, String senderId) {
-        String snippet = switch (message.getMessageType()) {
-            case IMAGE -> "[Hình ảnh]";
-            case IMAGE_GROUP -> "[Album ảnh]";
-            case VIDEO -> "[Video]";
-            case MEDIA -> "[File]";
-            case VOICE -> "[Tin nhắn thoại]";
-            case SHARE_CONTACT -> "📇 Danh thiếp";
-            case CALL_MISSED -> "[Cuộc gọi nhỡ]";
-            case CALL_REJECTED -> "[Cuộc gọi bị từ chối]";
-            case CALL_ENDED -> "[Cuộc gọi]";
-            case SYSTEM -> message.getContent();
-            default -> getPlainTextFromContent(message.getContent());
-        };
-        conv.setLastMessageId(message.getMessageId());
-        conv.setLastMessageContent(snippet);
-        conv.setLastMessageTime(message.getCreatedAt());
-        conv.setLastMessageSenderId(senderId);
         userDetailRepository.findByUserId(senderId)
                 .ifPresent(d -> conv.setLastMessageSenderName(d.getDisplayName()));
         conv.setUpdatedAt(message.getCreatedAt());

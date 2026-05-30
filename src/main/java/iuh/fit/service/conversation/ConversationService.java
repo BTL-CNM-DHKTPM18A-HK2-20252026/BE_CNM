@@ -479,12 +479,16 @@ public class ConversationService {
             throw new RuntimeException("Chỉ có thể thêm thành viên vào nhóm chat");
         }
 
-        // Check requester has ADMIN or DEPUTY role
+        // Check requester has ADMIN or DEPUTY role, or if member approval is NOT
+        // required
         ConversationMember requester = conversationMemberRepository
                 .findByConversationIdAndUserId(conversationId, requesterId)
                 .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của nhóm này"));
-        // Check requester has ADMIN or DEPUTY role
-        if (requester.getRole() != MemberRole.ADMIN && requester.getRole() != MemberRole.DEPUTY) {
+
+        ConversationPermission perm = getPermissions(conversationId);
+        boolean approvalRequired = perm != null && Boolean.TRUE.equals(perm.getIsMemberApprovalRequired());
+
+        if (approvalRequired && requester.getRole() != MemberRole.ADMIN && requester.getRole() != MemberRole.DEPUTY) {
             throw new RuntimeException("Chỉ Admin hoặc Phó nhóm mới có quyền thêm thành viên");
         }
 

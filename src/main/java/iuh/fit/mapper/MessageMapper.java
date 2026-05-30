@@ -28,6 +28,7 @@ public class MessageMapper {
         private final MessageReactionRepository messageReactionRepository;
         private final ImageUploadMetadataRepository imageUploadMetadataRepository;
         private final MessageAttachmentRepository messageAttachmentRepository;
+        private final iuh.fit.repository.PollRepository pollRepository;
 
         public MessageResponse toResponse(Message message) {
                 if (message == null) {
@@ -95,6 +96,11 @@ public class MessageMapper {
                         }
                 }
 
+                iuh.fit.entity.Poll poll = null;
+                if (message.getMessageType() == MessageType.POLL && message.getContent() != null) {
+                        poll = pollRepository.findById(message.getContent()).orElse(null);
+                }
+
                 return MessageResponse.builder()
                                 .messageId(message.getMessageId())
                                 .conversationId(message.getConversationId())
@@ -133,6 +139,7 @@ public class MessageMapper {
                                 .reactions(reactionDtos)
                                 .mentions(message.getMentions())
                                 .attachments(attachmentDtos)
+                                .poll(poll)
                                 .build();
         }
 
