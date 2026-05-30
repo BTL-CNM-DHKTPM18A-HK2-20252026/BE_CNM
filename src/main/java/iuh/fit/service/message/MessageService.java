@@ -893,29 +893,41 @@ public class MessageService {
                 break;
             }
 
-            String prefix = remaining.substring(0, chunkSize);
+            int splitPos = chunkSize;
+            String prefix = remaining.substring(0, splitPos);
             
-            // Priority 1: Search backwards for newline
-            int lastNewline = prefix.lastIndexOf('\n');
-            if (lastNewline != -1 && lastNewline > 0) {
-                int pos = lastNewline + 1;
-                chunks.add(remaining.substring(0, pos));
-                remaining = remaining.substring(pos);
-                continue;
+            int lastOpen = prefix.lastIndexOf('<');
+            int lastClose = prefix.lastIndexOf('>');
+
+            if (lastOpen > lastClose) {
+                splitPos = lastOpen;
+            } else {
+                int lastNewline = prefix.lastIndexOf('\n');
+                int lastSpace = prefix.lastIndexOf(' ');
+                int lastP = prefix.lastIndexOf("</p>");
+                int lastBr = prefix.lastIndexOf("<br>");
+                int lastBlock = Math.max(lastP, lastBr);
+
+                if (lastBlock != -1 && lastBlock > splitPos - 200) {
+                    splitPos = lastBlock + 4; 
+                } else if (lastNewline != -1 && lastNewline > 0) {
+                    splitPos = lastNewline + 1;
+                } else if (lastSpace != -1 && lastSpace > 0) {
+                    splitPos = lastSpace + 1;
+                }
             }
 
-            // Priority 2: Search backwards for space
-            int lastSpace = prefix.lastIndexOf(' ');
-            if (lastSpace != -1 && lastSpace > 0) {
-                int pos = lastSpace + 1;
-                chunks.add(remaining.substring(0, pos));
-                remaining = remaining.substring(pos);
-                continue;
+            if (splitPos == 0) {
+                int nextClose = remaining.indexOf('>', chunkSize);
+                if (nextClose != -1) {
+                    splitPos = nextClose + 1;
+                } else {
+                    splitPos = chunkSize;
+                }
             }
 
-            // Special case: Substring exact chunkSize
-            chunks.add(remaining.substring(0, chunkSize));
-            remaining = remaining.substring(chunkSize);
+            chunks.add(remaining.substring(0, splitPos));
+            remaining = remaining.substring(splitPos);
         }
 
         return chunks;
