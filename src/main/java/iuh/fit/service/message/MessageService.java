@@ -343,7 +343,7 @@ public class MessageService {
             String textToSplit = isJsonMessage(content) ? getPlainTextFromContent(content) : content;
             if (textToSplit != null && textToSplit.length() > 800) {
                 List<String> chunks = isJsonMessage(content)
-                        ? splitPlainText(textToSplit, 800)
+                        ? splitJsonMessage(content, 800)
                         : splitMessage(content, 800);
                 MessageAndConversationResponse lastResponse = null;
                 for (String chunk : chunks) {
@@ -1140,5 +1140,160 @@ public class MessageService {
         }
 
         return chunks;
+    }
+
+    private List<String> splitJsonMessage(String jsonStr, int chunkSize) {
+        try {
+            JsonNode doc = objectMapper.readTree(jsonStr);
+            if (doc == null || !doc.has("type") || !"doc".equals(doc.get("type").asText()) || !doc.has("content") || !doc.get("content").isArray()) {
+                return splitPlainText(jsonStr, chunkSize);
+            }
+
+            com.fasterxml.jackson.databind.node.ArrayNode originalContent = (com.fasterxml.jackson.databind.node.ArrayNode) doc.get("content");
+            List<String> docChunks = new ArrayList<>();
+            List<JsonNode> currentBlockNodes = new ArrayList<>();
+            int currentLen = 0;
+
+            for (JsonNode node : originalContent) {
+                String nodeText = getPlainTextFromContent(objectMapper.writeValueAsString(node));
+                
+                if (nodeText.length() <= chunkSize) {
+                    if (currentLen + nodeText.length() > chunkSize && !currentBlockNodes.isEmpty()) {
+                        docChunks.add(createDocJson(currentBlockNodes));
+                        currentBlockNodes.clear();
+                        currentLen = 0;
+                    }
+                    currentBlockNodes.add(node);
+                    currentLen += nodeText.length();
+                } else {
+                    if (!currentBlockNodes.isEmpty()) {
+                        docChunks.add(createDocJson(currentBlockNodes));
+                        currentBlockNodes.clear();
+                        currentLen = 0;
+                    }
+                    
+                    List<JsonNode> splitNodes = splitBlockNode(node, chunkSize);
+                    for (JsonNode subNode : splitNodes) {
+                        List<JsonNode> singleNodeList = new ArrayList<>();
+                        singleNodeList.add(subNode);
+                        docChunks.add(createDocJson(singleNodeList));
+                    }
+                }
+            }
+
+            if (!currentBlockNodes.isEmpty()) {
+                docChunks.add(createDocJson(currentBlockNodes));
+            }
+
+            return docChunks;
+        } catch (Exception e) {
+            log.error("Failed to split JSON message", e);
+            return splitPlainText(jsonStr, chunkSize);
+        }
+    }
+
+    private String createDocJson(List<JsonNode> contentNodes) throws Exception {
+        com.fasterxml.jackson.databind.node.ObjectNode doc = objectMapper.createObjectNode();
+        doc.put("type", "doc");
+        com.fasterxml.jackson.databind.node.ArrayNode contentArray = doc.putArray("content");
+        for (JsonNode node : contentNodes) {
+            contentArray.add(node);
+        }
+        return objectMapper.writeValueAsString(doc);
+    }
+
+    private List<JsonNode> splitBlockNode(JsonNode node, int chunkSize) {
+        List<JsonNode> splitBlocks = new ArrayList<>();
+        try {
+            List<JsonNode> inlineItems = new ArrayList<>();
+            collectInline(node, inlineItems);
+            
+            List<JsonNode> currentInline = new ArrayList<>();
+            int currentLen = 0;
+            
+            for (JsonNode item : inlineItems) {
+                String textRemaining = item.has("text") ? item.get("text").asText() : "";
+                JsonNode marks = item.get("marks");
+                
+                while (textRemaining.length() > 0) {
+                    int spaceLeft = chunkSize - currentLen;
+                    if (spaceLeft <= 0) {
+                        splitBlocks.add(createNewBlockNode(node, currentInline));
+                        currentInline.clear();
+                        currentLen = 0;
+                        continue;
+                    }
+                    
+                    if (textRemaining.length() <= spaceLeft) {
+                        com.fasterxml.jackson.databind.node.ObjectNode textNode = objectMapper.createObjectNode();
+                        textNode.put("type", "text");
+                        textNode.put("text", textRemaining);
+                        if (marks != null) {
+                            textNode.set("marks", marks);
+                        }
+                        currentInline.add(textNode);
+                        currentLen += textRemaining.length();
+                        textRemaining = "";
+                    } else {
+                        int splitPos = spaceLeft;
+                        String prefix = textRemaining.substring(0, splitPos);
+                        int lastSpace = prefix.lastIndexOf(' ');
+                        int lastNewline = prefix.lastIndexOf('\n');
+                        int bestSplit = Math.max(lastSpace, lastNewline);
+                        if (bestSplit > splitPos / 2) {
+                            splitPos = bestSplit + 1;
+                        }
+                        
+                        com.fasterxml.jackson.databind.node.ObjectNode textNode = objectMapper.createObjectNode();
+                        textNode.put("type", "text");
+                        textNode.put("text", textRemaining.substring(0, splitPos));
+                        if (marks != null) {
+                            textNode.set("marks", marks);
+                        }
+                        currentInline.add(textNode);
+                        
+                        splitBlocks.add(createNewBlockNode(node, currentInline));
+                        currentInline.clear();
+                        currentLen = 0;
+                        
+                        textRemaining = textRemaining.substring(splitPos);
+                    }
+                }
+            }
+            
+            if (!currentInline.isEmpty()) {
+                splitBlocks.add(createNewBlockNode(node, currentInline));
+            }
+        } catch (Exception e) {
+            log.error("Failed to split block node", e);
+            splitBlocks.clear();
+            splitBlocks.add(node);
+        }
+        return splitBlocks.isEmpty() ? List.of(node) : splitBlocks;
+    }
+
+    private void collectInline(JsonNode node, List<JsonNode> inlineItems) {
+        if (node == null) return;
+        if (node.has("type") && "text".equals(node.get("type").asText())) {
+            inlineItems.add(node);
+        } else if (node.has("content") && node.get("content").isArray()) {
+            for (JsonNode child : node.get("content")) {
+                collectInline(child, inlineItems);
+            }
+        }
+    }
+
+    private JsonNode createNewBlockNode(JsonNode templateNode, List<JsonNode> contentNodes) {
+        com.fasterxml.jackson.databind.node.ObjectNode newBlock = objectMapper.createObjectNode();
+        templateNode.fieldNames().forEachRemaining(name -> {
+            if (!"content".equals(name)) {
+                newBlock.set(name, templateNode.get(name));
+            }
+        });
+        com.fasterxml.jackson.databind.node.ArrayNode contentArray = newBlock.putArray("content");
+        for (JsonNode node : contentNodes) {
+            contentArray.add(node);
+        }
+        return newBlock;
     }
 }
