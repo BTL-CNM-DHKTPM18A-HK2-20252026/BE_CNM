@@ -247,6 +247,7 @@ public class ConversationService {
             }
         }
 
+        String oldConversationName = conv.getConversationName();
         if (request.getConversationName() != null) {
             conv.setConversationName(request.getConversationName());
         }
@@ -259,6 +260,15 @@ public class ConversationService {
 
         conv.setUpdatedAt(LocalDateTime.now());
         conv = conversationRepository.save(conv);
+
+        // If conversation name changed, broadcast a persisted SYSTEM message to chat
+        if (request.getConversationName() != null && !java.util.Objects.equals(oldConversationName, conv.getConversationName())) {
+            iuh.fit.entity.UserDetail requesterDetail = userDetailRepository.findByUserId(userId).orElse(null);
+            String requesterName = requesterDetail != null ? requesterDetail.getDisplayName() : "Ai đó";
+            String oldNameSafe = oldConversationName != null ? oldConversationName : "";
+            String newName = conv.getConversationName() != null ? conv.getConversationName() : "";
+            broadcastSystemMessage(conversationId, requesterName + " đã đổi tên nhóm từ " + oldNameSafe + " thành " + newName);
+        }
 
         List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
         ConversationPermission permission = conversationPermissionRepository.findByConversationId(conversationId)
