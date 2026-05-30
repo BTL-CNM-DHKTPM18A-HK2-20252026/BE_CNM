@@ -267,8 +267,6 @@ public class PinnedMessageService {
                 return null;
         }
 
-        private Message createSystemMessage(String conversationId, String actorId, String content, LocalDateTime now,
-
         private Message createSystemMessage(String conversationId, String actorId, String content, LocalDateTime now) {
                 return Message.builder()
                                 .messageId(UUID.randomUUID().toString())

@@ -76,7 +76,8 @@ public class MessageService {
      * Used to skip raw-string splitting that would corrupt the JSON structure.
      */
     private boolean isJsonMessage(String content) {
-        if (content == null || content.length() < 2) return false;
+        if (content == null || content.length() < 2)
+            return false;
         String trimmed = content.trim();
         return trimmed.startsWith("{") && trimmed.endsWith("}");
     }
@@ -86,8 +87,10 @@ public class MessageService {
      * Falls back to the raw string if content is not valid JSON.
      */
     private String getPlainTextFromContent(String content) {
-        if (content == null) return "";
-        if (!isJsonMessage(content)) return content;
+        if (content == null)
+            return "";
+        if (!isJsonMessage(content))
+            return content;
         try {
             JsonNode root = objectMapper.readTree(content);
             StringBuilder sb = new StringBuilder();
@@ -100,10 +103,12 @@ public class MessageService {
     }
 
     private void extractTextFromNode(JsonNode node, StringBuilder sb) {
-        if (node == null) return;
+        if (node == null)
+            return;
         if (node.has("type") && "text".equals(node.get("type").asText())) {
             JsonNode textNode = node.get("text");
-            if (textNode != null) sb.append(textNode.asText());
+            if (textNode != null)
+                sb.append(textNode.asText());
             return;
         }
         JsonNode contentArr = node.get("content");
@@ -177,8 +182,7 @@ public class MessageService {
                         request.getCaption(),
                         request.getMentions(),
                         request.getMediaUrls(),
-                        request.getStoryId()
-                );
+                        request.getStoryId());
                 lastResponse = this.sendMessage(senderId, chunkRequest);
             }
             return lastResponse;
@@ -327,10 +331,9 @@ public class MessageService {
 
     private boolean areFriends(String userA, String userB) {
         return friendshipRepository.findByRequesterIdAndReceiverId(userA, userB)
-        userDetailRepository.findByUserId(senderId)
-                .ifPresent(d -> conv.setLastMessageSenderName(d.getDisplayName()));
-        conv.setUpdatedAt(message.getCreatedAt());
-        conversationRepository.save(conv);
+                .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED).isPresent()
+                || friendshipRepository.findByRequesterIdAndReceiverId(userB, userA)
+                        .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED).isPresent();
     }
 
     private void autoUnhideMembers(List<ConversationMember> members, String convId) {
@@ -869,7 +872,7 @@ public class MessageService {
 
             int splitPos = chunkSize;
             String prefix = remaining.substring(0, splitPos);
-            
+
             int lastOpen = prefix.lastIndexOf('<');
             int lastClose = prefix.lastIndexOf('>');
 
@@ -883,7 +886,7 @@ public class MessageService {
                 int lastBlock = Math.max(lastP, lastBr);
 
                 if (lastBlock != -1 && lastBlock > splitPos - 200) {
-                    splitPos = lastBlock + 4; 
+                    splitPos = lastBlock + 4;
                 } else if (lastNewline != -1 && lastNewline > 0) {
                     splitPos = lastNewline + 1;
                 } else if (lastSpace != -1 && lastSpace > 0) {
