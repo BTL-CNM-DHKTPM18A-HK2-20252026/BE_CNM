@@ -338,28 +338,34 @@ public class MessageService {
         String content = request.getContent() != null ? request.getContent().trim() : "";
         MessageType type = resolveMessageType(request, content);
 
-        if (type == MessageType.TEXT && content.length() > 800 && !isJsonMessage(content)) {
-            List<String> chunks = splitMessage(content, 800);
-            MessageAndConversationResponse lastResponse = null;
-            for (String chunk : chunks) {
-                SendMessageRequest chunkRequest = new SendMessageRequest(
-                        request.getConversationId(),
-                        request.getRecipientId(),
-                        chunk,
-                        request.getMessageType(),
-                        request.getReplyToMessageId(),
-                        request.getFileName(),
-                        request.getFileSize(),
-                        request.getVoiceDuration(),
-                        request.getVideoDuration(),
-                        request.getForwardedFromMessageId(),
-                        request.getCaption(),
-                        request.getMentions(),
-                        request.getMediaUrls(),
-                        request.getStoryId());
-                lastResponse = this.sendMessage(senderId, chunkRequest);
+        if (type == MessageType.TEXT && content.length() > 800) {
+            // Determine the text to split: if JSON, extract plain text first
+            String textToSplit = isJsonMessage(content) ? getPlainTextFromContent(content) : content;
+            if (textToSplit != null && textToSplit.length() > 800) {
+                List<String> chunks = isJsonMessage(content)
+                        ? splitPlainText(textToSplit, 800)
+                        : splitMessage(content, 800);
+                MessageAndConversationResponse lastResponse = null;
+                for (String chunk : chunks) {
+                    SendMessageRequest chunkRequest = new SendMessageRequest(
+                            request.getConversationId(),
+                            request.getRecipientId(),
+                            chunk,
+                            request.getMessageType(),
+                            request.getReplyToMessageId(),
+                            request.getFileName(),
+                            request.getFileSize(),
+                            request.getVoiceDuration(),
+                            request.getVideoDuration(),
+                            request.getForwardedFromMessageId(),
+                            request.getCaption(),
+                            request.getMentions(),
+                            request.getMediaUrls(),
+                            request.getStoryId());
+                    lastResponse = this.sendMessage(senderId, chunkRequest);
+                }
+                return lastResponse;
             }
-            return lastResponse;
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -1079,6 +1085,58 @@ public class MessageService {
 
             chunks.add(remaining.substring(0, splitPos));
             remaining = remaining.substring(splitPos);
+        }
+
+        return chunks;
+    }
+
+    /**
+     * Splits plain text at word/sentence boundaries.
+     * Used for JSON (TipTap) messages whose plain text exceeds 800 chars.
+     */
+    private List<String> splitPlainText(String text, int chunkSize) {
+        List<String> chunks = new ArrayList<>();
+        String remaining = text;
+
+        while (remaining.length() > 0) {
+            if (remaining.length() <= chunkSize) {
+                chunks.add(remaining.trim());
+                break;
+            }
+
+            int splitPos = chunkSize;
+            String prefix = remaining.substring(0, splitPos);
+
+            // Try sentence boundary (.!? followed by space)
+            int lastSentence = -1;
+            for (int i = splitPos - 1; i >= 0; i--) {
+                char c = prefix.charAt(i);
+                if (c == '.' || c == '!' || c == '?') {
+                    if (i + 1 < prefix.length() && prefix.charAt(i + 1) == ' ') {
+                        lastSentence = i + 2; // after the space
+                    } else if (i + 1 < remaining.length() && remaining.charAt(i + 1) == ' ') {
+                        lastSentence = i + 2;
+                    }
+                    if (lastSentence != -1)
+                        break;
+                }
+            }
+
+            // Try newline
+            int lastNewline = prefix.lastIndexOf('\n');
+            // Try space (word boundary)
+            int lastSpace = prefix.lastIndexOf(' ');
+
+            if (lastSentence != -1 && lastSentence > chunkSize / 2) {
+                splitPos = lastSentence;
+            } else if (lastNewline != -1 && lastNewline > chunkSize / 2) {
+                splitPos = lastNewline + 1;
+            } else if (lastSpace != -1 && lastSpace > chunkSize / 2) {
+                splitPos = lastSpace + 1;
+            }
+
+            chunks.add(remaining.substring(0, splitPos).trim());
+            remaining = remaining.substring(splitPos).trim();
         }
 
         return chunks;
