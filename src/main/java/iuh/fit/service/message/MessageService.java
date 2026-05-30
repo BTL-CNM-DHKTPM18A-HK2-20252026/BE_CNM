@@ -159,6 +159,66 @@ public class MessageService {
     private final MessageProducerService messageProducerService;
     private final iuh.fit.repository.PollRepository pollRepository;
 
+    // ── Helper methods ──────────────────────────────────────────────
+
+    private Message buildMessage(SendMessageRequest request, String senderId, String convId, String content,
+            MessageType type, LocalDateTime now) {
+        Message.MessageBuilder builder = Message.builder()
+                .messageId(UUID.randomUUID().toString())
+                .conversationId(convId)
+                .senderId(senderId)
+                .role(AiRole.USER)
+                .messageType(type)
+                .content(content)
+                .caption(request.getCaption())
+                .replyToMessageId(request.getReplyToMessageId())
+                .storyId(request.getStoryId())
+                .fileName(request.getOriginalName())
+                .fileSize(request.getFileSize())
+                .voiceDuration(request.getVoiceDuration())
+                .videoDuration(request.getVideoDuration())
+                .mentions(request.getMentions())
+                .forwardedFromMessageId(request.getForwardedFromMessageId())
+                .forwardedFromSenderId(request.getForwardedFromSenderId())
+                .createdAt(now)
+                .updatedAt(now)
+                .isDeleted(false)
+                .isRecalled(false)
+                .isEdited(false)
+                .aiGenerated(false);
+
+        if (type == MessageType.LINK || (content != null
+                && (content.startsWith("http://") || content.startsWith("https://")))) {
+            try {
+                var linkMeta = linkScraper.scrape(content);
+                if (linkMeta != null) {
+                    builder.linkTitle(linkMeta.getTitle());
+                    builder.linkThumbnail(linkMeta.getThumbnailUrl());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to scrape link preview for: {}", content, e);
+            }
+        }
+        return builder.build();
+    }
+
+    private void persistMessageToCache(Message message, MessageType type, String content,
+            SendMessageRequest request) {
+        messageCacheService.pushMessage(message);
+        messageProducerService.send(message);
+    }
+
+    private void updateConversationLastMessage(Conversations conv, Message message, String senderId) {
+        userDetailRepository.findByUserId(senderId)
+                .ifPresent(d -> conv.setLastMessageSenderName(d.getDisplayName()));
+        conv.setLastMessageId(message.getMessageId());
+        conv.setLastMessageContent(message.getContent());
+        conv.setLastMessageSenderId(senderId);
+        conv.setLastMessageTime(message.getCreatedAt());
+        conv.setUpdatedAt(message.getCreatedAt());
+        conversationRepository.save(conv);
+    }
+
     @Transactional
     public MessageAndConversationResponse sendMessage(String senderId, SendMessageRequest request) {
         String content = request.getContent() != null ? request.getContent().trim() : "";
