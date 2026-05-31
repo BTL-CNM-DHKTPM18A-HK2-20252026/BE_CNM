@@ -89,6 +89,40 @@ public class PollService {
         return savedPoll;
     }
 
+    @Transactional
+    public Poll updateSettings(String userId, String pollId, Boolean multipleChoices, Boolean allowAddOptions,
+                               Boolean hideResultsBeforeVote, Boolean hideVoters, Boolean isPinned, String deadlineStr) {
+        Poll poll = pollRepository.findById(pollId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy bình chọn"));
+
+        // Only creator can update settings for now
+        if (poll.getCreatorId() == null || !poll.getCreatorId().equals(userId)) {
+            throw new RuntimeException("Không có quyền chỉnh sửa cài đặt bình chọn");
+        }
+
+        if (multipleChoices != null) poll.setMultipleChoices(multipleChoices);
+        if (allowAddOptions != null) poll.setAllowAddOptions(allowAddOptions);
+        if (hideResultsBeforeVote != null) poll.setHideResultsBeforeVote(hideResultsBeforeVote);
+        if (hideVoters != null) poll.setHideVoters(hideVoters);
+        if (isPinned != null) poll.setIsPinned(isPinned);
+
+        if (deadlineStr != null) {
+            try {
+                if (deadlineStr.trim().isEmpty()) {
+                    poll.setDeadline(null);
+                } else {
+                    poll.setDeadline(java.time.LocalDateTime.parse(deadlineStr));
+                }
+            } catch (Exception ex) {
+                throw new RuntimeException("Định dạng hạn chót không hợp lệ");
+            }
+        }
+
+        Poll saved = pollRepository.save(poll);
+        broadcastPollUpdate(saved);
+        return saved;
+    }
+
     private void broadcastPollUpdate(Poll poll) {
         Map<String, Object> updateEvent = new HashMap<>();
         updateEvent.put("type", "POLL_VOTE_UPDATE");
