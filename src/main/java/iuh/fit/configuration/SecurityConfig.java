@@ -41,7 +41,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .cors(cors -> {})
+                .cors(cors -> {
+                })
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         // === PUBLIC ENDPOINTS ===
@@ -68,6 +69,9 @@ public class SecurityConfig {
 
                         // === Utility endpoints ===
                         .requestMatchers("/utils/**").permitAll()
+
+                        // === Sticker endpoints (public for browsing) ===
+                        .requestMatchers(HttpMethod.GET, "/stickers/**").permitAll()
 
                         // === Actuator: only /health is public, rest requires ADMIN ===
                         .requestMatchers("/actuator/health").permitAll()

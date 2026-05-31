@@ -18,5 +18,6 @@ public enum MessageType {
     CALL_ENDED, // Call history: call ended normally (content = duration in seconds)
     CALL_GROUP_START, // Group call started
     POLL, // Group poll message
-    STORY_REPLY // Reply to a story
+    STORY_REPLY, // Reply to a story
+    STICKER // Sticker message
 }
