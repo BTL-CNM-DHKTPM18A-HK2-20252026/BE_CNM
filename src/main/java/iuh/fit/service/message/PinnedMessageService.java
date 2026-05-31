@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class PinnedMessageService {
 
-        private static final int MAX_PINNED_MESSAGES = 5;
+        private static final int MAX_PINNED_MESSAGES = 6;
 
         private final PinnedMessageRepository pinnedMessageRepository;
         private final MessageBucketService messageBucketService;
