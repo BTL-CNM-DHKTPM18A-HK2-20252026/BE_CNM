@@ -2,6 +2,7 @@ package iuh.fit.service.conversation;
 
 import iuh.fit.dto.request.conversation.CreateConversationRequest;
 import iuh.fit.dto.request.conversation.UpdateConversationRequest;
+import iuh.fit.dto.response.conversation.ConversationPermissionResponse;
 import iuh.fit.dto.response.conversation.ConversationResponse;
 import iuh.fit.entity.ConversationMember;
 import iuh.fit.entity.ConversationPermission;
@@ -348,6 +349,26 @@ public class ConversationService {
 
         log.info("Updated permissions for conversation {}: {}", conversationId, request);
         return response;
+    }
+
+    /**
+     * Lấy quyền hạn của nhóm chat hiện tại.
+     * Chỉ thành viên trong nhóm mới được xem.
+     */
+    @Transactional(readOnly = true)
+    public ConversationPermissionResponse getConversationPermissions(String conversationId, String userId) {
+        Conversations conv = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CONVERSATION_NOT_FOUND));
+
+        if (conv.getConversationType() != ConversationType.GROUP) {
+            throw new InvalidInputException(ErrorCode.INVALID_INPUT, "Chỉ nhóm chat mới có cấu hình quyền hạn");
+        }
+
+        conversationMemberRepository.findByConversationIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new ForbiddenException(ErrorCode.NOT_CONVERSATION_MEMBER));
+
+        ConversationPermission permission = getPermissions(conversationId);
+        return conversationMapper.toPermissionResponse(permission);
     }
 
     public List<ConversationResponse> getUserConversations(String userId) {
