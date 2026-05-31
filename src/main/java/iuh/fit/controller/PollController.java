@@ -56,6 +56,26 @@ public class PollController {
         }
     }
 
+    @PatchMapping("/{pollId}")
+    @Operation(summary = "Update poll settings (creator only)")
+    public ResponseEntity<ApiResponse<Poll>> updateSettings(
+            @PathVariable String pollId,
+            @RequestBody UpdateSettingsRequest request) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        try {
+            Poll updated = pollService.updateSettings(userId, pollId,
+                    request.getMultipleChoices(), request.getAllowAddOptions(),
+                    request.getHideResultsBeforeVote(), request.getHideVoters(),
+                    request.getIsPinned(), request.getDeadline());
+            return ResponseEntity.ok(ApiResponse.success(updated, "Cập nhật cài đặt thành công"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("UPDATE_FAILED", e.getMessage()));
+        }
+    }
+
     @Data
     public static class VoteRequest {
         private List<String> optionIds;
@@ -64,5 +84,15 @@ public class PollController {
     @Data
     public static class AddOptionRequest {
         private String content;
+    }
+
+    @Data
+    public static class UpdateSettingsRequest {
+        private Boolean multipleChoices;
+        private Boolean allowAddOptions;
+        private Boolean hideResultsBeforeVote;
+        private Boolean hideVoters;
+        private Boolean isPinned;
+        private String deadline;
     }
 }
