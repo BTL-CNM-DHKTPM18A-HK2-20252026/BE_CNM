@@ -114,7 +114,7 @@ public class AiChatService {
     @Value("${ai.max-retries:2}")
     private int maxRetries;
 
-    @Value("${BLACKBOX_MODEL:blackboxai/blackbox-pro}")
+    @Value("${BLACKBOX_MODEL:gpt-4o}")
     private String defaultModel;
 
     @Transactional

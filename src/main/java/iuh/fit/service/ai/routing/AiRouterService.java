@@ -33,16 +33,16 @@ public class AiRouterService {
     @Value("${ai.router.model:blackboxai/minimax-free}")
     private String routerModel;
 
-    @Value("${ai.model.chat:blackboxai/blackbox-pro}")
+    @Value("${ai.model.chat:gpt-4o}")
     private String modelChat;
 
-    @Value("${ai.model.reasoning:blackboxai/openai/gpt-5.3-codex}")
+    @Value("${ai.model.reasoning:gpt-4o}")
     private String modelReasoning;
 
-    @Value("${ai.model.knowledge:blackboxai/google/gemini-3.1-pro-preview}")
+    @Value("${ai.model.knowledge:gpt-4o}")
     private String modelKnowledge;
 
-    @Value("${ai.model.image:blackboxai/google/imagen-4-ultra}")
+    @Value("${ai.model.image:dall-e-3}")
     private String modelImage;
 
     private static final String ROUTER_SYSTEM_PROMPT = """

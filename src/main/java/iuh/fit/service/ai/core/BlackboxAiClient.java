@@ -27,22 +27,22 @@ public class BlackboxAiClient implements AiCompletionProvider {
 
     private final ObjectMapper objectMapper;
 
-    @Value("${ai.blackbox.url:https://api.blackbox.ai/v1/chat/completions}")
+    @Value("${ai.blackbox.url:https://api.openai.com/v1/chat/completions}")
     private String blackboxUrl;
 
-    @Value("${BLACKBOX_API_KEY:}")
+    @Value("${BLACKBOX_API_KEY:${OPENAI_API_KEY:}}")
     private String apiKey;
 
-    @Value("${BLACKBOX_MODEL:blackboxai/blackbox-pro}")
+    @Value("${BLACKBOX_MODEL:gpt-4o}")
     private String defaultModel;
 
-    @Value("${ai.model.chat:blackboxai/blackbox-pro}")
+    @Value("${ai.model.chat:gpt-4o}")
     private String fallbackModel;
 
-    @Value("${ai.timeout-ms:30000}")
+    @Value("${ai.timeout-ms:60000}")
     private int timeoutMs;
 
-    @Value("${ai.max-output-tokens:1000}")
+    @Value("${ai.max-output-tokens:2000}")
     private int maxOutputTokens;
 
     public AiCompletionResult complete(List<Map<String, String>> messages, String model) {
@@ -55,7 +55,7 @@ public class BlackboxAiClient implements AiCompletionProvider {
      */
     public AiCompletionResult complete(List<Map<String, String>> messages, String model, int maxTokens) {
         if (!StringUtils.hasText(apiKey)) {
-            throw new IllegalStateException("BLACKBOX_API_KEY is missing");
+            throw new IllegalStateException("AI API key is missing (set OPENAI_API_KEY)");
         }
 
         String finalModel = StringUtils.hasText(model) ? model : defaultModel;
@@ -84,7 +84,7 @@ public class BlackboxAiClient implements AiCompletionProvider {
      */
     public AiCompletionResult completeVision(List<Map<String, Object>> messages, String model, int maxTokens) {
         if (!StringUtils.hasText(apiKey)) {
-            throw new IllegalStateException("BLACKBOX_API_KEY is missing");
+            throw new IllegalStateException("AI API key is missing (set OPENAI_API_KEY)");
         }
 
         String finalModel = StringUtils.hasText(model) ? model : defaultModel;

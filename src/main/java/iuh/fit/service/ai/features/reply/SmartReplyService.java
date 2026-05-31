@@ -35,7 +35,7 @@ public class SmartReplyService {
     private final StringRedisTemplate stringRedisTemplate;
     private final ObjectMapper objectMapper;
 
-    @Value("${ai.model.chat:blackboxai/blackbox-pro}")
+    @Value("${ai.model.chat:gpt-4o}")
     private String chatModel;
 
     private static final int CONTEXT_SIZE = 20;
