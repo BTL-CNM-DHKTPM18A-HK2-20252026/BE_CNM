@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class PinnedMessageService {
 
-        private static final int MAX_PINNED_MESSAGES = 6;
+        private static final int MAX_PINNED_MESSAGES = 5;
 
         private final PinnedMessageRepository pinnedMessageRepository;
         private final MessageBucketService messageBucketService;
@@ -81,14 +81,14 @@ public class PinnedMessageService {
 
                 // Check if already pinned
                 if (pinnedMessageRepository.findByMessageIdAndConversationId(messageId, conversationId).isPresent()) {
-                        throw new RuntimeException("Message is already pinned");
+                        throw new RuntimeException("Tin nhắn này đã được ghim rồi");
                 }
 
                 // Check max pinned limit
                 long count = pinnedMessageRepository.countByConversationId(conversationId);
                 if (count >= MAX_PINNED_MESSAGES) {
                         throw new RuntimeException(
-                                        "Maximum pinned messages limit reached (" + MAX_PINNED_MESSAGES + ")");
+                                        "Đã đạt giới hạn tối đa " + MAX_PINNED_MESSAGES + " tin nhắn ghim");
                 }
 
                 PinnedMessage pinned = PinnedMessage.builder()
@@ -144,28 +144,34 @@ public class PinnedMessageService {
         @Transactional
         public void unpinMessage(String messageId, String userId) {
                 Message message = messageBucketService.findMessageById(messageId)
-                                .orElseThrow(() -> new RuntimeException("Message not found"));
+                                .orElseThrow(() -> new RuntimeException("Không tìm thấy tin nhắn"));
 
                 String conversationId = message.getConversationId();
 
                 // Verify user is a member of the conversation and check role/permissions
                 ConversationMember requester = conversationMemberRepository
                                 .findByConversationIdAndUserId(conversationId, userId)
-                                .orElseThrow(() -> new RuntimeException("Not a member of this conversation"));
+                                .orElseThrow(() -> new RuntimeException("Bạn không phải thành viên của hội thoại này"));
 
-                // Admin/Deputy always allowed. Members allowed if canPinMessages is true.
-                if (requester.getRole() != iuh.fit.enums.MemberRole.ADMIN
-                                && requester.getRole() != iuh.fit.enums.MemberRole.DEPUTY) {
-                        iuh.fit.entity.ConversationPermission permission = conversationPermissionRepository
-                                        .findByConversationId(conversationId).orElse(null);
-                        if (permission == null || !Boolean.TRUE.equals(permission.getCanPinMessages())) {
-                                throw new RuntimeException("Chỉ Admin hoặc Phó nhóm mới có quyền bỏ ghim tin nhắn");
+                // Only check admin/deputy permissions for GROUP conversations.
+                // PRIVATE and SELF conversations: any member can unpin.
+                Conversations conversation = conversationRepository.findById(conversationId)
+                                .orElseThrow(() -> new RuntimeException("Không tìm thấy hội thoại"));
+                if (conversation.getConversationType() == iuh.fit.enums.ConversationType.GROUP) {
+                        if (requester.getRole() != iuh.fit.enums.MemberRole.ADMIN
+                                        && requester.getRole() != iuh.fit.enums.MemberRole.DEPUTY) {
+                                iuh.fit.entity.ConversationPermission permission = conversationPermissionRepository
+                                                .findByConversationId(conversationId).orElse(null);
+                                if (permission == null || !Boolean.TRUE.equals(permission.getCanPinMessages())) {
+                                        throw new RuntimeException(
+                                                        "Chỉ Admin hoặc Phó nhóm mới có quyền bỏ ghim tin nhắn");
+                                }
                         }
                 }
 
                 PinnedMessage pinned = pinnedMessageRepository
                                 .findByMessageIdAndConversationId(messageId, conversationId)
-                                .orElseThrow(() -> new RuntimeException("Message is not pinned"));
+                                .orElseThrow(() -> new RuntimeException("Tin nhắn này chưa được ghim"));
 
                 pinnedMessageRepository.delete(pinned);
                 log.info("Message unpinned: {} in conversation: {} by user: {}", messageId, conversationId, userId);
