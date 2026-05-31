@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class PinnedMessageService {
 
-        private static final int MAX_PINNED_MESSAGES = 20;
+        private static final int MAX_PINNED_MESSAGES = 5;
 
         private final PinnedMessageRepository pinnedMessageRepository;
         private final MessageBucketService messageBucketService;
@@ -63,13 +63,19 @@ public class PinnedMessageService {
                                 .findByConversationIdAndUserId(conversationId, userId)
                                 .orElseThrow(() -> new RuntimeException("Not a member of this conversation"));
 
-                // Admin/Deputy always allowed. Members allowed if canPinMessages is true.
-                if (requester.getRole() != iuh.fit.enums.MemberRole.ADMIN
-                                && requester.getRole() != iuh.fit.enums.MemberRole.DEPUTY) {
-                        iuh.fit.entity.ConversationPermission permission = conversationPermissionRepository
-                                        .findByConversationId(conversationId).orElse(null);
-                        if (permission == null || !Boolean.TRUE.equals(permission.getCanPinMessages())) {
-                                throw new RuntimeException("Chỉ Admin hoặc Phó nhóm mới có quyền ghim tin nhắn");
+                // Only check admin/deputy permissions for GROUP conversations.
+                // PRIVATE and SELF conversations: any member can pin.
+                Conversations conversation = conversationRepository.findById(conversationId)
+                                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+                if (conversation.getConversationType() == iuh.fit.enums.ConversationType.GROUP) {
+                        if (requester.getRole() != iuh.fit.enums.MemberRole.ADMIN
+                                        && requester.getRole() != iuh.fit.enums.MemberRole.DEPUTY) {
+                                iuh.fit.entity.ConversationPermission permission = conversationPermissionRepository
+                                                .findByConversationId(conversationId).orElse(null);
+                                if (permission == null || !Boolean.TRUE.equals(permission.getCanPinMessages())) {
+                                        throw new RuntimeException(
+                                                        "Chỉ Admin hoặc Phó nhóm mới có quyền ghim tin nhắn");
+                                }
                         }
                 }
 
