@@ -12,6 +12,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import iuh.fit.service.friend.IFriendService;
+
 import iuh.fit.service.notification.NotificationEvent;
 
 import iuh.fit.dto.request.post.CreatePostRequest;
@@ -43,6 +45,7 @@ public class PostService {
     private final PostMapper postMapper;
     private final PostMediaRepository postMediaRepository;
     private final PostReactionRepository postReactionRepository;
+    private final IFriendService friendService;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -145,7 +148,11 @@ public class PostService {
     }
 
     public Page<PostResponse> getNewsFeed(String currentUserId, Pageable pageable) {
-        return postRepository.findByIsDeletedFalseOrderByCreatedAtDesc(pageable)
+        List<String> authorIds = new ArrayList<>(friendService.getFriendsIds(currentUserId));
+        if (!authorIds.contains(currentUserId)) {
+            authorIds.add(currentUserId);
+        }
+        return postRepository.findByAuthorIdInAndIsDeletedFalseOrderByCreatedAtDesc(authorIds, pageable)
                 .map(post -> postMapper.toResponse(post, currentUserId));
     }
 

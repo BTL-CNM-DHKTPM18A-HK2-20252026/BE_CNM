@@ -48,10 +48,8 @@ public class StoryController {
     @GetMapping("/feed")
     @Operation(summary = "Get story feed (friends + self)")
     public ResponseEntity<List<StoryResponse>> getStoryFeed(
-            @RequestHeader("X-User-Id") String userId,
-            @RequestParam(required = false) List<String> friendIds) {
-        if (friendIds == null) friendIds = List.of();
-        return ResponseEntity.ok(storyService.getStoryFeed(userId, friendIds));
+            @RequestHeader("X-User-Id") String userId) {
+        return ResponseEntity.ok(storyService.getStoryFeed(userId));
     }
     
     @GetMapping("/user/{userId}")
