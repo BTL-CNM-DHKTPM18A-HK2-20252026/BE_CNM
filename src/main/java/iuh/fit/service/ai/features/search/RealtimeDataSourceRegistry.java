@@ -22,7 +22,8 @@ import java.util.regex.Pattern;
  * <p>
  * Đây là giải pháp <i>generic, registry-driven</i> — KHÔNG phải service riêng
  * cho từng chủ đề. Mỗi chủ đề được mô tả bằng một {@link TopicSources} (pattern
- * nhận diện + danh sách nguồn). Khi câu hỏi của người dùng khớp pattern, registry
+ * nhận diện + danh sách nguồn). Khi câu hỏi của người dùng khớp pattern,
+ * registry
  * tự động fetch các nguồn tương ứng (JSON API hoặc HTML tĩnh), trích phần chứa
  * con số thật và trả về dưới dạng {@link GoogleWebSearchResult} để tiêm vào
  * context của AI.
@@ -90,7 +91,8 @@ public class RealtimeDataSourceRegistry {
                                     SourceType.HTML))),
             // ── Crypto ──
             new TopicSources(
-                    Pattern.compile("\\b(bitcoin|ethereum|btc|eth|crypto|tiền điện tử|tiền ảo|giá coin|giá \\w*coin)\\b",
+                    Pattern.compile(
+                            "\\b(bitcoin|ethereum|btc|eth|crypto|tiền điện tử|tiền ảo|giá coin|giá \\w*coin)\\b",
                             Pattern.CASE_INSENSITIVE),
                     List.of(
                             new DataSource("CoinGecko - Giá crypto (JSON API)",
