@@ -78,7 +78,8 @@ public class StoryService {
                 .collect(Collectors.toList());
     }
     
-    public List<StoryResponse> getStoryFeed(String userId, List<String> friendIds) {
+    public List<StoryResponse> getStoryFeed(String userId) {
+        List<String> friendIds = friendService.getFriendsIds(userId);
         LocalDateTime now = LocalDateTime.now();
         List<String> allIds = new java.util.ArrayList<>(friendIds);
         if (!allIds.contains(userId)) {
