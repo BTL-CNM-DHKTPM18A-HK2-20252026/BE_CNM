@@ -1201,6 +1201,17 @@ public class AiChatService {
 
         prompt.add(createPromptMessage("system", themedPrompt));
 
+        // Inject current date/time context so AI knows "today"
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        String dateContext = "vi".equals(language)
+                ? "Hôm nay là "
+                        + now.format(
+                                DateTimeFormatter.ofPattern("EEEE, 'ngày' dd 'tháng' MM 'năm' yyyy", new Locale("vi")))
+                        + ". Thời gian hiện tại: " + now.format(DateTimeFormatter.ofPattern("HH:mm:ss")) + " (UTC+7)."
+                : "Today is " + now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH))
+                        + ". Current time: " + now.format(DateTimeFormatter.ofPattern("HH:mm:ss")) + " (UTC+7).";
+        prompt.add(createPromptMessage("system", dateContext));
+
         if ("vi".equals(language)) {
             prompt.add(createPromptMessage(
                     "system",

@@ -209,9 +209,20 @@ public class OpenAiCompletionClient implements AiCompletionProvider {
             if (StringUtils.hasText(fromMessage)) {
                 return fromMessage;
             }
+            // DeepSeek-R1 style reasoning models may return reasoning_content as primary
+            // output
+            String fromReasoning = first.path("message").path("reasoning_content").asText(null);
+            if (StringUtils.hasText(fromReasoning)) {
+                return fromReasoning;
+            }
             String fromText = first.path("text").asText(null);
             if (StringUtils.hasText(fromText)) {
                 return fromText;
+            }
+            // Some models return delta.content (streaming format even on non-stream)
+            String fromDelta = first.path("delta").path("content").asText(null);
+            if (StringUtils.hasText(fromDelta)) {
+                return fromDelta;
             }
         }
 
