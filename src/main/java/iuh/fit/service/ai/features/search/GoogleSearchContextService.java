@@ -112,15 +112,33 @@ public class GoogleSearchContextService {
      */
     public String buildSearchContext(String query, String language) {
         try {
-            List<GoogleWebSearchResult> results = googleSearchService.searchInformation(query);
+            // ── Bước 1: thử Google Custom Search (nguồn chính) ──
+            String source = "GOOGLE";
+            List<GoogleWebSearchResult> results;
+            try {
+                results = googleSearchService.searchInformation(query);
+            } catch (Exception googleEx) {
+                // Google lỗi (403 quota/billing, timeout, …) → chuyển dự phòng.
+                log.warn("[GoogleSearchContext] Google lỗi ({}), chuyển DuckDuckGo dự phòng.",
+                        googleEx.getMessage());
+                results = List.of();
+            }
+
+            // ── Bước 2: fallback DuckDuckGo nếu Google rỗng/lỗi ──
             if (results.isEmpty()) {
-                log.info("[GoogleSearchContext] Không có kết quả tìm kiếm cho: '{}'", query);
+                results = duckDuckGoSearchService.searchInformation(query);
+                source = "DUCKDUCKGO";
+            }
+
+            if (results.isEmpty()) {
+                log.info("[GoogleSearchContext] Không có kết quả tìm kiếm (cả Google & DuckDuckGo) cho: '{}'", query);
                 return null;
             }
 
             List<GoogleWebSearchResult> top = results.stream().limit(MAX_INJECT_RESULTS).toList();
             boolean isVi = "vi".equals(language);
             String today = LocalDate.now().toString();
+            String sourceLabel = "GOOGLE".equals(source) ? "GOOGLE SEARCH" : "DUCKDUCKGO SEARCH";
 
             StringBuilder sb = new StringBuilder();
 
@@ -129,17 +147,17 @@ public class GoogleSearchContextService {
             if (isVi) {
                 sb.append("⚠️  LỆNH HỆ THỐNG — ƯU TIÊN TUYỆT ĐỐI — NGÀY: ").append(today).append("\n");
                 sb.append("════════════════════════════════════════\n\n");
-                sb.append("BẠN VỪA ĐƯỢC CẤP KẾT QUẢ TÌM KIẾM GOOGLE MỚI NHẤT.\n");
+                sb.append("BẠN VỪA ĐƯỢC CẤP KẾT QUẢ TÌM KIẾM WEB MỚI NHẤT.\n");
                 sb.append("NGHIÊM CẤM dùng bất kỳ con số / sự kiện nào từ training data.\n");
                 sb.append("CHỈ được phép dùng dữ liệu từ các nguồn bên dưới.\n\n");
-                sb.append("── KẾT QUẢ GOOGLE SEARCH (").append(top.size()).append(" nguồn) ──\n\n");
+                sb.append("── KẾT QUẢ ").append(sourceLabel).append(" (").append(top.size()).append(" nguồn) ──\n\n");
             } else {
                 sb.append("⚠️  SYSTEM COMMAND — ABSOLUTE PRIORITY — DATE: ").append(today).append("\n");
                 sb.append("════════════════════════════════════════\n\n");
-                sb.append("YOU HAVE JUST RECEIVED THE LATEST GOOGLE SEARCH RESULTS.\n");
+                sb.append("YOU HAVE JUST RECEIVED THE LATEST WEB SEARCH RESULTS.\n");
                 sb.append("STRICTLY FORBIDDEN to use any number / event from training data.\n");
                 sb.append("ONLY allowed to use data from the sources below.\n\n");
-                sb.append("── GOOGLE SEARCH RESULTS (").append(top.size()).append(" sources) ──\n\n");
+                sb.append("── ").append(sourceLabel).append(" RESULTS (").append(top.size()).append(" sources) ──\n\n");
             }
 
             // ── Liệt kê kết quả — tiêu đề + snippet + link ──
