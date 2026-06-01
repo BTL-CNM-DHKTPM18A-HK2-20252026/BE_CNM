@@ -18,6 +18,9 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -94,7 +97,7 @@ public class GoogleSearchService {
     public List<GoogleWebSearchResult> searchInformation(String query) {
         validateQuery(query);
 
-        String url = buildUrl(query, false);
+        URI url = buildUrl(query, false);
         log.info("[GoogleSearch] Text search: '{}'", query);
 
         String body = callApi(url, query);
@@ -113,7 +116,7 @@ public class GoogleSearchService {
     public List<GoogleImageSearchResult> searchImages(String query) {
         validateQuery(query);
 
-        String url = buildUrl(query, true);
+        URI url = buildUrl(query, true);
         log.info("[GoogleSearch] Image search: '{}'", query);
 
         String body = callApi(url, query);
@@ -123,23 +126,26 @@ public class GoogleSearchService {
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     /**
-     * Xây dựng URL an toàn — các tham số được encode tự động bởi
-     * UriComponentsBuilder.
-     * Không có nguy cơ URL injection từ query string người dùng.
+     * Xây dựng URL an toàn — tất cả tham số được encode thủ công và trả về dưới
+     * dạng {@link URI} đã hoàn chỉnh. Điều này ngăn {@link RestTemplate} hiểu nhầm
+     * các ký tự <code>{ }</code> trong query (ví dụ TipTap JSON) là biến template
+     * của URI — nguyên nhân của lỗi "Not enough variable values available to expand".
      */
-    private String buildUrl(String query, boolean imageSearch) {
+    private URI buildUrl(String query, boolean imageSearch) {
+        String encodedQuery = URLEncoder.encode(query, StandardCharsets.UTF_8);
         UriComponentsBuilder builder = UriComponentsBuilder
                 .fromHttpUrl(SEARCH_API_URL)
-                .queryParam("key", apiKey)
-                .queryParam("cx", searchEngineId)
-                .queryParam("q", query)
+                .queryParam("key", URLEncoder.encode(apiKey, StandardCharsets.UTF_8))
+                .queryParam("cx", URLEncoder.encode(searchEngineId, StandardCharsets.UTF_8))
+                .queryParam("q", encodedQuery)
                 .queryParam("num", MAX_RESULTS);
 
         if (imageSearch) {
             builder.queryParam("searchType", "image");
         }
 
-        return builder.build().toUriString();
+        // build(true): components are already URL-encoded; do not encode/expand again.
+        return builder.build(true).toUri();
     }
 
     /**
@@ -151,7 +157,7 @@ public class GoogleSearchService {
      * <li>Timeout / network → {@link ResourceAccessException}.</li>
      * </ul>
      */
-    private String callApi(String url, String query) {
+    private String callApi(URI url, String query) {
         RestTemplate restTemplate = buildRestTemplate();
         try {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);

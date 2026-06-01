@@ -143,11 +143,11 @@ ai:
   max-retries: ${AI_MAX_RETRIES:2}
   max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:2000}
   router:
-    model: ${AI_ROUTER_MODEL:gpt-4o}
+    model: ${AI_ROUTER_MODEL:deepseek-chat}
   model:
-    chat: ${AI_MODEL_CHAT:gpt-4o}
-    reasoning: ${AI_MODEL_REASONING:gpt-4o}
-    knowledge: ${AI_MODEL_KNOWLEDGE:gpt-4o}
+    chat: ${AI_MODEL_CHAT:deepseek-chat}
+    reasoning: ${AI_MODEL_REASONING:deepseek-chat}
+    knowledge: ${AI_MODEL_KNOWLEDGE:deepseek-chat}
     image: ${AI_MODEL_IMAGE:dall-e-3}
   image:
     provider-url: ${AI_IMAGE_PROVIDER_URL:}
@@ -164,6 +164,12 @@ ai:
   sliding-window:
     size: ${AI_SLIDING_WINDOW_SIZE:10}
   window-token-budget: ${AI_WINDOW_TOKEN_BUDGET:2000}
+  deep-research:
+    enabled: ${AI_DEEP_RESEARCH_ENABLED:true}
+    max-pages: ${AI_DEEP_RESEARCH_MAX_PAGES:3}
+    max-chars-per-page: ${AI_DEEP_RESEARCH_MAX_CHARS:2000}
+    jina-url: ${AI_DEEP_RESEARCH_JINA_URL:https://r.jina.ai/}
+    timeout-ms: ${AI_DEEP_RESEARCH_TIMEOUT_MS:8000}
   openai:
     url: ${OPENAI_API_URL:https://api.openai.com/v1/chat/completions}
   deepseek:

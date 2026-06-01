@@ -16,6 +16,7 @@ import iuh.fit.entity.UserAuth;
 import iuh.fit.entity.UserDetail;
 import iuh.fit.entity.UserSetting;
 import iuh.fit.utils.InputSanitizer;
+import iuh.fit.utils.RichTextExtractor;
 import iuh.fit.enums.AiMessageStatus;
 import iuh.fit.enums.AiRole;
 import iuh.fit.enums.ConversationStatus;
@@ -114,7 +115,7 @@ public class AiChatService {
     @Value("${ai.max-retries:2}")
     private int maxRetries;
 
-    @Value("${OPENAI_MODEL:gpt-4o}")
+    @Value("${ai.model.chat:deepseek-chat}")
     private String defaultModel;
 
     @Transactional
@@ -129,6 +130,13 @@ public class AiChatService {
     public AiChatResponse chatWithAi(String userId, ChatWithAiRequest request) {
         LocalDateTime now = LocalDateTime.now();
         Conversations conversation = resolveConversation(userId, request.getConversationId(), now);
+
+        // The web/mobile editors send content as TipTap rich-text JSON
+        // ({"type":"doc","content":[...]}). Extract the plain text so the AI
+        // router, real-time search, and vision prompts receive the user's actual
+        // question instead of a raw JSON blob. The stored message keeps the
+        // original content so the UI still renders rich text correctly.
+        String plainContent = RichTextExtractor.toPlainText(request.getContent());
 
         // For vision/document requests (userImageUrl or userDocumentUrl set), the user
         // already uploaded the file via /messages. Creating a TEXT duplicate of the
@@ -153,14 +161,14 @@ public class AiChatService {
         broadcastAiTyping(conversation.getConversationId(), true);
         try {
             // --- Fast-path: explicit /image commands bypass router ---
-            QuickCommand imageCommand = parseImageGenerationCommand(request.getContent());
+            QuickCommand imageCommand = parseImageGenerationCommand(plainContent);
             if (imageCommand != null) {
                 return handleImageGenerationRequest(userId, request, conversation, userMessage, imageCommand);
             }
 
             // --- Step 1: AI Router – classify intent and select model ---
             String language = resolveResponseLanguage(request.getLanguage());
-            AiRouterResult routerResult = aiRouterService.route(request.getContent(), language);
+            AiRouterResult routerResult = aiRouterService.route(plainContent, language);
 
             // If router detected IMAGE_GEN task, redirect to image workflow.
             // EXCEPTION: if the user sent an image (isVisionRequest), the router may
@@ -196,7 +204,7 @@ public class AiChatService {
                     : buildUserProfileContext(userId, request.getLanguage());
             String storageContext = fullAccessGranted
                     ? null
-                    : buildStorageContextIfRequested(userId, request.getContent(), request.getLanguage());
+                    : buildStorageContextIfRequested(userId, plainContent, request.getLanguage());
             List<Map<String, String>> promptMessages = buildPrompt(summary, ragContexts, slidingWindow,
                     request.getLanguage(), request.getThemeType(), userProfileContext, storageContext,
                     fullAccessContext);
@@ -205,13 +213,13 @@ public class AiChatService {
             // thì gọi Google Search và inject kết quả vào đầu prompt — ưu tiên cao nhất.
             // Không áp dụng cho vision/document request (đã có context riêng).
             if (!isVisionRequest && !isDocumentRequest
-                    && googleSearchContextService.isRealTimeQuery(request.getContent())) {
+                    && googleSearchContextService.isRealTimeQuery(plainContent)) {
                 String searchContext = googleSearchContextService.buildSearchContext(
-                        request.getContent(), language);
+                        plainContent, language);
                 if (StringUtils.hasText(searchContext)) {
                     promptMessages.add(0, createPromptMessage("system", searchContext));
                     log.info("[AiChatService] Real-time search context injected for query: '{}'",
-                            request.getContent());
+                            plainContent);
                 }
             }
 
@@ -220,17 +228,17 @@ public class AiChatService {
                 // For vision requests, the TEXT user message was NOT saved to the bucket
                 // (to avoid duplicating the image caption in the UI). Add the question
                 // as a user turn in the prompt so the AI knows what was asked.
-                promptMessages.add(createPromptMessage("user", InputSanitizer.sanitize(request.getContent())));
+                promptMessages.add(createPromptMessage("user", InputSanitizer.sanitize(plainContent)));
 
                 String visionDesc = aiImageWorkflowService.analyzeImageWithOpenAi(
                         request.getUserImageUrl(),
-                        InputSanitizer.sanitize(request.getContent()),
+                        InputSanitizer.sanitize(plainContent),
                         language);
                 // Fallback to Gemini if OpenAI vision unavailable
                 if (!StringUtils.hasText(visionDesc)) {
                     visionDesc = aiImageWorkflowService.analyzeImageWithGemini(
                             request.getUserImageUrl(),
-                            InputSanitizer.sanitize(request.getContent()),
+                            InputSanitizer.sanitize(plainContent),
                             language);
                 }
                 if (StringUtils.hasText(visionDesc)) {
@@ -276,10 +284,10 @@ public class AiChatService {
                     // Ensure the user question is present as a user turn
                     boolean userTurnPresent = promptMessages.stream()
                             .anyMatch(m -> "user".equals(m.get("role"))
-                                    && InputSanitizer.sanitize(request.getContent()).equals(m.get("content")));
+                                    && InputSanitizer.sanitize(plainContent).equals(m.get("content")));
                     if (!userTurnPresent) {
                         promptMessages.add(createPromptMessage("user",
-                                InputSanitizer.sanitize(request.getContent())));
+                                InputSanitizer.sanitize(plainContent)));
                     }
                     log.info("[AiChatService] Document context injected for file '{}'",
                             request.getUserDocumentName());
@@ -1917,8 +1925,12 @@ public class AiChatService {
             return text;
         }
 
+        // Conversation history may store TipTap rich-text JSON. Convert it to plain
+        // text so the model reads the real message instead of a raw JSON blob.
+        String sanitized = RichTextExtractor.toPlainText(text);
+
         // Prevent the model from repeating giant presigned URLs in normal chat replies.
-        String sanitized = text.replaceAll("https?://\\S*X-Amz-Signature=\\S*", "[generated-image-link]");
+        sanitized = sanitized.replaceAll("https?://\\S*X-Amz-Signature=\\S*", "[generated-image-link]");
         return sanitized;
     }
 

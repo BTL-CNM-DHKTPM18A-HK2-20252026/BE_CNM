@@ -3,9 +3,16 @@ package iuh.fit.service.ai.features.search;
 import iuh.fit.dto.response.ai.GoogleWebSearchResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
@@ -28,6 +35,26 @@ public class GoogleSearchContextService {
 
     /** Số kết quả tối đa đưa vào context (tránh vượt token budget). */
     private static final int MAX_INJECT_RESULTS = 5;
+
+    /** Deep research: bật/tắt việc tải toàn bộ nội dung trang qua Jina Reader. */
+    @Value("${ai.deep-research.enabled:true}")
+    private boolean deepResearchEnabled;
+
+    /** Số trang đầu được tải full nội dung (chi phí latency cao, giữ nhỏ). */
+    @Value("${ai.deep-research.max-pages:3}")
+    private int deepResearchMaxPages;
+
+    /** Giới hạn ký tự trích từ mỗi trang để không vượt token budget. */
+    @Value("${ai.deep-research.max-chars-per-page:2000}")
+    private int deepResearchMaxCharsPerPage;
+
+    /** Base URL của Jina AI Reader (chuyển trang web → markdown sạch). */
+    @Value("${ai.deep-research.jina-url:https://r.jina.ai/}")
+    private String jinaReaderUrl;
+
+    /** Timeout (ms) cho mỗi lần fetch full nội dung. */
+    @Value("${ai.deep-research.timeout-ms:8000}")
+    private int deepResearchTimeoutMs;
 
     /**
      * Các pattern từ khoá chỉ ra rằng người dùng cần dữ liệu thực tế / mới nhất.
@@ -135,6 +162,16 @@ public class GoogleSearchContextService {
                     // Lưu link gốc để AI có thể render thành markdown
                     sb.append("    🔗 URL: ").append(link).append("\n");
                 }
+
+                // ── Deep research: tải toàn bộ nội dung trang cho top N nguồn ──
+                if (deepResearchEnabled && idx <= deepResearchMaxPages && !link.isBlank()) {
+                    String fullText = fetchFullContent(link);
+                    if (StringUtils.hasText(fullText)) {
+                        sb.append(isVi ? "    📰 NỘI DUNG CHI TIẾT:\n" : "    📰 FULL CONTENT:\n");
+                        sb.append("    ").append(fullText.replace("\n", "\n    ")).append("\n");
+                    }
+                }
+
                 sb.append("\n");
                 idx++;
             }
@@ -173,6 +210,59 @@ public class GoogleSearchContextService {
 
         } catch (Exception ex) {
             log.warn("[GoogleSearchContext] Tìm kiếm thất bại cho '{}': {}", query, ex.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Deep research — tải toàn bộ nội dung một trang web qua <b>Jina AI Reader</b>
+     * ({@code https://r.jina.ai/<URL>}), trả về văn bản markdown đã được làm sạch
+     * (loại bỏ HTML, quảng cáo, navigation).
+     *
+     * <p>
+     * Mọi lỗi (timeout, 4xx/5xx, network) đều được nuốt và trả về {@code null} —
+     * deep research là tính năng bổ trợ, không được làm hỏng luồng chat chính.
+     *
+     * @param url URL gốc của kết quả tìm kiếm
+     * @return nội dung trang đã rút gọn (≤ {@code deepResearchMaxCharsPerPage} ký
+     *         tự), hoặc {@code null} nếu không lấy được
+     */
+    private String fetchFullContent(String url) {
+        try {
+            SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+            factory.setConnectTimeout(deepResearchTimeoutMs);
+            factory.setReadTimeout(deepResearchTimeoutMs);
+            RestTemplate restTemplate = new RestTemplate(factory);
+
+            // Jina Reader nhận URL gốc nối sau base URL; encode để an toàn.
+            String readerUrl = jinaReaderUrl + url;
+            URI uri = URI.create(readerUrl);
+
+            HttpHeaders headers = new HttpHeaders();
+            // Yêu cầu Jina trả về văn bản thuần, bỏ ảnh để tiết kiệm token.
+            headers.set(HttpHeaders.ACCEPT, "text/plain");
+            headers.set("X-Return-Format", "text");
+            headers.set("X-Retain-Images", "none");
+
+            ResponseEntity<String> resp = restTemplate.exchange(
+                    uri, org.springframework.http.HttpMethod.GET,
+                    new HttpEntity<>(headers), String.class);
+
+            String body = resp.getBody();
+            if (!resp.getStatusCode().is2xxSuccessful() || !StringUtils.hasText(body)) {
+                return null;
+            }
+
+            // Chuẩn hoá khoảng trắng và cắt theo giới hạn ký tự.
+            String cleaned = body.replaceAll("\\n{3,}", "\n\n").strip();
+            if (cleaned.length() > deepResearchMaxCharsPerPage) {
+                cleaned = cleaned.substring(0, deepResearchMaxCharsPerPage) + "…";
+            }
+            log.info("[GoogleSearchContext] Deep research OK ({} ký tự) cho: {}", cleaned.length(), url);
+            return cleaned;
+
+        } catch (Exception ex) {
+            log.debug("[GoogleSearchContext] Deep research bỏ qua '{}': {}", url, ex.getMessage());
             return null;
         }
     }
