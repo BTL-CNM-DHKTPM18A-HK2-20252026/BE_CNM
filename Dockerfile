@@ -7,9 +7,9 @@ WORKDIR /build
 COPY pom.xml .
 RUN mvn dependency:go-offline -q
 
-# Copy source and build
+# Copy source and build (2-pass for Lombok annotation processor)
 COPY src ./src
-RUN mvn clean package -DskipTests -q
+RUN mvn compile -DskipTests -q && mvn package -DskipTests -q
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jre-alpine

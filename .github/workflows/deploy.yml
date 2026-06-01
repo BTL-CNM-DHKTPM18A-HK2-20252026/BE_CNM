@@ -27,10 +27,11 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Build with Maven (skip tests for speed)
+      - name: Build with Maven (2-pass for Lombok, skip tests for speed)
         run: |
           chmod +x mvnw
-          ./mvnw clean package -DskipTests -q
+          ./mvnw compile -DskipTests -q
+          ./mvnw package -DskipTests -q
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4

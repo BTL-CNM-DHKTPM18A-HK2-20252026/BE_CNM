@@ -44,7 +44,7 @@ public class OpenAiCompletionClient implements AiCompletionProvider {
     @Value("${DEEPSEEK_API_KEY:}")
     private String deepseekApiKey;
 
-    @Value("${DEEPSEEK_MODEL:deepseek-chat}")
+    @Value("${DEEPSEEK_MODEL:deepseek-v4-pro}")
     private String deepseekModel;
 
     @Value("${ai.model.chat:gpt-4o}")
