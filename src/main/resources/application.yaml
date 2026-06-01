@@ -168,8 +168,12 @@ ai:
     enabled: ${AI_DEEP_RESEARCH_ENABLED:true}
     max-pages: ${AI_DEEP_RESEARCH_MAX_PAGES:3}
     max-chars-per-page: ${AI_DEEP_RESEARCH_MAX_CHARS:2000}
-    jina-url: ${AI_DEEP_RESEARCH_JINA_URL:https://r.jina.ai/}
     timeout-ms: ${AI_DEEP_RESEARCH_TIMEOUT_MS:8000}
+  # Tìm kiếm web dự phòng (DuckDuckGo HTML) — miễn phí, không cần API key.
+  # Tự động kích hoạt khi Google Custom Search lỗi (403 quota/billing) hoặc rỗng.
+  fallback-search:
+    max-results: ${AI_FALLBACK_SEARCH_MAX_RESULTS:10}
+    timeout-ms: ${AI_FALLBACK_SEARCH_TIMEOUT_MS:10000}
   openai:
     url: ${OPENAI_API_URL:https://api.openai.com/v1/chat/completions}
   deepseek:
