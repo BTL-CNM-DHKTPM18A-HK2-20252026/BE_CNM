@@ -69,13 +69,13 @@ public class OpenAiCompletionClient implements AiCompletionProvider {
         synchronized (providerLock) {
             if (resolvedProvider != null)
                 return resolvedProvider;
-            // Ưu tiên OpenAI, fallback DeepSeek
-            if (StringUtils.hasText(openaiApiKey)) {
-                resolvedProvider = new ProviderConfig(openaiUrl, openaiApiKey, openaiModel);
-                log.info("AI Provider: OpenAI (model={})", openaiModel);
-            } else if (StringUtils.hasText(deepseekApiKey)) {
+            // Ưu tiên DeepSeek, fallback OpenAI
+            if (StringUtils.hasText(deepseekApiKey)) {
                 resolvedProvider = new ProviderConfig(deepseekUrl, deepseekApiKey, deepseekModel);
                 log.info("AI Provider: DeepSeek (model={})", deepseekModel);
+            } else if (StringUtils.hasText(openaiApiKey)) {
+                resolvedProvider = new ProviderConfig(openaiUrl, openaiApiKey, openaiModel);
+                log.info("AI Provider: OpenAI (model={})", openaiModel);
             } else {
                 throw new IllegalStateException(
                         "No AI API key configured. Set OPENAI_API_KEY or DEEPSEEK_API_KEY.");
@@ -83,15 +83,6 @@ public class OpenAiCompletionClient implements AiCompletionProvider {
             return resolvedProvider;
         }
     }
-
-    @Value("${ai.model.chat:gpt-4o}")
-    private String fallbackModel;
-
-    @Value("${ai.timeout-ms:60000}")
-    private int timeoutMs;
-
-    @Value("${ai.max-output-tokens:2000}")
-    private int maxOutputTokens;
 
     public AiCompletionResult complete(List<Map<String, String>> messages, String model) {
         return complete(messages, model, maxOutputTokens);
