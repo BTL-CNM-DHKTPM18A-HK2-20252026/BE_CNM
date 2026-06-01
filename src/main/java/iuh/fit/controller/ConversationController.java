@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import iuh.fit.dto.request.conversation.CreateConversationRequest;
 import iuh.fit.dto.request.conversation.HideConversationRequest;
 import iuh.fit.dto.request.conversation.UpdateConversationRequest;
+import iuh.fit.dto.response.conversation.ConversationPermissionResponse;
 import iuh.fit.dto.response.conversation.ConversationResponse;
 import iuh.fit.response.ApiResponse;
 import iuh.fit.service.conversation.ConversationService;
@@ -105,6 +106,21 @@ public class ConversationController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         ConversationResponse response = conversationService.updatePermissions(conversationId, userId, request);
         return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật quyền hạn nhóm thành công"));
+    }
+
+    @GetMapping("/{conversationId}/permissions")
+    @Operation(summary = "Get group conversation permissions for current member")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Permissions retrieved successfully")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "User is not a member of this group")
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Conversation not found")
+    public ResponseEntity<ApiResponse<ConversationPermissionResponse>> getPermissions(
+            @PathVariable String conversationId) {
+        String userId = JwtUtils.getCurrentUserId();
+        if (userId == null)
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        ConversationPermissionResponse response = conversationService.getConversationPermissions(conversationId, userId);
+        return ResponseEntity.ok(ApiResponse.success(response, "Lấy quyền hạn nhóm thành công"));
     }
 
     // ==================== GROUP MEMBER MANAGEMENT ====================
