@@ -23,7 +23,7 @@ services:
         limits:
           memory: 192m
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -38,13 +38,13 @@ services:
     volumes:
       - mongo_data:/data/db
     # Limit WiredTiger cache to prevent MongoDB from consuming all RAM
-    command: [ "mongod", "--wiredTigerCacheSizeGB", "0.5" ]
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5"]
     deploy:
       resources:
         limits:
           memory: 768m
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -87,11 +87,10 @@ services:
         limits:
           memory: 512m
     healthcheck:
-      test:
-        [
+      test: [
           "CMD-SHELL",
           "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server
-            localhost:9092 > /dev/null 2>&1",
+          localhost:9092 > /dev/null 2>&1",
         ]
       interval: 15s
       timeout: 10s
@@ -124,11 +123,10 @@ services:
         limits:
           memory: 768m
     healthcheck:
-      test:
-        [
+      test: [
           "CMD-SHELL",
-          "curl -s -u elastic:${ELASTIC_PASSWORD:-changeme}
-            http://localhost:9200/_cluster/health | grep -q '\"status\"'",
+          'curl -s -u elastic:${ELASTIC_PASSWORD:-changeme}
+          http://localhost:9200/_cluster/health | grep -q ''"status"''',
         ]
       interval: 30s
       timeout: 10s
@@ -169,7 +167,12 @@ services:
       - EMAIL_USERNAME=${EMAIL_USERNAME}
       - EMAIL_PASSWORD=${EMAIL_PASSWORD}
       - EMAIL_FROM=${EMAIL_FROM}
-      - BLACKBOX_API_KEY=${BLACKBOX_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      - OPENAI_API_URL=${OPENAI_API_URL:-https://api.openai.com/v1/chat/completions}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DEEPSEEK_API_URL=${DEEPSEEK_API_URL:-https://api.deepseek.com/v1/chat/completions}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
       - SWAGGER_ENABLED=false
       # Reduce Tomcat threads for low-traffic EC2
       - TOMCAT_MAX_THREADS=100

@@ -34,7 +34,7 @@ public class MessageSummaryService {
     private final UserDetailRepository userDetailRepository;
     private final AiCompletionProvider aiClient;
 
-    @Value("${ai.model.knowledge:blackboxai/google/gemini-3.1-pro-preview}")
+    @Value("${ai.model.knowledge:gpt-4o}")
     private String knowledgeModel;
 
     private static final int MAX_MESSAGES_PER_CHUNK = 200;

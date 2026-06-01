@@ -23,18 +23,66 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class BlackboxAiClient implements AiCompletionProvider {
+public class OpenAiCompletionClient implements AiCompletionProvider {
 
     private final ObjectMapper objectMapper;
 
-    @Value("${ai.blackbox.url:https://api.openai.com/v1/chat/completions}")
-    private String blackboxUrl;
+    // ── OpenAI config ──────────────────────────────────────────────────
+    @Value("${ai.openai.url:https://api.openai.com/v1/chat/completions}")
+    private String openaiUrl;
 
-    @Value("${BLACKBOX_API_KEY:${OPENAI_API_KEY:}}")
-    private String apiKey;
+    @Value("${OPENAI_API_KEY:}")
+    private String openaiApiKey;
 
-    @Value("${BLACKBOX_MODEL:gpt-4o}")
-    private String defaultModel;
+    @Value("${OPENAI_MODEL:gpt-4o}")
+    private String openaiModel;
+
+    // ── DeepSeek config (OpenAI-compatible, fallback) ──────────────────
+    @Value("${ai.deepseek.url:https://api.deepseek.com/v1/chat/completions}")
+    private String deepseekUrl;
+
+    @Value("${DEEPSEEK_API_KEY:}")
+    private String deepseekApiKey;
+
+    @Value("${DEEPSEEK_MODEL:deepseek-chat}")
+    private String deepseekModel;
+
+    @Value("${ai.model.chat:gpt-4o}")
+    private String fallbackModel;
+
+    @Value("${ai.timeout-ms:60000}")
+    private int timeoutMs;
+
+    @Value("${ai.max-output-tokens:2000}")
+    private int maxOutputTokens;
+
+    // ── Resolved provider (lazy) ───────────────────────────────────────
+    private volatile ProviderConfig resolvedProvider;
+    private final Object providerLock = new Object();
+
+    private record ProviderConfig(String url, String key, String model) {
+    }
+
+    private ProviderConfig resolveProvider() {
+        if (resolvedProvider != null)
+            return resolvedProvider;
+        synchronized (providerLock) {
+            if (resolvedProvider != null)
+                return resolvedProvider;
+            // Ưu tiên OpenAI, fallback DeepSeek
+            if (StringUtils.hasText(openaiApiKey)) {
+                resolvedProvider = new ProviderConfig(openaiUrl, openaiApiKey, openaiModel);
+                log.info("AI Provider: OpenAI (model={})", openaiModel);
+            } else if (StringUtils.hasText(deepseekApiKey)) {
+                resolvedProvider = new ProviderConfig(deepseekUrl, deepseekApiKey, deepseekModel);
+                log.info("AI Provider: DeepSeek (model={})", deepseekModel);
+            } else {
+                throw new IllegalStateException(
+                        "No AI API key configured. Set OPENAI_API_KEY or DEEPSEEK_API_KEY.");
+            }
+            return resolvedProvider;
+        }
+    }
 
     @Value("${ai.model.chat:gpt-4o}")
     private String fallbackModel;
@@ -50,18 +98,16 @@ public class BlackboxAiClient implements AiCompletionProvider {
     }
 
     /**
-     * Call the AI completion API with a custom max_tokens limit.
+     * Call the OpenAI-compatible completion API with a custom max_tokens limit.
      * Used by the router (small budget) and the main call (full budget).
      */
     public AiCompletionResult complete(List<Map<String, String>> messages, String model, int maxTokens) {
-        if (!StringUtils.hasText(apiKey)) {
-            throw new IllegalStateException("AI API key is missing (set OPENAI_API_KEY)");
-        }
+        ProviderConfig provider = resolveProvider();
 
-        String finalModel = StringUtils.hasText(model) ? model : defaultModel;
+        String finalModel = StringUtils.hasText(model) ? model : provider.model();
 
         try {
-            return doComplete(messages, finalModel, maxTokens);
+            return doComplete(provider, messages, finalModel, maxTokens);
         } catch (HttpClientErrorException.BadRequest ex) {
             boolean invalidModel = ex.getResponseBodyAsString() != null
                     && ex.getResponseBodyAsString().toLowerCase().contains("invalid model name");
@@ -72,9 +118,9 @@ public class BlackboxAiClient implements AiCompletionProvider {
                 throw ex;
             }
 
-            log.warn("Model '{}' is invalid for Blackbox API. Retrying with fallback model '{}'.",
+            log.warn("Model '{}' is invalid for AI API. Retrying with fallback model '{}'.",
                     finalModel, fallbackModel);
-            return doComplete(messages, fallbackModel, maxTokens);
+            return doComplete(provider, messages, fallbackModel, maxTokens);
         }
     }
 
@@ -83,15 +129,13 @@ public class BlackboxAiClient implements AiCompletionProvider {
      * grounding. The messages list should already contain image_url content blocks.
      */
     public AiCompletionResult completeVision(List<Map<String, Object>> messages, String model, int maxTokens) {
-        if (!StringUtils.hasText(apiKey)) {
-            throw new IllegalStateException("AI API key is missing (set OPENAI_API_KEY)");
-        }
+        ProviderConfig provider = resolveProvider();
 
-        String finalModel = StringUtils.hasText(model) ? model : defaultModel;
+        String finalModel = StringUtils.hasText(model) ? model : provider.model();
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
+        headers.setBearerAuth(provider.key());
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("model", finalModel);
@@ -101,16 +145,17 @@ public class BlackboxAiClient implements AiCompletionProvider {
         payload.put("temperature", 0.1);
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-        ResponseEntity<String> response = getRestTemplate().postForEntity(blackboxUrl, request, String.class);
+        ResponseEntity<String> response = getRestTemplate().postForEntity(provider.url(), request, String.class);
 
         return parseResponse(response.getBody(), finalModel);
     }
 
-    private AiCompletionResult doComplete(List<Map<String, String>> messages, String model, int maxTokens) {
+    private AiCompletionResult doComplete(ProviderConfig provider, List<Map<String, String>> messages, String model,
+            int maxTokens) {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
+        headers.setBearerAuth(provider.key());
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("model", model);
@@ -119,7 +164,7 @@ public class BlackboxAiClient implements AiCompletionProvider {
         payload.put("stream", false);
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-        ResponseEntity<String> response = getRestTemplate().postForEntity(blackboxUrl, request, String.class);
+        ResponseEntity<String> response = getRestTemplate().postForEntity(provider.url(), request, String.class);
 
         return parseResponse(response.getBody(), model);
     }

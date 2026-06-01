@@ -97,7 +97,7 @@ public class AiChatService {
     private final SimpMessageSendingOperations messagingTemplate;
     private final SearchService searchService;
     private final StorageService storageService;
-    private final AiCompletionProvider blackboxAiClient;
+    private final AiCompletionProvider openAiClient;
     private final AiImageWorkflowService aiImageWorkflowService;
     private final AiDocumentService aiDocumentService;
     private final GoogleSearchContextService googleSearchContextService;
@@ -114,7 +114,7 @@ public class AiChatService {
     @Value("${ai.max-retries:2}")
     private int maxRetries;
 
-    @Value("${BLACKBOX_MODEL:gpt-4o}")
+    @Value("${OPENAI_MODEL:gpt-4o}")
     private String defaultModel;
 
     @Transactional
@@ -321,10 +321,10 @@ public class AiChatService {
             }
             for (int attempt = 1; attempt <= Math.max(1, maxRetries + 1); attempt++) {
                 try {
-                    completion = blackboxAiClient.complete(promptMessages, selectedModel, dynamicMaxTokens);
+                    completion = openAiClient.complete(promptMessages, selectedModel, dynamicMaxTokens);
                     break;
                 } catch (Exception ex) {
-                    boolean timeout = blackboxAiClient.isTimeout(ex);
+                    boolean timeout = openAiClient.isTimeout(ex);
                     boolean canRetry = attempt <= maxRetries;
                     log.warn("AI call failed attempt {}/{} (model={}): {}", attempt, maxRetries + 1, selectedModel,
                             ex.getMessage());
@@ -334,7 +334,7 @@ public class AiChatService {
                         log.info("[AI Router] Routed model {} failed, falling back to default {}", selectedModel,
                                 defaultModel);
                         try {
-                            completion = blackboxAiClient.complete(promptMessages, defaultModel);
+                            completion = openAiClient.complete(promptMessages, defaultModel);
                             fallbackUsed = true;
                             selectedModel = defaultModel;
                             break;
@@ -484,7 +484,7 @@ public class AiChatService {
             continuationPrompt.add(createPromptMessage("user", buildContinuationInstruction(language)));
 
             try {
-                AiCompletionResult continuation = blackboxAiClient.complete(
+                AiCompletionResult continuation = openAiClient.complete(
                         continuationPrompt,
                         selectedModel,
                         CONTINUATION_MAX_TOKENS);
@@ -847,7 +847,7 @@ public class AiChatService {
 
                 AiCompletionResult fallbackCompletion = null;
                 try {
-                    fallbackCompletion = blackboxAiClient.complete(promptMessages, defaultModel);
+                    fallbackCompletion = openAiClient.complete(promptMessages, defaultModel);
                 } catch (Exception aiEx) {
                     log.warn("Text AI fallback also failed: {}", aiEx.getMessage());
                 }

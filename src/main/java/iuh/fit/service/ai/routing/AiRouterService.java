@@ -27,10 +27,10 @@ import java.util.Map;
 @Slf4j
 public class AiRouterService {
 
-    private final AiCompletionProvider blackboxAiClient;
+    private final AiCompletionProvider openAiClient;
     private final ObjectMapper objectMapper;
 
-    @Value("${ai.router.model:blackboxai/minimax-free}")
+    @Value("${ai.router.model:gpt-4o-mini}")
     private String routerModel;
 
     @Value("${ai.model.chat:gpt-4o}")
@@ -82,7 +82,7 @@ public class AiRouterService {
             messages.add(Map.of("role", "system", "content", ROUTER_SYSTEM_PROMPT));
             messages.add(Map.of("role", "user", "content", userMessage));
 
-            AiCompletionResult result = blackboxAiClient.complete(messages, routerModel, 300);
+            AiCompletionResult result = openAiClient.complete(messages, routerModel, 300);
             String raw = result.getContent();
 
             if (!StringUtils.hasText(raw)) {
@@ -107,7 +107,7 @@ public class AiRouterService {
                 return null;
             }
 
-            // Map model names to actual Blackbox model IDs
+            // Resolve model ID for the selected task type
             String resolvedModel = resolveModelId(taskType, selectedModel);
 
             log.info("[AI Router] task={}, model={}, reason={}", taskType, resolvedModel, reason);
@@ -127,7 +127,8 @@ public class AiRouterService {
 
     /**
      * Route with attachment awareness.
-     * If {@code hasImageAttachment} is true, skip LLM routing and force TASK_VISION.
+     * If {@code hasImageAttachment} is true, skip LLM routing and force
+     * TASK_VISION.
      */
     public AiRouterResult routeWithAttachment(String userMessage, String language, boolean hasImageAttachment) {
         if (hasImageAttachment) {

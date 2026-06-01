@@ -47,7 +47,6 @@ public class AiImageWorkflowService {
 
     private static final String FALLBACK_IMAGE_PROVIDER_BASE = "https://image.pollinations.ai/prompt/";
     private static final String OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations";
-    private static final String BLACKBOX_IMAGE_URL = "https://api.blackbox.ai/v1/images/generations";
     private static final String GEMINI_IMAGE_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent";
 
     private final ObjectMapper objectMapper;
@@ -56,9 +55,6 @@ public class AiImageWorkflowService {
 
     @Value("${OPENAI_API_KEY:}")
     private String openaiApiKey;
-
-    @Value("${BLACKBOX_API_KEY:}")
-    private String blackboxApiKey;
 
     @Value("${GEMINI_API_KEY:}")
     private String geminiApiKey;
@@ -150,18 +146,7 @@ public class AiImageWorkflowService {
             }
         }
 
-        // 2) Blackbox AI
-        if (StringUtils.hasText(blackboxApiKey)) {
-            try {
-                byte[] result = generateByBlackbox(preparedPrompt.prompt(), preset);
-                if (result != null && result.length > 0)
-                    return result;
-            } catch (Exception ex) {
-                log.warn("[IMAGE_GEN] Blackbox FAILED: {}", ex.getMessage());
-            }
-        }
-
-        // 3) Gemini
+        // 2) Gemini
         if (StringUtils.hasText(geminiApiKey)) {
             try {
                 byte[] result = generateByGemini(preparedPrompt.prompt());
@@ -172,7 +157,7 @@ public class AiImageWorkflowService {
             }
         }
 
-        // 4) Fallback: pollinations.ai
+        // 3) Fallback: pollinations.ai
         return generateByFallbackProvider(preparedPrompt.prompt(), preset, restTemplate);
     }
 
@@ -213,40 +198,6 @@ public class AiImageWorkflowService {
         }
 
         throw new IllegalStateException("OpenAI returned no image data");
-    }
-
-    private byte[] generateByBlackbox(String prompt, ImagePreset preset) throws Exception {
-        RestTemplate restTemplate = buildRestTemplate(12000, 60000);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(blackboxApiKey);
-
-        String trimmedPrompt = prompt.length() > 500 ? prompt.substring(0, 500) : prompt;
-        String size = resolveOpenAiSize(preset.size);
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("model", "flux-pro");
-        payload.put("prompt", trimmedPrompt);
-        payload.put("n", 1);
-        payload.put("size", size);
-        payload.put("response_format", "b64_json");
-
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, headers);
-        ResponseEntity<String> response = restTemplate.postForEntity(BLACKBOX_IMAGE_URL, request, String.class);
-
-        JsonNode root = objectMapper.readTree(response.getBody());
-        String b64 = pickFirstText(root, "/data/0/b64_json");
-        if (StringUtils.hasText(b64))
-            return Base64.getDecoder().decode(b64);
-
-        String url = pickFirstText(root, "/data/0/url");
-        if (StringUtils.hasText(url)) {
-            ResponseEntity<byte[]> imgResp = buildRestTemplate(8000, 30000).getForEntity(url, byte[].class);
-            if (imgResp.getBody() != null && imgResp.getBody().length > 0)
-                return imgResp.getBody();
-        }
-
-        throw new IllegalStateException("Blackbox returned no image data");
     }
 
     private byte[] generateByGemini(String prompt) throws Exception {

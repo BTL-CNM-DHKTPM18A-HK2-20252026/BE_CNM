@@ -5,7 +5,7 @@ import java.util.Map;
 
 /**
  * Abstraction for AI completion providers.
- * Enables swapping BlackboxAI for any other provider without changing callers.
+ * Enables swapping the AI provider without changing callers.
  */
 public interface AiCompletionProvider {
 

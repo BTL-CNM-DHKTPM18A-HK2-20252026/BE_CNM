@@ -164,8 +164,10 @@ ai:
   sliding-window:
     size: ${AI_SLIDING_WINDOW_SIZE:10}
   window-token-budget: ${AI_WINDOW_TOKEN_BUDGET:2000}
-  blackbox:
-    url: ${BLACKBOX_API_URL:https://api.openai.com/v1/chat/completions}
+  openai:
+    url: ${OPENAI_API_URL:https://api.openai.com/v1/chat/completions}
+  deepseek:
+    url: ${DEEPSEEK_API_URL:https://api.deepseek.com/v1/chat/completions}
 
 # Google Custom Search API
 google:
