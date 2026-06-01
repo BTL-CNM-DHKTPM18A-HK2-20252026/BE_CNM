@@ -28,6 +28,7 @@ public class GoogleSearchContextService {
 
     private final GoogleSearchService googleSearchService;
     private final DuckDuckGoSearchService duckDuckGoSearchService;
+    private final RealtimeDataSourceRegistry realtimeDataSourceRegistry;
 
     /** Số kết quả tối đa đưa vào context (tránh vượt token budget). */
     private static final int MAX_INJECT_RESULTS = 5;
@@ -112,6 +113,17 @@ public class GoogleSearchContextService {
      */
     public String buildSearchContext(String query, String language) {
         try {
+            // ── Bước 0: nguồn dữ liệu số chuyên dụng (giá vàng, tỷ giá, crypto…) ──
+            // Lấy số THẬT từ JSON API / HTML tĩnh trước, ưu tiên cao nhất.
+            List<GoogleWebSearchResult> realtimeData = List.of();
+            if (isNumericDataQuery(query)) {
+                try {
+                    realtimeData = realtimeDataSourceRegistry.fetchForQuery(query);
+                } catch (Exception dataEx) {
+                    log.debug("[GoogleSearchContext] Registry dữ liệu số lỗi: {}", dataEx.getMessage());
+                }
+            }
+
             // ── Bước 1: thử Google Custom Search (nguồn chính) ──
             String source = "GOOGLE";
             List<GoogleWebSearchResult> results;
@@ -130,15 +142,21 @@ public class GoogleSearchContextService {
                 source = "DUCKDUCKGO";
             }
 
-            if (results.isEmpty()) {
+            if (results.isEmpty() && realtimeData.isEmpty()) {
                 log.info("[GoogleSearchContext] Không có kết quả tìm kiếm (cả Google & DuckDuckGo) cho: '{}'", query);
                 return null;
             }
 
-            List<GoogleWebSearchResult> top = results.stream().limit(MAX_INJECT_RESULTS).toList();
+            // Ghép: nguồn dữ liệu số (ưu tiên) đứng trước kết quả web thường.
+            List<GoogleWebSearchResult> merged = new java.util.ArrayList<>(realtimeData);
+            merged.addAll(results);
+
+            List<GoogleWebSearchResult> top = merged.stream().limit(MAX_INJECT_RESULTS).toList();
             boolean isVi = "vi".equals(language);
             String today = LocalDate.now().toString();
-            String sourceLabel = "GOOGLE".equals(source) ? "GOOGLE SEARCH" : "DUCKDUCKGO SEARCH";
+            String sourceLabel = !realtimeData.isEmpty()
+                    ? "NGUỒN DỮ LIỆU CHUYÊN DỤNG + WEB"
+                    : ("GOOGLE".equals(source) ? "GOOGLE SEARCH" : "DUCKDUCKGO SEARCH");
 
             StringBuilder sb = new StringBuilder();
 
@@ -161,6 +179,9 @@ public class GoogleSearchContextService {
             }
 
             // ── Liệt kê kết quả — tiêu đề + snippet + link ──
+            // Đồng thời gom toàn bộ text (snippet + nội dung chi tiết) để guard
+            // kiểm tra xem có con số thật hay không.
+            StringBuilder evidence = new StringBuilder();
             int idx = 1;
             for (GoogleWebSearchResult r : top) {
                 String title = StringUtils.hasText(r.getTitle()) ? r.getTitle() : "(no title)";
@@ -170,6 +191,7 @@ public class GoogleSearchContextService {
                 sb.append("[").append(idx).append("] ").append(title).append("\n");
                 if (!snippet.isBlank()) {
                     sb.append("    📄 ").append(snippet).append("\n");
+                    evidence.append(' ').append(snippet);
                 }
                 if (!link.isBlank()) {
                     // Lưu link gốc để AI có thể render thành markdown
@@ -182,11 +204,22 @@ public class GoogleSearchContextService {
                     if (StringUtils.hasText(fullText)) {
                         sb.append(isVi ? "    📰 NỘI DUNG CHI TIẾT:\n" : "    📰 FULL CONTENT:\n");
                         sb.append("    ").append(fullText.replace("\n", "\n    ")).append("\n");
+                        evidence.append(' ').append(fullText);
                     }
                 }
 
                 sb.append("\n");
                 idx++;
+            }
+
+            // ── GUARD CHỐNG BỊA SỐ ──
+            // Nếu câu hỏi đòi số liệu (giá vàng/dầu/tỷ giá/chứng khoán/crypto…)
+            // nhưng kết quả tìm kiếm KHÔNG chứa con số thật → KHÔNG đưa kết quả
+            // mơ hồ cho AI (AI sẽ bịa). Thay bằng lệnh từ chối dứt khoát.
+            if (isNumericDataQuery(query) && !containsRealNumbers(evidence.toString())) {
+                log.info("[GoogleSearchContext] Guard kích hoạt: câu hỏi số liệu '{}' nhưng "
+                        + "không có con số thật trong kết quả → trả lệnh từ chối.", query);
+                return buildNoDataGuard(query, language, today, top);
             }
 
             // ── Hướng dẫn bắt buộc về cách trả lời ──
@@ -225,6 +258,87 @@ public class GoogleSearchContextService {
             log.warn("[GoogleSearchContext] Tìm kiếm thất bại cho '{}': {}", query, ex.getMessage());
             return null;
         }
+    }
+
+    // ── Guard chống bịa số ─────────────────────────────────────────────────────
+
+    /** Pattern câu hỏi đòi CON SỐ cụ thể (giá/tỷ giá/chỉ số…). */
+    private static final Pattern NUMERIC_QUERY_PATTERN = Pattern.compile(
+            "\\b(giá vàng|giá dầu|giá xăng|giá bạc|tỷ giá|giá cổ phiếu|chứng khoán|vn-?index|"
+                    + "dow jones|nasdaq|bitcoin|ethereum|btc|eth|giá coin|giá \\w+|"
+                    + "exchange rate|stock price|gold price|oil price|price of)\\b",
+            Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Phát hiện chuỗi text bằng chứng (snippet + nội dung trang) có chứa
+     * con số "giống số liệu thật" hay không. Yêu cầu: có ít nhất một số có
+     * từ 3 chữ số trở lên, hoặc số kèm đơn vị tiền tệ/giá phổ biến.
+     */
+    private static final Pattern REAL_NUMBER_PATTERN = Pattern.compile(
+            "\\d[\\d.,]{2,}\\s*(triệu|tỷ|nghìn|đồng|vnđ|vnd|usd|đô|lượng|chỉ|ounce|oz|%)"
+                    + "|(triệu|tỷ|nghìn|đồng|vnđ|vnd|usd|\\$|₫)\\s*\\d[\\d.,]{2,}"
+                    + "|\\d{1,3}([.,]\\d{3}){1,}",
+            Pattern.CASE_INSENSITIVE);
+
+    private boolean isNumericDataQuery(String query) {
+        return StringUtils.hasText(query)
+                && NUMERIC_QUERY_PATTERN.matcher(query.toLowerCase(Locale.ROOT)).find();
+    }
+
+    private boolean containsRealNumbers(String evidence) {
+        return StringUtils.hasText(evidence)
+                && REAL_NUMBER_PATTERN.matcher(evidence).find();
+    }
+
+    /**
+     * Khi câu hỏi đòi số liệu nhưng tìm kiếm không có con số thật, trả về một
+     * khối system-prompt buộc AI từ chối bịa và hướng người dùng tới nguồn
+     * chính thống (kèm các link đã tìm được).
+     */
+    private String buildNoDataGuard(String query, String language, String today,
+            List<GoogleWebSearchResult> sources) {
+        boolean isVi = "vi".equals(language);
+        StringBuilder sb = new StringBuilder();
+        sb.append("════════════════════════════════════════\n");
+        if (isVi) {
+            sb.append("⚠️  LỆNH HỆ THỐNG — ƯU TIÊN TUYỆT ĐỐI — NGÀY: ").append(today).append("\n");
+            sb.append("════════════════════════════════════════\n\n");
+            sb.append("Hệ thống ĐÃ tìm kiếm web nhưng KHÔNG lấy được con số chính xác cho câu hỏi này.\n");
+            sb.append("NGHIÊM CẤM TUYỆT ĐỐI việc tự bịa ra bất kỳ con số nào (giá, tỷ giá, chỉ số…).\n\n");
+            sb.append("BẮT BUỘC trả lời theo đúng tinh thần sau (diễn đạt tự nhiên bằng giọng của bạn):\n");
+            sb.append("  • Nói thẳng rằng bạn KHÔNG có số liệu thời gian thực chính xác ở thời điểm này.\n");
+            sb.append("  • TUYỆT ĐỐI KHÔNG đưa ra con số ước lượng / từ trí nhớ.\n");
+            sb.append("  • Hướng người dùng kiểm tra tại nguồn chính thống mới nhất.\n");
+            if (sources != null && !sources.isEmpty()) {
+                sb.append("\nGợi ý nguồn để liệt kê cuối câu trả lời (markdown link):\n");
+                for (GoogleWebSearchResult r : sources) {
+                    if (StringUtils.hasText(r.getLink())) {
+                        String t = StringUtils.hasText(r.getTitle()) ? r.getTitle() : r.getLink();
+                        sb.append("  - [").append(t).append("](").append(r.getLink()).append(")\n");
+                    }
+                }
+            }
+        } else {
+            sb.append("⚠️  SYSTEM COMMAND — ABSOLUTE PRIORITY — DATE: ").append(today).append("\n");
+            sb.append("════════════════════════════════════════\n\n");
+            sb.append("The system searched the web but could NOT retrieve an exact figure for this question.\n");
+            sb.append("STRICTLY FORBIDDEN to fabricate any number (price, rate, index…).\n\n");
+            sb.append("You MUST answer in this spirit (phrase naturally in your own voice):\n");
+            sb.append("  • State clearly that you do NOT have an exact real-time figure right now.\n");
+            sb.append("  • NEVER provide an estimated number / from memory.\n");
+            sb.append("  • Direct the user to check an authoritative, up-to-date source.\n");
+            if (sources != null && !sources.isEmpty()) {
+                sb.append("\nSuggested sources to list at the end (markdown links):\n");
+                for (GoogleWebSearchResult r : sources) {
+                    if (StringUtils.hasText(r.getLink())) {
+                        String t = StringUtils.hasText(r.getTitle()) ? r.getTitle() : r.getLink();
+                        sb.append("  - [").append(t).append("](").append(r.getLink()).append(")\n");
+                    }
+                }
+            }
+        }
+        sb.append("════════════════════════════════════════\n");
+        return sb.toString();
     }
 
     /**
