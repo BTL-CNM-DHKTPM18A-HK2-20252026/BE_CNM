@@ -170,6 +170,10 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
       - OPENAI_API_URL=${OPENAI_API_URL:-https://api.openai.com/v1/chat/completions}
+      - AI_MODEL_CHAT=${AI_MODEL_CHAT:-deepseek-v4-pro}
+      - AI_MODEL_REASONING=${AI_MODEL_REASONING:-deepseek-v4-pro}
+      - AI_MODEL_KNOWLEDGE=${AI_MODEL_KNOWLEDGE:-deepseek-v4-pro}
+      - AI_ROUTER_MODEL=${AI_ROUTER_MODEL:-deepseek-v4-flash}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DEEPSEEK_API_URL=${DEEPSEEK_API_URL:-https://api.deepseek.com/v1/chat/completions}
       - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-v4-pro}
