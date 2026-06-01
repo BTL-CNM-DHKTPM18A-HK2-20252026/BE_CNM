@@ -23,6 +23,7 @@ import iuh.fit.repository.ConversationPermissionRepository;
 import iuh.fit.repository.ConversationRepository;
 import iuh.fit.repository.FriendshipRepository;
 import iuh.fit.repository.UserAuthRepository;
+import iuh.fit.repository.UserSettingRepository;
 import iuh.fit.service.message.MessageBucketService;
 import iuh.fit.service.message.MessageProducerService;
 import lombok.RequiredArgsConstructor;
@@ -57,6 +58,7 @@ public class ConversationService {
     private final ConversationPermissionRepository conversationPermissionRepository;
     private final UserAuthRepository userAuthRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserSettingRepository userSettingRepository;
 
     private static final String S3_PUBLIC_BASE = "https://fruvia-asset.s3.ap-southeast-2.amazonaws.com/public";
     private static final String[] DEFAULT_GROUP_AVATARS = {
@@ -262,12 +264,14 @@ public class ConversationService {
         conv = conversationRepository.save(conv);
 
         // If conversation name changed, broadcast a persisted SYSTEM message to chat
-        if (request.getConversationName() != null && !java.util.Objects.equals(oldConversationName, conv.getConversationName())) {
+        if (request.getConversationName() != null
+                && !java.util.Objects.equals(oldConversationName, conv.getConversationName())) {
             iuh.fit.entity.UserDetail requesterDetail = userDetailRepository.findByUserId(userId).orElse(null);
             String requesterName = requesterDetail != null ? requesterDetail.getDisplayName() : "Ai đó";
             String oldNameSafe = oldConversationName != null ? oldConversationName : "";
             String newName = conv.getConversationName() != null ? conv.getConversationName() : "";
-            broadcastSystemMessage(conversationId, requesterName + " đã đổi tên nhóm từ " + oldNameSafe + " thành " + newName);
+            broadcastSystemMessage(conversationId,
+                    requesterName + " đã đổi tên nhóm từ " + oldNameSafe + " thành " + newName);
         }
 
         List<ConversationMember> allMembers = conversationMemberRepository.findByConversationId(conversationId);
@@ -855,6 +859,13 @@ public class ConversationService {
                 continue; // Skip self
             if (m.getLastReadMessageId() == null)
                 continue; // Not read anything yet
+
+            // Skip users who have disabled read receipts
+            boolean readReceiptsHidden = userSettingRepository.findById(m.getUserId())
+                    .map(s -> Boolean.FALSE.equals(s.getShowReadReceipts()))
+                    .orElse(false);
+            if (readReceiptsHidden)
+                continue;
 
             iuh.fit.entity.UserDetail detail = userDetailRepository.findByUserId(m.getUserId()).orElse(null);
 

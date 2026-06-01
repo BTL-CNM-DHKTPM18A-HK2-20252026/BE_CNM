@@ -277,7 +277,14 @@ public class MessageService {
         if (type == MessageType.LINK || (content != null
                 && (content.startsWith("http://") || content.startsWith("https://")))) {
             try {
-                var linkMeta = linkScraper.scrape(content);
+                String urlToScrape = content;
+                if (content != null && isJsonMessage(content)) {
+                    String extracted = getPlainTextFromContent(content);
+                    if (extracted != null && (extracted.startsWith("http://") || extracted.startsWith("https://"))) {
+                        urlToScrape = extracted;
+                    }
+                }
+                var linkMeta = linkScraper.scrape(urlToScrape);
                 if (linkMeta != null) {
                     builder.linkTitle(linkMeta.getTitle());
                     builder.linkThumbnail(linkMeta.getThumbnail());
@@ -412,7 +419,8 @@ public class MessageService {
         }
         if (type == MessageType.TEXT) {
             String urlPattern = "^https?://[\\w\\d.-]+(:\\d+)?(/[\\w\\d./?%&=-]*)?$";
-            if (content.matches(urlPattern)) {
+            String textToCheck = isJsonMessage(content) ? getPlainTextFromContent(content) : content;
+            if (textToCheck != null && textToCheck.trim().matches(urlPattern)) {
                 type = MessageType.LINK;
             }
         }
@@ -1145,18 +1153,20 @@ public class MessageService {
     private List<String> splitJsonMessage(String jsonStr, int chunkSize) {
         try {
             JsonNode doc = objectMapper.readTree(jsonStr);
-            if (doc == null || !doc.has("type") || !"doc".equals(doc.get("type").asText()) || !doc.has("content") || !doc.get("content").isArray()) {
+            if (doc == null || !doc.has("type") || !"doc".equals(doc.get("type").asText()) || !doc.has("content")
+                    || !doc.get("content").isArray()) {
                 return splitPlainText(jsonStr, chunkSize);
             }
 
-            com.fasterxml.jackson.databind.node.ArrayNode originalContent = (com.fasterxml.jackson.databind.node.ArrayNode) doc.get("content");
+            com.fasterxml.jackson.databind.node.ArrayNode originalContent = (com.fasterxml.jackson.databind.node.ArrayNode) doc
+                    .get("content");
             List<String> docChunks = new ArrayList<>();
             List<JsonNode> currentBlockNodes = new ArrayList<>();
             int currentLen = 0;
 
             for (JsonNode node : originalContent) {
                 String nodeText = getPlainTextFromContent(objectMapper.writeValueAsString(node));
-                
+
                 if (nodeText.length() <= chunkSize) {
                     if (currentLen + nodeText.length() > chunkSize && !currentBlockNodes.isEmpty()) {
                         docChunks.add(createDocJson(currentBlockNodes));
@@ -1171,7 +1181,7 @@ public class MessageService {
                         currentBlockNodes.clear();
                         currentLen = 0;
                     }
-                    
+
                     List<JsonNode> splitNodes = splitBlockNode(node, chunkSize);
                     for (JsonNode subNode : splitNodes) {
                         List<JsonNode> singleNodeList = new ArrayList<>();
@@ -1207,14 +1217,14 @@ public class MessageService {
         try {
             List<JsonNode> inlineItems = new ArrayList<>();
             collectInline(node, inlineItems);
-            
+
             List<JsonNode> currentInline = new ArrayList<>();
             int currentLen = 0;
-            
+
             for (JsonNode item : inlineItems) {
                 String textRemaining = item.has("text") ? item.get("text").asText() : "";
                 JsonNode marks = item.get("marks");
-                
+
                 while (textRemaining.length() > 0) {
                     int spaceLeft = chunkSize - currentLen;
                     if (spaceLeft <= 0) {
@@ -1223,7 +1233,7 @@ public class MessageService {
                         currentLen = 0;
                         continue;
                     }
-                    
+
                     if (textRemaining.length() <= spaceLeft) {
                         com.fasterxml.jackson.databind.node.ObjectNode textNode = objectMapper.createObjectNode();
                         textNode.put("type", "text");
@@ -1243,7 +1253,7 @@ public class MessageService {
                         if (bestSplit > splitPos / 2) {
                             splitPos = bestSplit + 1;
                         }
-                        
+
                         com.fasterxml.jackson.databind.node.ObjectNode textNode = objectMapper.createObjectNode();
                         textNode.put("type", "text");
                         textNode.put("text", textRemaining.substring(0, splitPos));
@@ -1251,16 +1261,16 @@ public class MessageService {
                             textNode.set("marks", marks);
                         }
                         currentInline.add(textNode);
-                        
+
                         splitBlocks.add(createNewBlockNode(node, currentInline));
                         currentInline.clear();
                         currentLen = 0;
-                        
+
                         textRemaining = textRemaining.substring(splitPos);
                     }
                 }
             }
-            
+
             if (!currentInline.isEmpty()) {
                 splitBlocks.add(createNewBlockNode(node, currentInline));
             }
@@ -1273,7 +1283,8 @@ public class MessageService {
     }
 
     private void collectInline(JsonNode node, List<JsonNode> inlineItems) {
-        if (node == null) return;
+        if (node == null)
+            return;
         if (node.has("type") && "text".equals(node.get("type").asText())) {
             inlineItems.add(node);
         } else if (node.has("content") && node.get("content").isArray()) {
