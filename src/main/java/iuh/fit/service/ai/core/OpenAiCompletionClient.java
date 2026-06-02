@@ -205,38 +205,92 @@ public class OpenAiCompletionClient implements AiCompletionProvider {
         JsonNode choices = root.path("choices");
         if (choices.isArray() && !choices.isEmpty()) {
             JsonNode first = choices.get(0);
-            String fromMessage = first.path("message").path("content").asText(null);
+            JsonNode messageNode = first.path("message");
+
+            // Ưu tiên lấy content trước
+            String fromMessage = messageNode.path("content").asText(null);
+            // Nếu content rỗng/null nhưng có reasoning_content → reasoning model thuần
+            String fromReasoning = messageNode.path("reasoning_content").asText(null);
+
             if (StringUtils.hasText(fromMessage)) {
-                return fromMessage;
+                // Strip reasoning tags nếu model tự động gộp reasoning vào content
+                return stripReasoningContent(fromMessage);
             }
-            // DeepSeek-R1 style reasoning models may return reasoning_content as primary
-            // output
-            String fromReasoning = first.path("message").path("reasoning_content").asText(null);
+            // DeepSeek-R1 / reasoning models: reasoning_content là primary output
             if (StringUtils.hasText(fromReasoning)) {
-                return fromReasoning;
+                return stripReasoningContent(fromReasoning);
             }
             String fromText = first.path("text").asText(null);
             if (StringUtils.hasText(fromText)) {
-                return fromText;
+                return stripReasoningContent(fromText);
             }
             // Some models return delta.content (streaming format even on non-stream)
             String fromDelta = first.path("delta").path("content").asText(null);
             if (StringUtils.hasText(fromDelta)) {
-                return fromDelta;
+                return stripReasoningContent(fromDelta);
             }
         }
 
         String outputText = root.path("output_text").asText(null);
         if (StringUtils.hasText(outputText)) {
-            return outputText;
+            return stripReasoningContent(outputText);
         }
 
         String response = root.path("response").asText(null);
         if (StringUtils.hasText(response)) {
-            return response;
+            return stripReasoningContent(response);
         }
 
         return null;
+    }
+
+    /**
+     * Loại bỏ reasoning tags và phần suy luận của reasoning model
+     * (DeepSeek-R1, o1, o3, v.v.) khỏi content trước khi trả về cho user.
+     */
+    private String stripReasoningContent(String content) {
+        if (!StringUtils.hasText(content)) {
+            return content;
+        }
+        // Xử lý các tag phổ biến của reasoning models
+        // 1) ... (DeepSeek-R1, Qwen, v.v.)
+        content = content.replaceAll("(?s)ˋ{3}thinkˋ{3}.*?ˋ{3}thinkˋ{3}", "").trim();
+        content = content.replaceAll("(?s)```think```.*?```think```", "").trim();
+        // 2) ... hoặc ...
+        content = content.replaceAll("(?s)<think>.*?</think>", "").trim();
+        // 3) ...
+        content = content.replaceAll("(?s)ˋ{3}reasoningˋ{3}.*?ˋ{3}reasoningˋ{3}", "").trim();
+        content = content.replaceAll("(?s)<reasoning>.*?</reasoning>", "").trim();
+        // 4) ... (OpenAI o1/o3 style)
+        content = content.replaceAll("(?s)<antThink>.*?</antThink>", "").trim();
+        // 5) Nếu content bắt đầu bằng "Ta cần phân tích", "Tôi cần phân tích" →
+        // reasoning leak
+        if (content.length() > 200) {
+            String lower = content.toLowerCase();
+            // Pattern: "Tôi là... Ta cần phân tích..." → cắt bỏ phần reasoning phía sau
+            String[] reasoningMarkers = {
+                    "ta cần phân tích",
+                    "tôi cần phân tích",
+                    "trước hết",
+                    "trước tiên",
+                    "hãy phân tích",
+                    "let me analyze",
+                    "let's think",
+                    "i need to analyze",
+                    "first, let me"
+            };
+            for (String marker : reasoningMarkers) {
+                int idx = lower.indexOf(marker, 50); // chỉ tìm sau 50 ký tự đầu (bỏ qua câu trả lời ngắn)
+                if (idx > 0) {
+                    String before = content.substring(0, idx).trim();
+                    // Chỉ cắt nếu phần trước đã là 1 câu hoàn chỉnh (kết thúc bằng .!?)
+                    if (before.matches(".*[.!?]\\s*$") && before.length() > 20) {
+                        return before;
+                    }
+                }
+            }
+        }
+        return content;
     }
 
     public boolean isTimeout(Throwable ex) {
