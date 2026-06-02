@@ -143,11 +143,11 @@ ai:
   max-retries: ${AI_MAX_RETRIES:2}
   max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:2000}
   router:
-    model: ${AI_ROUTER_MODEL:deepseek-chat}
+    model: ${AI_ROUTER_MODEL:oc/deepseek-v4-flash-free}
   model:
-    chat: ${AI_MODEL_CHAT:deepseek-chat}
-    reasoning: ${AI_MODEL_REASONING:deepseek-chat}
-    knowledge: ${AI_MODEL_KNOWLEDGE:deepseek-chat}
+    chat: ${AI_MODEL_CHAT:oc/deepseek-v4-flash-free}
+    reasoning: ${AI_MODEL_REASONING:ocg/deepseek-v4-pro}
+    knowledge: ${AI_MODEL_KNOWLEDGE:ocg/deepseek-v4-pro}
     image: ${AI_MODEL_IMAGE:dall-e-3}
   image:
     provider-url: ${AI_IMAGE_PROVIDER_URL:}
